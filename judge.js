@@ -193,6 +193,11 @@ function parseDemandGroup(text) {
   return m ? m[1] : "unknown";
 }
 
+function parseDemandFingerprint(text) {
+  const m = String(text || "").match(/demand_fingerprint:([a-z0-9_-]+)/i);
+  return m ? m[1] : "";
+}
+
 function judgeDemandOpportunity(o, text) {
   const noiseHits = hits(text, DEMAND_NOISE_WORDS);
   const problemHits = hits(text, DEMAND_PROBLEM_WORDS);
@@ -201,6 +206,8 @@ function judgeDemandOpportunity(o, text) {
   const fastHits = hits(text, FAST_WORDS);
   const repeatCount = parseDemandRepeat(text);
   const group = parseDemandGroup(text);
+  const fingerprint = parseDemandFingerprint(text);
+  const legacyOrUnknownFingerprint = !fingerprint || fingerprint === "unclassified";
 
   const demand = problemHits.length ? hitScore(problemHits.length, [38,55,70,82,92,100]) : 10;
   const repeat = repeatCount >= 5 ? 100 : repeatCount === 4 ? 92 : repeatCount === 3 ? 80 : repeatCount === 2 ? 55 : 20;
@@ -214,34 +221,41 @@ function judgeDemandOpportunity(o, text) {
   ));
 
   let status = repeatCount >= 3 ? "product_candidate" : repeatCount === 2 ? "watch_signal" : "signal";
-  let grade = (!noiseHits.length && repeatCount >= 2 && demand >= 55 && score >= 50) ? "watch" : "cold";
+  let grade = (!noiseHits.length && !legacyOrUnknownFingerprint && repeatCount >= 2 && demand >= 55 && score >= 50) ? "watch" : "cold";
   if (noiseHits.length) {
     score = Math.min(score, 15);
     status = "noise";
+    grade = "cold";
+  } else if (legacyOrUnknownFingerprint) {
+    score = Math.min(score, 39);
+    status = fingerprint === "unclassified" ? "unclassified" : "legacy_signal";
     grade = "cold";
   }
 
   const reasons = [
     "DEMAND " + status,
     "GROUP " + group,
-    "독립 repo 반복 " + repeatCount,
+    "FINGERPRINT " + (fingerprint || "legacy/none"),
+    "동일 문제 독립 repo 반복 " + repeatCount,
     "문제신호 " + demand,
     "BUILD " + build,
     "MONETIZE " + monetize
   ];
   if (noiseHits.length) reasons.push("자동생성/리포트형 노이즈 → 제외");
-  else if (repeatCount < 2) reasons.push("단일 repo 신호 → 시장수요 확정 전 COLD");
+  else if (legacyOrUnknownFingerprint) reasons.push("정확한 수요 fingerprint 없음 → COLD");
+  else if (repeatCount < 2) reasons.push("동일 문제 단일 repo 신호 → 시장수요 확정 전 COLD");
 
   return {
     score,
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand-v0.4.1",
+      judge_version: "payout+demand-v0.4.2",
       judge_mode: "demand",
       opportunity_type: "business_opportunity",
       demand_status: status,
       demand_group: group,
+      demand_fingerprint: fingerprint || null,
       demand,
       repeat,
       demand_repeat_count: repeatCount,
@@ -496,7 +510,7 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand-v0.4.1",
+      judge_version: "payout+demand-v0.4.2",
       judge_mode: "paid",
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
