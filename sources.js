@@ -67,7 +67,7 @@ export async function collectRemoteOK() {
   const res = await fetch("https://remoteok.com/api", {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.4.1"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.2"
     }
   });
   if (!res.ok) throw new Error(`RemoteOK HTTP ${res.status}`);
@@ -83,7 +83,7 @@ export async function collectRemoteOK() {
       type: "remote_job",
       title: `${x.position}${x.company ? ` · ${x.company}` : ""}`,
       description: stripHtml(x.description || "").slice(0, 3000),
-      // RemoteOK salary_min/max는 대개 연봉 범위다. Judge v0.4.1에서 fixed payout으로 취급하지 않는다.
+      // RemoteOK salary_min/max는 대개 연봉 범위다. Judge v0.4.2에서 fixed payout으로 취급하지 않는다.
       budget_min: Number(x.salary_min) || null,
       budget_max: Number(x.salary_max) || null,
       currency: (x.salary_min || x.salary_max) ? "USD" : "",
@@ -101,7 +101,7 @@ export async function collectAgentBounties() {
   const res = await fetch(url, {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.4.1"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.2"
     }
   });
   if (!res.ok) throw new Error(`Agent Bounties HTTP ${res.status}`);
@@ -153,7 +153,7 @@ async function githubIssueSearch(query, perPage = 20) {
     headers: {
       "accept": "application/vnd.github+json",
       "x-github-api-version": "2026-03-10",
-      "user-agent": "AutomationFactory-MoneyScout/0.4.1"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.2"
     }
   });
   if (!res.ok) {
@@ -282,7 +282,7 @@ function hasDemandProblem(text) {
 
 function demandGroup(text) {
   const t = String(text || "").toLowerCase();
-  if (/(csv|markdown|export|report|reporting)/.test(t)) return "reporting_export";
+  if (/(csv|markdown|pdf|export|report|reporting)/.test(t)) return "reporting_export";
   if (/(tiktok|youtube|pinterest|downloader|download media|media download)/.test(t)) return "media_downloader";
   if (/(spreadsheet|excel|google sheet|sheets)/.test(t)) return "spreadsheet";
   if (/(discord|telegram|whatsapp|bot integration|chat bot|chatbot)/.test(t)) return "bot_integration";
@@ -291,6 +291,51 @@ function demandGroup(text) {
   if (/(workflow|automation|automate|manual process)/.test(t)) return "workflow_automation";
   if (/(docs|documentation|knowledge base|reference)/.test(t)) return "docs_knowledge";
   return "other";
+}
+
+function demandFingerprint(text) {
+  const t = String(text || "").toLowerCase();
+  const patterns = [
+    ["csv_export", /\bcsv\b.{0,80}\b(export|download|report)|\b(export|download)\b.{0,80}\bcsv\b/],
+    ["markdown_export", /\bmarkdown\b.{0,80}\b(export|report|generate)|\b(export|generate)\b.{0,80}\bmarkdown\b/],
+    ["pdf_export", /\bpdf\b.{0,80}\b(export|report|generate)|\b(export|generate)\b.{0,80}\bpdf\b/],
+    ["report_export", /\b(report|reporting)\b.{0,80}\b(export|download|generate)|\b(export|generate)\b.{0,80}\breport/],
+    ["tiktok_downloader", /\btiktok\b.{0,100}\b(download|downloader|media)/],
+    ["youtube_downloader", /\byoutube\b.{0,100}\b(download|downloader|video|audio)/],
+    ["pinterest_downloader", /\bpinterest\b.{0,100}\b(download|downloader|media|album)/],
+    ["multi_platform_downloader", /(multi[- ]platform|multiple platforms).{0,100}\b(download|downloader)/],
+    ["spreadsheet_sync", /(spreadsheet|excel|google sheets?).{0,100}\b(sync|synchroni[sz]e|integration)/],
+    ["spreadsheet_automation", /(spreadsheet|excel|google sheets?).{0,100}\b(automation|automate|workflow)/],
+    ["discord_bot", /\bdiscord\b.{0,100}\b(bot|automation|integration)/],
+    ["telegram_bot", /\btelegram\b.{0,100}\b(bot|automation|integration)/],
+    ["whatsapp_bot", /\bwhatsapp\b.{0,100}\b(bot|automation|integration)/],
+    ["bot_integration", /\bbot\b.{0,80}\b(integration|webhook|workflow)/],
+    ["price_monitoring", /\b(price|pricing)\b.{0,100}\b(monitor|tracking|alert|watch)/],
+    ["uptime_monitoring", /\b(uptime|availability|health check)\b.{0,100}\b(monitor|alert|watch)/],
+    ["change_monitoring", /\b(change|changes|update)\b.{0,100}\b(monitor|alert|watch|notification)/],
+    ["web_scraping", /\b(scrape|scraping|crawler|crawl)\b/],
+    ["data_sync", /\b(data|database|records?)\b.{0,100}\b(sync|synchroni[sz]e|replicate)/],
+    ["data_pipeline", /\b(etl|data pipeline|ingestion pipeline)\b/],
+    ["approval_workflow", /\b(approval|approve|review)\b.{0,100}\b(workflow|automation)/],
+    ["notification_automation", /\b(notification|alert|message)\b.{0,100}\b(automation|automate|workflow)/],
+    ["documentation_generator", /\b(docs?|documentation)\b.{0,100}\b(generate|generator|automatic|automation)/],
+    ["api_reference", /\b(api reference|api docs|api documentation)\b/]
+  ];
+  for (const [name, re] of patterns) if (re.test(t)) return name;
+
+  const stop = new Set([
+    "feature","request","issue","problem","proposal","support","please","add","new","need","needs",
+    "with","from","into","for","and","the","this","that","when","where","what","how","user","users",
+    "currently","would","like","improve","enhancement","automation","automate","integration"
+  ]);
+  const tokens = t
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((x) => x.length >= 4 && !stop.has(x) && !/^\d+$/.test(x));
+
+  const uniq = [...new Set(tokens)].slice(0, 3);
+  return uniq.length >= 2 ? "lex_" + uniq.join("_") : "unclassified";
 }
 
 function dedupeIssues(items) {
@@ -317,7 +362,7 @@ export async function collectGitHubPaidDiscovery() {
       x,
       "github_paid",
       "bounty_unverified",
-      "[PAID DISCOVERY · Payout Verifier v0.4.1]",
+      "[PAID DISCOVERY · Payout Verifier v0.4.2]",
       {
         budget_min: meta.reward.min,
         budget_max: meta.reward.max,
@@ -330,39 +375,45 @@ export async function collectGitHubPaidDiscovery() {
 
 export async function collectGitHubDemandSignals() {
   const queries = [
-    "is:issue is:open automation manual in:title,body",
+    "is:issue is:open \"csv export\" in:title,body",
     "is:issue is:open spreadsheet automation in:title,body",
-    "is:issue is:open bot integration \"feature request\" in:title,body"
+    "is:issue is:open bot integration \"feature request\" in:title,body",
+    "is:issue is:open \"manual process\" automation in:title,body",
+    "is:issue is:open downloader \"feature request\" in:title,body"
   ];
   const groups = [];
-  for (const q of queries) groups.push(...await githubIssueSearch(q, 15));
+  for (const q of queries) groups.push(...await githubIssueSearch(q, 12));
 
   const candidates = dedupeIssues(groups)
     .filter((x) => {
       const text = issueText(x);
       return !isAutoGeneratedNoise(text) && hasDemandProblem(text);
     })
-    .slice(0, 40);
+    .slice(0, 50);
 
-  const reposByGroup = new Map();
+  const reposByFingerprint = new Map();
   for (const x of candidates) {
-    const group = demandGroup(issueText(x));
+    const fp = demandFingerprint(issueText(x));
+    if (fp === "unclassified") continue;
     const repo = githubRepoName(x.repository_url) || String(x.repository_url || x.id);
-    if (!reposByGroup.has(group)) reposByGroup.set(group, new Set());
-    reposByGroup.get(group).add(repo);
+    if (!reposByFingerprint.has(fp)) reposByFingerprint.set(fp, new Set());
+    reposByFingerprint.get(fp).add(repo);
   }
 
   return candidates.map((x) => {
-    const group = demandGroup(issueText(x));
-    const repeat = reposByGroup.get(group)?.size || 1;
+    const text = issueText(x);
+    const group = demandGroup(text);
+    const fingerprint = demandFingerprint(text);
+    const repeat = fingerprint === "unclassified" ? 1 : (reposByFingerprint.get(fingerprint)?.size || 1);
     return githubIssueToOpportunity(
       x,
       "github_demand",
       "business_opportunity",
-      "[PRODUCT SIGNAL · Demand Validator v0.4.1]",
+      "[PRODUCT SIGNAL · Demand Fingerprint v0.4.2]",
       {
         skills: [
           "demand_group:" + group,
+          "demand_fingerprint:" + fingerprint,
           "demand_repeat:" + repeat,
           "demand_problem:yes"
         ]
