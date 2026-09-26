@@ -34,7 +34,7 @@ export async function collectRemoteOK() {
   const res = await fetch("https://remoteok.com/api", {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.2"
+      "user-agent": "AutomationFactory-MoneyScout/0.3"
     }
   });
   if (!res.ok) throw new Error(`RemoteOK HTTP ${res.status}`);
@@ -68,7 +68,7 @@ export async function collectGitHubBounties() {
   const res = await fetch(url, {
     headers: {
       "accept": "application/vnd.github+json",
-      "user-agent": "AutomationFactory-MoneyScout/0.2",
+      "user-agent": "AutomationFactory-MoneyScout/0.3",
       "x-github-api-version": "2022-11-28"
     }
   });

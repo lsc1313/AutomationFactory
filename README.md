@@ -1,32 +1,19 @@
-# AutomationFactory · Money Scout v0.2
+# Automation Factory · Money Scout v0.3
 
-Automation Factory의 첫 실사용 단계입니다.
+Money Scout의 Opportunity Judge를 **Money-first** 방식으로 교체한 버전입니다.
 
-## 현재 들어있는 것
+## v0.3 핵심 변경
+- 보상 미확인 항목은 `PAY CHECK` 표시, HOT 금지
+- 1~9 USD는 자동 COLD
+- 10~29 USD는 자동 COLD
+- 30~99 USD는 자동화/처리속도가 매우 높은 경우에만 WATCH 가능
+- 일반 원격 채용형(RemoteOK 등)은 우선순위 대폭 하향
+- 카드에 MONEY / AUTO / SPEED / SCALE 세부 점수 표시
+- 기존 D1 데이터 삭제 없이 `기존 데이터 재채점` 버튼으로 전체 재평가
+- 기존 진행/보류/제외 결정은 유지
 
-- Money Scout: 외부 수익 기회 수집
-- 실제 소스 2개
-  - GitHub Bounty: 공개 `bounty` 라벨 이슈
-  - RemoteOK: 공개 원격 일자리 피드
-- Opportunity Judge v1
-  - 자동화 적합성
-  - 금액 신호
-  - 반복 가능성
-  - 빠른 처리 가능성
-  - 최신성
-  - 소스 적합성
-  - 위험 / 경쟁 패널티
-- HOT / WATCH / COLD 자동 분류
-- 진행 / 보류 / 제외 수동 결정
-- 모바일 우선 Web UI
-- D1 저장
-- 6시간마다 자동 Scout 실행
-- 추후 Profit / Failure Memory용 테이블 준비
+## 배포
+기존 GitHub 저장소의 파일을 이 패키지 파일들로 교체/추가 후 커밋합니다.
+Cloudflare Git 연결이 되어 있으면 자동으로 재배포됩니다.
 
-## 중요한 원칙
-
-점수는 후보를 빠르게 거르는 보조 도구입니다. 자동 지원/계약/결제/외부 메시지 전송은 아직 하지 않습니다.
-
-## v0.1과의 관계
-
-v0.1의 `jobs` 테이블을 삭제하거나 덮어쓰지 않습니다. v0.2는 `opportunities`, `scout_runs`, `opportunity_outcomes`를 새로 사용합니다.
+기존 D1 데이터는 삭제하지 않습니다.
