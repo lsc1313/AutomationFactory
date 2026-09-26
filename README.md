@@ -1,19 +1,20 @@
-# Automation Factory · Money Scout v0.3.1
+# Automation Factory · Money Scout v0.4.0
 
-v0.3 HOT 검증에서 발견된 **연봉/시간제/본문 숫자를 1회 일감 보상으로 오인하는 문제**를 수정한 버전입니다.
+v0.4는 **수집망 확장(Opportunity Network)** 버전입니다.
 
-## v0.3.1 핵심 변경
-- 점수 계산 전에 `Opportunity Type Classifier` 실행
-  - bounty / fixed_project / freelance_gig / hourly_contract / employment / content / affiliate / business
-- `Payout Normalizer` 추가
-  - fixed_total / hourly / annual_salary / variable / unverified_text_amount 구분
-- RemoteOK의 salary_min/max는 **연봉**으로 취급하여 HOT 산정에서 제외
-- 시간제 계약은 단발 자동납품과 분리하고 기본 COLD 처리
-- 기존 `github_bounty` 데이터의 본문 달러 숫자는 지급액으로 신뢰하지 않고 `PAY CHECK` 처리
-- 신규 bounty 수집은 GitHub issue 검색 대신 Agent Bounties의 **공식 claimable-only API** 사용
-- 카드에 TYPE / payout kind / payout trust 표시
-- 기존 D1 70건은 삭제하지 않고 `기존 데이터 재채점`으로 새 기준 적용
+## 핵심 변경
+- 기존 공식 claimable Agent Bounties 유지
+- GitHub Paid Discovery 추가
+  - bounty / paid task 신호 수집
+  - 실제 지급 검증 전에는 PAY CHECK
+  - 본문 숫자를 실제 보상으로 신뢰하지 않음
+- GitHub Product Demand 추가
+  - automation / spreadsheet / bot integration 등 반복 불편 신호 수집
+  - 직접 일감이 아니라 SaaS·봇·자동화 상품화 후보로 분류
+- RemoteOK는 채용 참고 소스로 유지하지만 HOT 대상은 아님
+- Judge 버전 type+payout-v0.4.0
 
-## 중요
-기존 D1과 사용자 결정(진행/보류/제외)은 유지됩니다.
-새 D1을 만들 필요가 없습니다.
+## 안전 원칙
+- GitHub Paid Discovery는 후보 탐색용입니다.
+- 실제 작업 착수 전 원문에서 지급 조건, claim 가능 여부, 마감, 자격 조건을 확인해야 합니다.
+- 기존 D1 데이터와 사용자 결정값은 유지됩니다.

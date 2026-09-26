@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.3.1";
+const APP_VERSION = "0.4.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -285,7 +285,7 @@ async function rejudgeAll(env) {
     await env.DB.batch(statements.slice(i, i + 50));
   }
 
-  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "type+payout-v0.3.1" };
+  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "type+payout-v0.4.0" };
 }
 
 async function getStats(env) {
@@ -387,7 +387,9 @@ function appHtml() {
     <select id="sourceFilter">
       <option value="all">소스 전체</option>
       <option value="agent_bounties">Agent Bounties (공식 claimable)</option>
-      <option value="remoteok">RemoteOK</option>
+      <option value="github_paid">GitHub Paid Discovery</option>
+      <option value="github_demand">GitHub Product Demand</option>
+      <option value="remoteok">RemoteOK (채용 참고)</option>
       <option value="github_bounty">Legacy GitHub Bounty</option>
     </select>
   </div>
@@ -397,7 +399,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.3.1 · Type Classifier + Payout Normalizer · 공식 claimable bounty feed</div>
+  <div class="footer">v0.4.0 · Opportunity Network · claimable bounty + paid discovery + product demand signals</div>
 </div>
 <script>
 let grade='all';
