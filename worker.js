@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.4.2";
+const APP_VERSION = "0.4.3";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -285,7 +285,7 @@ async function rejudgeAll(env) {
     await env.DB.batch(statements.slice(i, i + 50));
   }
 
-  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "payout+demand-fingerprint-v0.4.2" };
+  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "evidence-context-v0.4.3" };
 }
 
 async function getStats(env) {
@@ -399,7 +399,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.4.2 · Demand Fingerprint · 같은 문제의 독립 repo 반복만 PRODUCT 후보</div>
+  <div class="footer">v0.4.3 · Evidence Context Filter · 명시적 보상 + 문제 맥락 중심 판정</div>
 </div>
 <script>
 let grade='all';
