@@ -1,10 +1,13 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "automation-factory-job-scout",
+  "name": "automation-factory-money-scout",
   "main": "worker.js",
-  "compatibility_date": "2026-09-22",
+  "compatibility_date": "2026-09-26",
   "observability": {
     "enabled": true
+  },
+  "triggers": {
+    "crons": ["17 */6 * * *"]
   },
   "d1_databases": [
     {

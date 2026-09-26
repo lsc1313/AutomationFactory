@@ -1,10 +1,10 @@
 {
-  "name": "automation-factory-job-scout",
-  "version": "0.1.0",
+  "name": "automation-factory-money-scout",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check worker.js",
+    "check": "node --check worker.js && node --check judge.js && node --check sources.js",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

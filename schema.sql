@@ -1,23 +1,60 @@
-CREATE TABLE IF NOT EXISTS jobs (
-  job_id TEXT PRIMARY KEY,
+-- Automation Factory · Money Scout v0.2
+-- v0.1의 jobs 테이블은 삭제하지 않습니다. v0.2는 새 opportunities 테이블을 사용합니다.
+
+CREATE TABLE IF NOT EXISTS opportunities (
+  opportunity_id TEXT PRIMARY KEY,
   source TEXT NOT NULL,
-  source_job_id TEXT NOT NULL,
+  source_item_id TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'unknown',
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   budget_min REAL,
   budget_max REAL,
-  currency TEXT NOT NULL DEFAULT 'KRW',
-  duration TEXT NOT NULL DEFAULT '',
+  currency TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
   skills TEXT NOT NULL DEFAULT '',
   posted_at TEXT NOT NULL DEFAULT '',
   deadline TEXT NOT NULL DEFAULT '',
-  applicant_count INTEGER,
+  competition INTEGER,
   url TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'new',
-  classify_reason TEXT NOT NULL DEFAULT '',
-  found_at TEXT NOT NULL,
+  score INTEGER NOT NULL DEFAULT 0,
+  grade TEXT NOT NULL DEFAULT 'cold',
+  score_breakdown TEXT NOT NULL DEFAULT '{}',
+  judge_reason TEXT NOT NULL DEFAULT '',
+  user_state TEXT NOT NULL DEFAULT 'unreviewed',
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE(source, source_job_id)
+  UNIQUE(source, source_item_id)
 );
-CREATE INDEX IF NOT EXISTS idx_jobs_status_found ON jobs(status, found_at DESC);
-CREATE INDEX IF NOT EXISTS idx_jobs_source_posted ON jobs(source, posted_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_opportunities_grade_score ON opportunities(grade, score DESC);
+CREATE INDEX IF NOT EXISTS idx_opportunities_state_score ON opportunities(user_state, score DESC);
+CREATE INDEX IF NOT EXISTS idx_opportunities_source_seen ON opportunities(source, last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS scout_runs (
+  run_id TEXT PRIMARY KEY,
+  started_at TEXT NOT NULL,
+  finished_at TEXT NOT NULL DEFAULT '',
+  source_count INTEGER NOT NULL DEFAULT 0,
+  found_count INTEGER NOT NULL DEFAULT 0,
+  saved_count INTEGER NOT NULL DEFAULT 0,
+  hot_count INTEGER NOT NULL DEFAULT 0,
+  watch_count INTEGER NOT NULL DEFAULT 0,
+  cold_count INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  errors_json TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_scout_runs_started ON scout_runs(started_at DESC);
+
+-- v0.3 이후 Profit / Failure Memory에서 사용
+CREATE TABLE IF NOT EXISTS opportunity_outcomes (
+  opportunity_id TEXT PRIMARY KEY,
+  result TEXT NOT NULL DEFAULT '',
+  actual_revenue REAL,
+  actual_cost REAL,
+  actual_minutes INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);

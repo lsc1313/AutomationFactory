@@ -1,15 +1,8 @@
-const APP_VERSION = "0.1.0";
+import { judgeOpportunity } from "./judge.js";
+import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const CANDIDATE_WORDS = [
-  "자동화","업무자동화","api","연동","봇","관리자","대시보드","크롤링","스크래핑",
-  "구글시트","google sheet","엑셀","excel","알림","스케줄","workflow","ai","챗봇",
-  "discord","카카오","카톡","telegram","데이터 처리","사내도구","관리 시스템"
-];
-const REVIEW_WORDS = ["웹","웹사이트","앱","백엔드","프론트엔드","서버","database","db","saas"];
-const IGNORE_WORDS = [
-  "상주","파견","풀타임","하드웨어","pcb","펌웨어","3d 모델링","영상편집 전담",
-  "원화","캐릭터 디자인","게임 전체 개발","unity 전체","unreal 전체"
-];
+const APP_VERSION = "0.2.0";
+const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -25,158 +18,286 @@ function html(body, status = 200) {
   });
 }
 
-function nowIso() { return new Date().toISOString(); }
-
-function normalizeText(v) {
-  return String(v || "").toLowerCase().replace(/\s+/g, " ").trim();
+function nowIso() {
+  return new Date().toISOString();
 }
 
-function classifyJob(title, description, skills = "") {
-  const text = normalizeText(`${title} ${description} ${skills}`);
-  if (IGNORE_WORDS.some(k => text.includes(k))) return { status: "ignored", reason: "제외 신호 감지" };
-  const candidateHits = CANDIDATE_WORDS.filter(k => text.includes(k));
-  if (candidateHits.length >= 2) return { status: "candidate", reason: `자동화 적합 신호: ${candidateHits.slice(0, 4).join(", ")}` };
-  const reviewHits = REVIEW_WORDS.filter(k => text.includes(k));
-  if (candidateHits.length === 1 || reviewHits.length >= 1) return { status: "review", reason: "추가 검토 필요" };
-  return { status: "ignored", reason: "자동화 관련 신호 부족" };
+function safeId(source, sourceItemId) {
+  return `${source}:${sourceItemId}`.replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, 240);
 }
 
 async function ensureSchema(env) {
-  if (!env.DB) throw new Error("D1 binding DB가 없습니다.");
+  if (!env.DB) throw new Error("D1 binding DB가 없습니다. wrangler.jsonc의 DB 설정을 확인하세요.");
   await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS jobs (
-      job_id TEXT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS opportunities (
+      opportunity_id TEXT PRIMARY KEY,
       source TEXT NOT NULL,
-      source_job_id TEXT NOT NULL,
+      source_item_id TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'unknown',
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       budget_min REAL,
       budget_max REAL,
-      currency TEXT NOT NULL DEFAULT 'KRW',
-      duration TEXT NOT NULL DEFAULT '',
+      currency TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '',
       skills TEXT NOT NULL DEFAULT '',
       posted_at TEXT NOT NULL DEFAULT '',
       deadline TEXT NOT NULL DEFAULT '',
-      applicant_count INTEGER,
+      competition INTEGER,
       url TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'new',
-      classify_reason TEXT NOT NULL DEFAULT '',
-      found_at TEXT NOT NULL,
+      score INTEGER NOT NULL DEFAULT 0,
+      grade TEXT NOT NULL DEFAULT 'cold',
+      score_breakdown TEXT NOT NULL DEFAULT '{}',
+      judge_reason TEXT NOT NULL DEFAULT '',
+      user_state TEXT NOT NULL DEFAULT 'unreviewed',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      UNIQUE(source, source_job_id)
+      UNIQUE(source, source_item_id)
     );
-    CREATE INDEX IF NOT EXISTS idx_jobs_status_found ON jobs(status, found_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_jobs_source_posted ON jobs(source, posted_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_opportunities_grade_score ON opportunities(grade, score DESC);
+    CREATE INDEX IF NOT EXISTS idx_opportunities_state_score ON opportunities(user_state, score DESC);
+    CREATE INDEX IF NOT EXISTS idx_opportunities_source_seen ON opportunities(source, last_seen_at DESC);
+
+    CREATE TABLE IF NOT EXISTS scout_runs (
+      run_id TEXT PRIMARY KEY,
+      started_at TEXT NOT NULL,
+      finished_at TEXT NOT NULL DEFAULT '',
+      source_count INTEGER NOT NULL DEFAULT 0,
+      found_count INTEGER NOT NULL DEFAULT 0,
+      saved_count INTEGER NOT NULL DEFAULT 0,
+      hot_count INTEGER NOT NULL DEFAULT 0,
+      watch_count INTEGER NOT NULL DEFAULT 0,
+      cold_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      errors_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_scout_runs_started ON scout_runs(started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS opportunity_outcomes (
+      opportunity_id TEXT PRIMARY KEY,
+      result TEXT NOT NULL DEFAULT '',
+      actual_revenue REAL,
+      actual_cost REAL,
+      actual_minutes INTEGER,
+      note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    );
   `);
 }
 
-function makeJobId(source, sourceJobId) {
-  return `${source}:${sourceJobId}`.replace(/[^a-zA-Z0-9:_-]/g, "_");
+function adminAuthorized(request, env) {
+  const configured = String(env.ADMIN_TOKEN || "").trim();
+  if (!configured) return true;
+  const supplied = String(request.headers.get("x-admin-token") || "").trim();
+  return supplied === configured;
 }
 
-async function upsertJob(env, input) {
-  const source = String(input.source || "demo").trim();
-  const sourceJobId = String(input.source_job_id || crypto.randomUUID()).trim();
-  const title = String(input.title || "제목 없음").trim();
-  const description = String(input.description || "").trim();
-  const skills = Array.isArray(input.skills) ? input.skills.join(", ") : String(input.skills || "");
-  const c = classifyJob(title, description, skills);
+function requireAdmin(request, env) {
+  if (!adminAuthorized(request, env)) {
+    return json({ ok: false, error: "관리키가 맞지 않습니다." }, 401);
+  }
+  return null;
+}
+
+async function upsertOpportunity(env, raw) {
+  const source = String(raw.source || "manual").trim();
+  const sourceItemId = String(raw.source_item_id || crypto.randomUUID()).trim();
+  const opportunityId = safeId(source, sourceItemId);
   const ts = nowIso();
-  const jobId = makeJobId(source, sourceJobId);
+  const normalized = {
+    source,
+    source_item_id: sourceItemId,
+    type: String(raw.type || "unknown"),
+    title: String(raw.title || "제목 없음").trim(),
+    description: String(raw.description || "").trim(),
+    budget_min: raw.budget_min ?? null,
+    budget_max: raw.budget_max ?? null,
+    currency: String(raw.currency || ""),
+    location: String(raw.location || ""),
+    skills: Array.isArray(raw.skills) ? raw.skills.join(", ") : String(raw.skills || ""),
+    posted_at: String(raw.posted_at || ""),
+    deadline: String(raw.deadline || ""),
+    competition: raw.competition ?? raw.applicant_count ?? null,
+    url: String(raw.url || "")
+  };
+
+  const judged = judgeOpportunity(normalized);
 
   await env.DB.prepare(`
-    INSERT INTO jobs (
-      job_id, source, source_job_id, title, description,
-      budget_min, budget_max, currency, duration, skills,
-      posted_at, deadline, applicant_count, url,
-      status, classify_reason, found_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(source, source_job_id) DO UPDATE SET
+    INSERT INTO opportunities (
+      opportunity_id, source, source_item_id, type, title, description,
+      budget_min, budget_max, currency, location, skills, posted_at, deadline,
+      competition, url, score, grade, score_breakdown, judge_reason,
+      user_state, first_seen_at, last_seen_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unreviewed', ?, ?, ?)
+    ON CONFLICT(source, source_item_id) DO UPDATE SET
+      type=excluded.type,
       title=excluded.title,
       description=excluded.description,
       budget_min=excluded.budget_min,
       budget_max=excluded.budget_max,
       currency=excluded.currency,
-      duration=excluded.duration,
+      location=excluded.location,
       skills=excluded.skills,
       posted_at=excluded.posted_at,
       deadline=excluded.deadline,
-      applicant_count=excluded.applicant_count,
+      competition=excluded.competition,
       url=excluded.url,
+      score=excluded.score,
+      grade=excluded.grade,
+      score_breakdown=excluded.score_breakdown,
+      judge_reason=excluded.judge_reason,
+      last_seen_at=excluded.last_seen_at,
       updated_at=excluded.updated_at
   `).bind(
-    jobId, source, sourceJobId, title, description,
-    input.budget_min ?? null, input.budget_max ?? null, String(input.currency || "KRW"),
-    String(input.duration || ""), skills,
-    String(input.posted_at || ""), String(input.deadline || ""), input.applicant_count ?? null,
-    String(input.url || ""), c.status, c.reason, ts, ts
+    opportunityId,
+    normalized.source,
+    normalized.source_item_id,
+    normalized.type,
+    normalized.title,
+    normalized.description,
+    normalized.budget_min,
+    normalized.budget_max,
+    normalized.currency,
+    normalized.location,
+    normalized.skills,
+    normalized.posted_at,
+    normalized.deadline,
+    normalized.competition,
+    normalized.url,
+    judged.score,
+    judged.grade,
+    JSON.stringify(judged.breakdown),
+    judged.reason,
+    ts,
+    ts,
+    ts
   ).run();
 
-  return { job_id: jobId, status: c.status, reason: c.reason };
+  return { opportunity_id: opportunityId, ...judged };
 }
 
-async function seedDemo(env) {
-  const samples = [
-    {
-      source:"demo", source_job_id:"001",
-      title:"Google Sheet와 사내 API 연동 업무 자동화",
-      description:"매일 직원이 수기로 취합하는 엑셀 데이터를 API로 전송하고 관리자 대시보드에서 상태를 확인하고 싶습니다.",
-      budget_min:500000, budget_max:1200000, currency:"KRW", duration:"1~2주",
-      skills:["Google Sheet","API","Dashboard"], posted_at:nowIso(), applicant_count:3,
-      url:"https://example.com/demo/001"
-    },
-    {
-      source:"demo", source_job_id:"002",
-      title:"카카오톡 기반 직원 출퇴근 관리 봇",
-      description:"직원들이 카톡에서 출근/퇴근을 입력하면 DB에 기록하고 월별 근무일수를 관리자 화면에서 보고 싶습니다.",
-      budget_min:700000, budget_max:1500000, currency:"KRW", duration:"2주",
-      skills:["카카오","봇","DB","관리자"], posted_at:nowIso(), applicant_count:5,
-      url:"https://example.com/demo/002"
-    },
-    {
-      source:"demo", source_job_id:"003",
-      title:"현장 상주 Unity 게임 개발자 모집",
-      description:"6개월 이상 상주 가능한 풀타임 Unity 개발자를 구합니다.",
-      budget_min:0, budget_max:0, currency:"KRW", duration:"6개월",
-      skills:["Unity","게임 개발"], posted_at:nowIso(), applicant_count:1,
-      url:"https://example.com/demo/003"
-    },
-    {
-      source:"demo", source_job_id:"004",
-      title:"소규모 주문 관리 웹 구축",
-      description:"현재 주문을 엑셀로 관리하고 있으며 주문 상태와 알림을 웹에서 관리하고 싶습니다.",
-      budget_min:400000, budget_max:900000, currency:"KRW", duration:"1주",
-      skills:["웹","Excel","알림"], posted_at:nowIso(), applicant_count:8,
-      url:"https://example.com/demo/004"
+async function runScout(env, sourceNames = null) {
+  await ensureSchema(env);
+  const runId = crypto.randomUUID();
+  const started = nowIso();
+  const names = Array.isArray(sourceNames) && sourceNames.length
+    ? sourceNames.filter((x) => SOURCE_REGISTRY[x])
+    : Object.keys(SOURCE_REGISTRY);
+
+  await env.DB.prepare(`
+    INSERT INTO scout_runs (run_id, started_at, source_count)
+    VALUES (?, ?, ?)
+  `).bind(runId, started, names.length).run();
+
+  const collected = await collectSources(names);
+  let found = 0;
+  let saved = 0;
+  let hot = 0;
+  let watch = 0;
+  let cold = 0;
+
+  for (const group of collected.results) {
+    found += group.items.length;
+    for (const item of group.items) {
+      try {
+        const r = await upsertOpportunity(env, item);
+        saved += 1;
+        if (r.grade === "hot") hot += 1;
+        else if (r.grade === "watch") watch += 1;
+        else cold += 1;
+      } catch (error) {
+        collected.errors.push({
+          source: group.source,
+          error: `저장 실패: ${error?.message || String(error)}`
+        });
+      }
     }
-  ];
-  const out = [];
-  for (const s of samples) out.push(await upsertJob(env, s));
-  return out;
+  }
+
+  const finished = nowIso();
+  await env.DB.prepare(`
+    UPDATE scout_runs SET
+      finished_at=?, found_count=?, saved_count=?, hot_count=?, watch_count=?, cold_count=?,
+      error_count=?, errors_json=?
+    WHERE run_id=?
+  `).bind(
+    finished,
+    found,
+    saved,
+    hot,
+    watch,
+    cold,
+    collected.errors.length,
+    JSON.stringify(collected.errors),
+    runId
+  ).run();
+
+  return {
+    ok: true,
+    run_id: runId,
+    started_at: started,
+    finished_at: finished,
+    sources: names,
+    found,
+    saved,
+    grades: { hot, watch, cold },
+    errors: collected.errors
+  };
 }
 
 async function getStats(env) {
-  const total = await env.DB.prepare(`SELECT COUNT(*) c FROM jobs`).first();
-  const rows = await env.DB.prepare(`SELECT status, COUNT(*) c FROM jobs GROUP BY status`).all();
-  const stats = { total: Number(total?.c || 0), candidate:0, review:0, ignored:0, new:0 };
-  for (const r of rows.results || []) stats[r.status] = Number(r.c || 0);
-  return stats;
+  const total = await env.DB.prepare(`SELECT COUNT(*) c FROM opportunities`).first();
+  const byGrade = await env.DB.prepare(`SELECT grade, COUNT(*) c FROM opportunities GROUP BY grade`).all();
+  const byState = await env.DB.prepare(`SELECT user_state, COUNT(*) c FROM opportunities GROUP BY user_state`).all();
+  const lastRun = await env.DB.prepare(`SELECT * FROM scout_runs ORDER BY started_at DESC LIMIT 1`).first();
+
+  const grades = { hot: 0, watch: 0, cold: 0 };
+  for (const row of byGrade.results || []) grades[row.grade] = Number(row.c || 0);
+  const states = { unreviewed: 0, proceed: 0, hold: 0, reject: 0 };
+  for (const row of byState.results || []) states[row.user_state] = Number(row.c || 0);
+
+  return {
+    total: Number(total?.c || 0),
+    ...grades,
+    states,
+    last_run: lastRun || null
+  };
 }
 
-async function listJobs(env, url) {
-  const status = url.searchParams.get("status") || "";
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
-  let query = `SELECT * FROM jobs`;
+async function listOpportunities(env, url) {
+  const grade = url.searchParams.get("grade") || "all";
+  const state = url.searchParams.get("state") || "all";
+  const source = url.searchParams.get("source") || "all";
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 60)));
+
+  const where = [];
   const binds = [];
-  if (status && status !== "all") { query += ` WHERE status=?`; binds.push(status); }
-  query += ` ORDER BY found_at DESC LIMIT ?`; binds.push(limit);
-  return (await env.DB.prepare(query).bind(...binds).all()).results || [];
+  if (grade !== "all") { where.push("grade=?"); binds.push(grade); }
+  if (state !== "all") { where.push("user_state=?"); binds.push(state); }
+  if (source !== "all") { where.push("source=?"); binds.push(source); }
+
+  let q = `SELECT * FROM opportunities`;
+  if (where.length) q += ` WHERE ${where.join(" AND ")}`;
+  q += ` ORDER BY score DESC, COALESCE(NULLIF(posted_at,''), last_seen_at) DESC LIMIT ?`;
+  binds.push(limit);
+
+  return (await env.DB.prepare(q).bind(...binds).all()).results || [];
 }
 
-async function updateStatus(env, jobId, status) {
-  const allowed = new Set(["new","candidate","review","ignored"]);
-  if (!allowed.has(status)) throw new Error("허용되지 않은 상태입니다.");
-  await env.DB.prepare(`UPDATE jobs SET status=?, updated_at=? WHERE job_id=?`).bind(status, nowIso(), jobId).run();
+async function setDecision(env, opportunityId, state) {
+  const allowed = new Set(["unreviewed", "proceed", "hold", "reject"]);
+  if (!allowed.has(state)) throw new Error("허용되지 않은 상태입니다.");
+  await env.DB.prepare(`
+    UPDATE opportunities SET user_state=?, updated_at=? WHERE opportunity_id=?
+  `).bind(state, nowIso(), opportunityId).run();
+}
+
+async function listRuns(env) {
+  return (await env.DB.prepare(`
+    SELECT * FROM scout_runs ORDER BY started_at DESC LIMIT 20
+  `).all()).results || [];
 }
 
 function appHtml() {
@@ -184,55 +305,93 @@ function appHtml() {
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Automation Factory · Job Scout</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#08101d" />
+<title>Automation Factory · Money Scout</title>
 <style>
-:root{color-scheme:dark;--bg:#090f1d;--panel:#111a2c;--line:#26334d;--text:#f4f7fb;--muted:#98a5ba;--good:#39d98a;--warn:#ffca5c;--bad:#7f8da8;--accent:#6ea8fe}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#07101f,#0b1220);font-family:system-ui,-apple-system,sans-serif;color:var(--text)}
-.wrap{max-width:1100px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}.brand{font-size:25px;font-weight:800}.sub{color:var(--muted);font-size:13px}.badge{border:1px solid var(--line);padding:7px 10px;border-radius:999px;color:var(--muted);font-size:12px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px}.stat b{font-size:25px;display:block;margin-top:5px}
-.controls{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}button{background:#17243b;color:white;border:1px solid #344564;border-radius:10px;padding:10px 13px;font-weight:700}button:hover{cursor:pointer;border-color:var(--accent)}button.active{background:#24497d}.seed{margin-left:auto;background:#183c2b}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;margin:10px 0}.row{display:flex;justify-content:space-between;gap:12px}.title{font-size:16px;font-weight:800}.meta,.reason{color:var(--muted);font-size:12px;margin-top:7px}.desc{font-size:14px;line-height:1.55;margin-top:10px;color:#d8e0ec}.pill{white-space:nowrap;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800;height:max-content}.candidate{background:#123c2a;color:#6ff0ad}.review{background:#4a3914;color:#ffd772}.ignored{background:#252c39;color:#adb7c8}.new{background:#1c3760;color:#9bc3ff}.empty{text-align:center;color:var(--muted);padding:40px 5px}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:30px}@media(max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}.row{display:block}.pill{display:inline-block;margin-top:8px}.seed{margin-left:0}}
+:root{color-scheme:dark;--bg:#070d18;--panel:#111a2a;--panel2:#0c1524;--line:#27344b;--text:#f3f7fc;--muted:#99a8bd;--hot:#53e49d;--watch:#ffd269;--cold:#93a0b4;--accent:#7eb0ff;--danger:#ff8f9b}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#070d18,#0b1321);font-family:system-ui,-apple-system,sans-serif;color:var(--text)}button,input,select{font:inherit}.wrap{max-width:1120px;margin:auto;padding:18px 14px 44px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.brand{font-size:25px;font-weight:900}.sub{color:var(--muted);font-size:12px;line-height:1.5}.badge{border:1px solid var(--line);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:12px}.notice{margin:12px 0;padding:10px 12px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;color:var(--muted);font-size:12px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px}.stat b{display:block;font-size:22px;margin-top:4px}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.toolbar button,.action{background:#17243a;color:white;border:1px solid #34435c;border-radius:10px;padding:9px 11px;font-weight:800}.toolbar button.active{background:#264e82;border-color:#6da7ff}.scan{background:#173d2c!important}.token{display:flex;gap:7px;margin:10px 0}.token input{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:10px}.token button{background:#17243a;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 11px}.filters{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.filters select{background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px;margin:10px 0}.head{display:flex;gap:10px;justify-content:space-between}.title{font-size:16px;font-weight:900;line-height:1.35}.score{min-width:54px;text-align:center;border-radius:12px;padding:8px 7px;font-size:20px;font-weight:950;background:#0b1422;border:1px solid var(--line)}.score small{display:block;font-size:9px;color:var(--muted);font-weight:700}.meta,.reason{color:var(--muted);font-size:12px;margin-top:7px;line-height:1.5}.desc{font-size:13px;line-height:1.55;margin-top:9px;color:#d9e1ed;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.pill{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.hot{background:#123d2a;color:#6bf0aa}.watch{background:#493914;color:#ffdc7f}.cold{background:#252d3a;color:#b0bbca}.decisions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.decisions button{border:1px solid var(--line);background:#0e1828;color:white;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:850}.decisions button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}.link{color:#9fc5ff;text-decoration:none}.empty{text-align:center;color:var(--muted);padding:42px 5px}.runinfo{color:var(--muted);font-size:11px;margin:10px 0}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:28px}.error{color:#ffabb3}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}.stats .stat:first-child{grid-column:span 2}.head{align-items:flex-start}.brand{font-size:22px}.card{padding:13px}.wrap{padding:14px 10px 36px}.toolbar button{flex:1 0 auto}}
 </style>
 </head>
 <body><div class="wrap">
-  <div class="top"><div><div class="brand">🔎 Job Scout</div><div class="sub">Automation Factory · 일감 검색 Agent 기준본</div></div><div class="badge">v${APP_VERSION}</div></div>
-  <div class="grid">
+  <div class="top">
+    <div><div class="brand">💰 Money Scout</div><div class="sub">Automation Factory · 수익 기회 탐색 + Opportunity Judge</div></div>
+    <div class="badge">v${APP_VERSION}</div>
+  </div>
+  <div id="notice" class="notice">상태 확인 중…</div>
+  <div class="stats">
     <div class="stat"><span class="sub">전체</span><b id="s-total">0</b></div>
-    <div class="stat"><span class="sub">🟢 후보</span><b id="s-candidate">0</b></div>
-    <div class="stat"><span class="sub">🟡 검토</span><b id="s-review">0</b></div>
-    <div class="stat"><span class="sub">⚫ 제외</span><b id="s-ignored">0</b></div>
+    <div class="stat"><span class="sub">🔥 HOT</span><b id="s-hot">0</b></div>
+    <div class="stat"><span class="sub">👀 WATCH</span><b id="s-watch">0</b></div>
+    <div class="stat"><span class="sub">🧊 COLD</span><b id="s-cold">0</b></div>
+    <div class="stat"><span class="sub">✅ 진행</span><b id="s-proceed">0</b></div>
   </div>
-  <div class="controls">
-    <button class="active" data-status="all">전체</button>
-    <button data-status="candidate">후보</button>
-    <button data-status="review">검토</button>
-    <button data-status="ignored">제외</button>
-    <button class="seed" id="seedBtn">샘플 일감 넣기</button>
+  <div class="toolbar">
+    <button class="active" data-grade="all">전체</button>
+    <button data-grade="hot">HOT</button>
+    <button data-grade="watch">WATCH</button>
+    <button data-grade="cold">COLD</button>
+    <button class="scan" id="scanBtn">지금 스캔</button>
   </div>
+  <div class="filters">
+    <select id="stateFilter">
+      <option value="all">결정 전체</option>
+      <option value="unreviewed">미검토</option>
+      <option value="proceed">진행</option>
+      <option value="hold">보류</option>
+      <option value="reject">제외</option>
+    </select>
+    <select id="sourceFilter">
+      <option value="all">소스 전체</option>
+      <option value="github_bounty">GitHub Bounty</option>
+      <option value="remoteok">RemoteOK</option>
+    </select>
+  </div>
+  <div class="token">
+    <input id="token" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
+    <button id="saveToken">저장</button>
+  </div>
+  <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.1은 기준본입니다. 실제 일감 사이트 수집은 다음 버전에서 연결합니다.</div>
+  <div class="footer">v0.2 · GitHub Bounty + RemoteOK 실제 수집 · 점수는 자동 선별 보조용이며 최종 진행 여부는 직접 결정</div>
 </div>
 <script>
-let current='all';
-const esc=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-function money(a,b,c){if(a==null&&b==null)return ''; const f=n=>Number(n||0).toLocaleString(); return (a===b||!b?f(a):f(a)+' ~ '+f(b))+' '+(c||'');}
+let grade='all';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const tokenEl=document.getElementById('token');
+tokenEl.value=localStorage.getItem('af_admin_token')||'';
+function headers(){const h={'content-type':'application/json'};const t=localStorage.getItem('af_admin_token')||'';if(t)h['x-admin-token']=t;return h;}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json().catch(()=>({error:'응답 해석 실패'}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;}
+function money(a,b,c){if(a==null&&b==null)return '';const f=n=>Number(n||0).toLocaleString();return (a===b||!b?f(a):f(a)+' ~ '+f(b))+(c?' '+c:'');}
+function when(s){if(!s)return '';const d=new Date(s);return isNaN(d)?'':d.toLocaleString();}
+function stateLabel(s){return s==='proceed'?'진행':s==='hold'?'보류':s==='reject'?'제외':'미검토';}
 async function load(){
- const [sr,jr]=await Promise.all([fetch('/api/stats'),fetch('/api/jobs?status='+encodeURIComponent(current))]);
- const s=await sr.json(), jobs=await jr.json();
- ['total','candidate','review','ignored'].forEach(k=>document.getElementById('s-'+k).textContent=s[k]||0);
+ const state=document.getElementById('stateFilter').value, source=document.getElementById('sourceFilter').value;
+ const [health,stats,jobs]=await Promise.all([
+   api('/api/health'), api('/api/stats'), api('/api/opportunities?grade='+encodeURIComponent(grade)+'&state='+encodeURIComponent(state)+'&source='+encodeURIComponent(source))
+ ]);
+ document.getElementById('notice').innerHTML='실데이터 소스: <b>'+esc(health.sources.join(', '))+'</b> · 보안: <b>'+esc(health.security_mode)+'</b>';
+ ['total','hot','watch','cold'].forEach(k=>document.getElementById('s-'+k).textContent=stats[k]||0);
+ document.getElementById('s-proceed').textContent=stats.states?.proceed||0;
+ const lr=stats.last_run;
+ document.getElementById('runinfo').textContent=lr?('마지막 스캔 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count):'아직 스캔 기록이 없습니다.';
  const el=document.getElementById('list');
- if(!jobs.length){el.innerHTML='<div class="empty">표시할 일감이 없습니다.</div>';return;}
- el.innerHTML=jobs.map(function(j){
-   var label=j.status==='candidate'?'후보':j.status==='review'?'검토':j.status==='ignored'?'제외':'신규';
-   var budget=money(j.budget_min,j.budget_max,j.currency);
-   var link=j.url?'<div class="meta"><a href="'+esc(j.url)+'" target="_blank" style="color:#9bc3ff">원문 보기</a></div>':'';
-   return '<div class="card"><div class="row"><div><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc(j.source)+' · '+esc(j.duration||'기간 미상')+(budget?' · '+budget:'')+'</div></div><span class="pill '+esc(j.status)+'">'+label+'</span></div><div class="desc">'+esc(j.description)+'</div><div class="reason">'+esc(j.classify_reason||'')+'</div>'+link+'</div>';
+ if(!jobs.length){el.innerHTML='<div class="empty">표시할 수익 기회가 없습니다.<br>「지금 스캔」을 눌러 첫 수집을 실행하세요.</div>';return;}
+ el.innerHTML=jobs.map(j=>{
+   const budget=money(j.budget_min,j.budget_max,j.currency);
+   const meta=[j.source,j.type,j.location,budget,j.posted_at?('등록 '+when(j.posted_at)):''].filter(Boolean).map(esc).join(' · ');
+   const link=j.url?'<a class="link" href="'+esc(j.url)+'" target="_blank" rel="noopener">원문 보기</a>':'';
+   const btn=(s,l)=>'<button data-id="'+esc(j.opportunity_id)+'" data-state="'+s+'" class="'+(j.user_state===s?'on':'')+'">'+l+'</button>';
+   return '<div class="card"><div class="head"><div><div><span class="pill '+esc(j.grade)+'">'+esc(j.grade.toUpperCase())+'</span></div><div class="title">'+esc(j.title)+'</div><div class="meta">'+meta+'</div></div><div class="score">'+esc(j.score)+'<small>/100</small></div></div><div class="desc">'+esc(j.description||'설명 없음')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="meta">'+link+' · 현재결정: '+esc(stateLabel(j.user_state))+'</div><div class="decisions">'+btn('proceed','✅ 진행')+btn('hold','⏸ 보류')+btn('reject','✕ 제외')+btn('unreviewed','↺ 미검토')+'</div></div>';
  }).join('');
+ document.querySelectorAll('[data-id][data-state]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/api/opportunities/'+encodeURIComponent(b.dataset.id)+'/decision',{method:'POST',body:JSON.stringify({state:b.dataset.state})});await load();}catch(e){alert(e.message);}finally{b.disabled=false;}});
 }
-document.querySelectorAll('[data-status]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-status]').forEach(x=>x.classList.remove('active'));b.classList.add('active');current=b.dataset.status;load();});
-document.getElementById('seedBtn').onclick=async()=>{const b=document.getElementById('seedBtn');b.disabled=true;b.textContent='추가 중…';try{const r=await fetch('/api/demo-seed',{method:'POST'});if(!r.ok)throw new Error(await r.text());await load();}catch(e){alert('샘플 추가 실패: '+e.message);}finally{b.disabled=false;b.textContent='샘플 일감 넣기';}};
-load().catch(e=>document.getElementById('list').innerHTML='<div class="empty">오류: '+esc(e.message)+'</div>');
+document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-grade]').forEach(x=>x.classList.remove('active'));b.classList.add('active');grade=b.dataset.grade;load();});
+document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
+document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
+document.getElementById('scanBtn').onclick=async()=>{const b=document.getElementById('scanBtn');b.disabled=true;b.textContent='스캔 중…';try{const r=await api('/api/scout/run',{method:'POST',body:'{}'});alert('스캔 완료: '+r.found+'건 발견 / '+r.saved+'건 저장'+(r.errors?.length?' / 오류 '+r.errors.length:'') );await load();}catch(e){alert('스캔 실패: '+e.message);}finally{b.disabled=false;b.textContent='지금 스캔';}};
+load().catch(e=>document.getElementById('list').innerHTML='<div class="empty error">오류: '+esc(e.message)+'</div>');
 </script></body></html>`;
 }
 
@@ -243,20 +402,52 @@ export default {
       const url = new URL(request.url);
       const path = url.pathname;
 
-      if (path === "/api/health") return json({ ok:true, app:"Job Scout", version:APP_VERSION, time:nowIso() });
-      if (path === "/api/stats") return json(await getStats(env));
-      if (path === "/api/jobs") return json(await listJobs(env, url));
-      if (path === "/api/demo-seed" && request.method === "POST") return json({ ok:true, inserted:await seedDemo(env) });
-      if (path.startsWith("/api/jobs/") && path.endsWith("/status") && request.method === "POST") {
-        const jobId = decodeURIComponent(path.slice("/api/jobs/".length, -"/status".length));
-        const body = await request.json();
-        await updateStatus(env, jobId, String(body.status || ""));
-        return json({ ok:true });
+      if (path === "/api/health") {
+        return json({
+          ok: true,
+          app: APP_NAME,
+          version: APP_VERSION,
+          time: nowIso(),
+          sources: Object.keys(SOURCE_REGISTRY),
+          security_mode: env.ADMIN_TOKEN ? "관리키 보호" : "OPEN(테스트용)"
+        });
       }
-      if (path.startsWith("/api/")) return json({ ok:false, error:"Not found" },404);
+      if (path === "/api/stats") return json(await getStats(env));
+      if (path === "/api/opportunities") return json(await listOpportunities(env, url));
+      if (path === "/api/runs") return json(await listRuns(env));
+
+      if (path === "/api/scout/run" && request.method === "POST") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        let body = {};
+        try { body = await request.json(); } catch {}
+        return json(await runScout(env, Array.isArray(body.sources) ? body.sources : null));
+      }
+
+      if (path.startsWith("/api/opportunities/") && path.endsWith("/decision") && request.method === "POST") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        const id = decodeURIComponent(path.slice("/api/opportunities/".length, -"/decision".length));
+        const body = await request.json();
+        await setDecision(env, id, String(body.state || ""));
+        return json({ ok: true });
+      }
+
+      if (path === "/api/opportunities/import" && request.method === "POST") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        const body = await request.json();
+        const items = Array.isArray(body) ? body : [body];
+        const out = [];
+        for (const item of items.slice(0, 100)) out.push(await upsertOpportunity(env, { ...item, source: item.source || "manual" }));
+        return json({ ok: true, count: out.length, results: out });
+      }
+
+      if (path.startsWith("/api/")) return json({ ok: false, error: "Not found" }, 404);
       return html(appHtml());
-    } catch (e) {
-      return json({ ok:false, error:e?.message || String(e), version:APP_VERSION },500);
+    } catch (error) {
+      return json({ ok: false, error: error?.message || String(error), version: APP_VERSION }, 500);
     }
+  },
+
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runScout(env));
   }
 };
