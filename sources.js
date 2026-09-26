@@ -67,7 +67,7 @@ export async function collectRemoteOK() {
   const res = await fetch("https://remoteok.com/api", {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.4.2"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.3"
     }
   });
   if (!res.ok) throw new Error(`RemoteOK HTTP ${res.status}`);
@@ -83,7 +83,7 @@ export async function collectRemoteOK() {
       type: "remote_job",
       title: `${x.position}${x.company ? ` · ${x.company}` : ""}`,
       description: stripHtml(x.description || "").slice(0, 3000),
-      // RemoteOK salary_min/max는 대개 연봉 범위다. Judge v0.4.2에서 fixed payout으로 취급하지 않는다.
+      // RemoteOK salary_min/max는 대개 연봉 범위다. Judge v0.4.3에서 fixed payout으로 취급하지 않는다.
       budget_min: Number(x.salary_min) || null,
       budget_max: Number(x.salary_max) || null,
       currency: (x.salary_min || x.salary_max) ? "USD" : "",
@@ -101,7 +101,7 @@ export async function collectAgentBounties() {
   const res = await fetch(url, {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.4.2"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.3"
     }
   });
   if (!res.ok) throw new Error(`Agent Bounties HTTP ${res.status}`);
@@ -153,7 +153,7 @@ async function githubIssueSearch(query, perPage = 20) {
     headers: {
       "accept": "application/vnd.github+json",
       "x-github-api-version": "2026-03-10",
-      "user-agent": "AutomationFactory-MoneyScout/0.4.2"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.3"
     }
   });
   if (!res.ok) {
@@ -203,42 +203,45 @@ function issueText(x) {
   return (String(x?.title || "") + "\n" + String(x?.body || "")).replace(/\s+/g, " ").trim();
 }
 
-function parseGithubReward(text) {
+export function parseGithubReward(text) {
   const stable = new Set(["USD","USDC","USDT"]);
   const clean = String(text || "").replace(/,/g, "");
+  const label = "(?:bount(?:y|ies)|reward|prize|payout|payment|compensation)";
+  let m;
 
-  const usdRange = clean.match(/\$\s*(\d+(?:\.\d+)?)\s*(?:-|–|~|to)\s*\$?\s*(\d+(?:\.\d+)?)\s*(USD|USDC|USDT)?\b/i);
-  if (usdRange) return { kind:"stable", min:Number(usdRange[1]), max:Number(usdRange[2]), currency:(usdRange[3] || "USD").toUpperCase() };
+  m = clean.match(new RegExp("\\b" + label + "\\b[^.\\n]{0,80}\\$\\s*(\\d+(?:\\.\\d+)?)\\s*(?:-|–|~|to)\\s*\\$?\\s*(\\d+(?:\\.\\d+)?)\\s*(USD|USDC|USDT)?\\b", "i"));
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[2]), currency:String(m[3] || "USD").toUpperCase(), evidence:"explicit_label" };
 
-  const stableRange = clean.match(/\b(\d+(?:\.\d+)?)\s*(?:-|–|~|to)\s*(\d+(?:\.\d+)?)\s*(USD|USDC|USDT)\b/i);
-  if (stableRange) return { kind:"stable", min:Number(stableRange[1]), max:Number(stableRange[2]), currency:stableRange[3].toUpperCase() };
+  m = clean.match(new RegExp("\\b" + label + "\\b[^.\\n]{0,80}\\b(\\d+(?:\\.\\d+)?)\\s*(?:-|–|~|to)\\s*(\\d+(?:\\.\\d+)?)\\s*(USD|USDC|USDT)\\b", "i"));
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[2]), currency:String(m[3]).toUpperCase(), evidence:"explicit_label" };
 
-  const usdSingle = clean.match(/(?:bounty|reward|paid|payment|pays?|earn(?:ed)?)\s*[:=-]?\s*\$\s*(\d+(?:\.\d+)?)\s*(USD|USDC|USDT)?\b/i)
-    || clean.match(/\*\*Bounty:\s*\$\s*(\d+(?:\.\d+)?)\s*(USD|USDC|USDT)?/i);
-  if (usdSingle) return { kind:"stable", min:Number(usdSingle[1]), max:Number(usdSingle[1]), currency:(usdSingle[2] || "USD").toUpperCase() };
+  m = clean.match(new RegExp("\\b" + label + "\\b\\s*(?:amount|tier|range)?\\s*[:=\\-]?\\s*\\$\\s*(\\d+(?:\\.\\d+)?)\\s*(USD|USDC|USDT)?\\b", "i"));
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[1]), currency:String(m[2] || "USD").toUpperCase(), evidence:"explicit_label" };
 
-  const stableSingle = clean.match(/(?:bounty|reward|paid|payment|pays?|earn(?:ed)?)\s*[:=-]?\s*(\d+(?:\.\d+)?)\s*(USDC|USDT|USD)\b/i)
-    || clean.match(/\b(\d+(?:\.\d+)?)\s*(USDC|USDT)\b/i);
-  if (stableSingle) return { kind:"stable", min:Number(stableSingle[1]), max:Number(stableSingle[1]), currency:stableSingle[2].toUpperCase() };
+  m = clean.match(new RegExp("\\b" + label + "\\b\\s*(?:amount|tier|range)?\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)\\s*(USDC|USDT|USD)\\b", "i"));
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[1]), currency:String(m[2]).toUpperCase(), evidence:"explicit_label" };
 
-  const tokenRange = clean.match(/(?:bounty|reward|tier[^:]*:)?[^.\n]{0,45}\b(\d+(?:\.\d+)?)\s*(?:-|–|~|to)\s*(\d+(?:\.\d+)?)\s+\$?([A-Z][A-Z0-9]{1,9})\b/);
-  if (tokenRange && !stable.has(tokenRange[3])) return { kind:"token", min:Number(tokenRange[1]), max:Number(tokenRange[2]), currency:tokenRange[3] };
+  m = clean.match(new RegExp("\\b" + label + "\\b[^.\\n]{0,80}\\b(\\d+(?:\\.\\d+)?)\\s*(?:-|–|~|to)\\s*(\\d+(?:\\.\\d+)?)\\s+\\$?([A-Z][A-Z0-9]{1,9})\\b"));
+  if (m && !stable.has(String(m[3]).toUpperCase())) {
+    return { kind:"token", min:Number(m[1]), max:Number(m[2]), currency:String(m[3]).toUpperCase(), evidence:"explicit_label" };
+  }
 
-  const tokenSingle = clean.match(/(?:bounty|reward|paid|payment|pays?)\s*[:=-]?\s*(\d+(?:\.\d+)?)\s+\$?([A-Z][A-Z0-9]{1,9})\b/i)
-    || clean.match(/\b(\d+(?:\.\d+)?)\s+\$([A-Z][A-Z0-9]{1,9})\b/);
-  if (tokenSingle && !stable.has(String(tokenSingle[2]).toUpperCase())) return { kind:"token", min:Number(tokenSingle[1]), max:Number(tokenSingle[1]), currency:String(tokenSingle[2]).toUpperCase() };
+  m = clean.match(new RegExp("\\b" + label + "\\b\\s*(?:amount|tier|range)?\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)\\s+\\$?([A-Z][A-Z0-9]{1,9})\\b", "i"));
+  if (m && !stable.has(String(m[2]).toUpperCase())) {
+    return { kind:"token", min:Number(m[1]), max:Number(m[1]), currency:String(m[2]).toUpperCase(), evidence:"explicit_label" };
+  }
 
-  return { kind:"none", min:null, max:null, currency:"" };
+  return { kind:"none", min:null, max:null, currency:"", evidence:"none" };
 }
 
-function paidMeta(text) {
-  const t = String(text || "").toLowerCase();
-  const reward = parseGithubReward(text);
-  const apply = /(apply on|apply at|apply here|click apply|application|submit.*application)/i.test(text);
-  const claim = /\bclaim(?:ed|ing)?\b|claim work|claim job/i.test(text);
-  const draw = /(weighted draw|lottery|random draw|drawn and assigned|selected at random)/i.test(text);
-  const wallet = /(wallet|solana|ethereum|base mainnet|on-chain|onchain)/i.test(text);
-  const firstCome = /(first[- ]come|first come|fcfs)/i.test(text);
+export function paidMeta(text) {
+  const raw = String(text || "");
+  const reward = parseGithubReward(raw);
+  const apply = /(apply on|apply at|apply here|click apply|applications? are open|how to apply|submit (?:an |your )?application)/i.test(raw);
+  const claim = /(claim (?:this |the )?(?:bounty|issue|task|job)|claim work|claim job|claim bounty|\/claim\b)/i.test(raw);
+  const draw = /(weighted draw|lottery|random draw|drawn and assigned|selected at random)/i.test(raw);
+  const wallet = /(wallet|solana|ethereum|base mainnet|on-chain|onchain)/i.test(raw);
+  const firstCome = /(first[- ]come|first come|fcfs)/i.test(raw);
   const assignment = draw ? "draw" : firstCome ? "first_come" : apply ? "application" : claim ? "claim" : "unknown";
   return {
     reward,
@@ -247,6 +250,7 @@ function paidMeta(text) {
     has_action: apply || claim || firstCome || draw,
     skills: [
       "payout_evidence:" + reward.kind,
+      "evidence_context:" + reward.evidence,
       "assignment:" + assignment,
       wallet ? "eligibility:wallet" : ""
     ].filter(Boolean)
@@ -270,6 +274,42 @@ function isAutoGeneratedNoise(text) {
     "早报"
   ].some((x) => t.includes(x.toLowerCase()));
 }
+
+export function issueDemandContext(x) {
+  const title = String(x?.title || "");
+  const body = String(x?.body || "");
+  const first = body.slice(0, 1200);
+  const sections = [];
+
+  for (const heading of ["problem", "motivation", "proposal", "describe the solution", "feature request", "what to do"]) {
+    const escaped = heading.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const re = new RegExp("(?:^|\\n)#{1,4}\\s*" + escaped + "[^\\n]*\\n([\\s\\S]{0,900})", "i");
+    const m = body.match(re);
+    if (m?.[0]) sections.push(m[0].slice(0, 1000));
+  }
+
+  return (title + "\n" + first + "\n" + sections.join("\n"))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2600);
+}
+
+export function isDemandDocumentNoise(text) {
+  const t = String(text || "").toLowerCase();
+  return [
+    "position paper",
+    "draft v1.",
+    "draft v2.",
+    "## abstract",
+    "companion papers",
+    "prior papers in this series",
+    "this paper addresses",
+    "the paper is speculative",
+    "research agenda",
+    "literature review"
+  ].some((x) => t.includes(x));
+}
+
 
 function hasDemandProblem(text) {
   const t = String(text || "").toLowerCase();
@@ -365,7 +405,7 @@ export async function collectGitHubPaidDiscovery() {
       x,
       "github_paid",
       "bounty_unverified",
-      "[PAID DISCOVERY · Payout Verifier v0.4.2]",
+      "[PAID DISCOVERY · Payout Verifier v0.4.3]",
       {
         budget_min: meta.reward.min,
         budget_max: meta.reward.max,
@@ -389,14 +429,17 @@ export async function collectGitHubDemandSignals() {
 
   const candidates = dedupeIssues(groups)
     .filter((x) => {
-      const text = issueText(x);
-      return !isAutoGeneratedNoise(text) && hasDemandProblem(text);
+      const context = issueDemandContext(x);
+      return !isAutoGeneratedNoise(context) &&
+        !isDemandDocumentNoise(context) &&
+        hasDemandProblem(context);
     })
     .slice(0, 50);
 
   const reposByFingerprint = new Map();
   for (const x of candidates) {
-    const fp = demandFingerprint(issueText(x));
+    const context = issueDemandContext(x);
+    const fp = demandFingerprint(context);
     if (fp === "unclassified") continue;
     const repo = githubRepoName(x.repository_url) || String(x.repository_url || x.id);
     if (!reposByFingerprint.has(fp)) reposByFingerprint.set(fp, new Set());
@@ -404,21 +447,22 @@ export async function collectGitHubDemandSignals() {
   }
 
   return candidates.map((x) => {
-    const text = issueText(x);
-    const group = demandGroup(text);
-    const fingerprint = demandFingerprint(text);
+    const context = issueDemandContext(x);
+    const group = demandGroup(context);
+    const fingerprint = demandFingerprint(context);
     const repeat = fingerprint === "unclassified" ? 1 : (reposByFingerprint.get(fingerprint)?.size || 1);
     return githubIssueToOpportunity(
       x,
       "github_demand",
       "business_opportunity",
-      "[PRODUCT SIGNAL · Demand Fingerprint v0.4.2]",
+      "[PRODUCT SIGNAL · Evidence Context Filter v0.4.3]",
       {
         skills: [
           "demand_group:" + group,
           "demand_fingerprint:" + fingerprint,
           "demand_repeat:" + repeat,
-          "demand_problem:yes"
+          "demand_problem:yes",
+          "demand_context:focused"
         ]
       }
     );
