@@ -546,7 +546,7 @@ export function judgeOpportunity(opportunity) {
       token_amount_min: payout.token_amount_min ?? null,
       token_amount_max: payout.token_amount_max ?? null,
       token_currency: payout.token_currency ?? null,
-      claim_assignment: payout.claim?.assignment || null,
+      claim_assignment: payout.claim?.assignment && payout.claim.assignment !== "unknown" ? payout.claim.assignment : null,
       claim_wallet_required: !!payout.claim?.wallet,
       claim_account_age_rule: !!payout.claim?.account_age,
       requires_pay_check: payout.requiresPayCheck,
