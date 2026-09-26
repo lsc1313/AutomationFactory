@@ -77,6 +77,8 @@ function classifyOpportunity(o, text) {
   const rawType = String(o.type || "").toLowerCase();
 
   if (source === "agent_bounties") return "bounty";
+  if (source === "github_paid") return "bounty_unverified";
+  if (source === "github_demand") return "business_opportunity";
   if (source === "github_bounty") return "bounty_unverified";
   if (rawType.includes("bounty")) return "bounty";
   if (rawType.includes("affiliate") || text.includes("affiliate") || text.includes("commission only")) return "affiliate";
@@ -114,11 +116,13 @@ function normalizePayout(o, opportunityType, text) {
 
   // v0.3에서 GitHub issue 본문의 첫 달러 숫자를 bounty 금액으로 오인했던 레거시 데이터.
   // 원문 텍스트 추출 금액은 지급 근거로 사용하지 않는다.
-  if (source === "github_bounty") {
+  if (source === "github_bounty" || source === "github_paid") {
     return {
       kind: "unverified_text_amount", trust: "unverified", status: "unknown", score: 0,
       usd: null, raw_usd: rawUsd, hourly: null, hardCap: 54, requiresPayCheck: true,
-      note: "레거시 GitHub 본문 숫자 → 실제 지급액으로 사용 금지"
+      note: source === "github_paid"
+        ? "GitHub discovery 후보 → 실제 지급/claim 가능 여부 검증 전 보상액 미인정"
+        : "레거시 GitHub 본문 숫자 → 실제 지급액으로 사용 금지"
     };
   }
 
@@ -186,6 +190,8 @@ function freshnessScore(postedAt) {
 function sourceFitScore(o, opportunityType) {
   const source = String(o.source || "").toLowerCase();
   if (source === "agent_bounties") return 100;
+  if (source === "github_paid") return 58;
+  if (source === "github_demand") return 72;
   if (source === "github_bounty") return 22;
   if (["bounty","fixed_project","freelance_gig"].includes(opportunityType)) return 92;
   if (["content_opportunity","affiliate","business_opportunity"].includes(opportunityType)) return 76;
@@ -287,7 +293,7 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "type+payout-v0.3.1",
+      judge_version: "type+payout-v0.4.0",
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
       payout_trust: payout.trust,
