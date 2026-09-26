@@ -12,8 +12,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "automation-factory-job-scout",
-      "database_id": "여기에_D1_DATABASE_ID_입력"
+      "database_name": "automation-factory-money-scout",
+      "database_id": "947bb38a-f458-49c3-8ccf-48042bb415cf"
     }
   ]
 }
