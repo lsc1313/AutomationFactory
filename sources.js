@@ -67,7 +67,7 @@ export async function collectRemoteOK() {
   const res = await fetch("https://remoteok.com/api", {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.3.1"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.0"
     }
   });
   if (!res.ok) throw new Error(`RemoteOK HTTP ${res.status}`);
@@ -83,7 +83,7 @@ export async function collectRemoteOK() {
       type: "remote_job",
       title: `${x.position}${x.company ? ` · ${x.company}` : ""}`,
       description: stripHtml(x.description || "").slice(0, 3000),
-      // RemoteOK salary_min/max는 대개 연봉 범위다. Judge v0.3.1에서 fixed payout으로 취급하지 않는다.
+      // RemoteOK salary_min/max는 대개 연봉 범위다. Judge v0.4.0에서 fixed payout으로 취급하지 않는다.
       budget_min: Number(x.salary_min) || null,
       budget_max: Number(x.salary_max) || null,
       currency: (x.salary_min || x.salary_max) ? "USD" : "",
@@ -101,7 +101,7 @@ export async function collectAgentBounties() {
   const res = await fetch(url, {
     headers: {
       "accept": "application/json",
-      "user-agent": "AutomationFactory-MoneyScout/0.3.1"
+      "user-agent": "AutomationFactory-MoneyScout/0.4.0"
     }
   });
   if (!res.ok) throw new Error(`Agent Bounties HTTP ${res.status}`);
@@ -145,9 +145,110 @@ export async function collectAgentBounties() {
   });
 }
 
+
+async function githubIssueSearch(query, perPage = 20) {
+  const url = "https://api.github.com/search/issues?q=" + encodeURIComponent(query)
+    + "&sort=updated&order=desc&per_page=" + Math.max(1, Math.min(30, perPage));
+  const res = await fetch(url, {
+    headers: {
+      "accept": "application/vnd.github+json",
+      "x-github-api-version": "2026-03-10",
+      "user-agent": "AutomationFactory-MoneyScout/0.4.0"
+    }
+  });
+  if (!res.ok) {
+    const remain = res.headers.get("x-ratelimit-remaining");
+    const reset = res.headers.get("x-ratelimit-reset");
+    throw new Error("GitHub Search HTTP " + res.status + (remain === "0" ? " · rate limit reset " + reset : ""));
+  }
+  const data = await res.json();
+  return Array.isArray(data?.items) ? data.items.filter((x) => !x.pull_request) : [];
+}
+
+function githubRepoName(repositoryUrl) {
+  try {
+    const u = new URL(String(repositoryUrl || ""));
+    const parts = u.pathname.split("/").filter(Boolean);
+    const i = parts.lastIndexOf("repos");
+    if (i >= 0 && parts[i + 1] && parts[i + 2]) return parts[i + 1] + "/" + parts[i + 2];
+  } catch {}
+  return "";
+}
+
+function githubIssueToOpportunity(x, source, type, note) {
+  const repo = githubRepoName(x.repository_url);
+  const labels = Array.isArray(x.labels)
+    ? x.labels.map((v) => typeof v === "string" ? v : v?.name).filter(Boolean)
+    : [];
+  return {
+    source,
+    source_item_id: repo ? repo + "#" + x.number : String(x.id),
+    type,
+    title: (repo ? "[" + repo + "] " : "") + String(x.title || "GitHub opportunity"),
+    description: stripHtml(note + " " + String(x.body || "")).slice(0, 3000),
+    budget_min: null,
+    budget_max: null,
+    currency: "",
+    location: "Online",
+    skills: labels.join(", "),
+    posted_at: String(x.created_at || x.updated_at || ""),
+    deadline: "",
+    competition: null,
+    url: String(x.html_url || "")
+  };
+}
+
+function dedupeIssues(items) {
+  const map = new Map();
+  for (const x of items) {
+    if (!x?.id) continue;
+    const prev = map.get(String(x.id));
+    if (!prev || String(x.updated_at || "") > String(prev.updated_at || "")) map.set(String(x.id), x);
+  }
+  return [...map.values()];
+}
+
+export async function collectGitHubPaidDiscovery() {
+  const queries = [
+    "is:issue is:open label:bounty -repo:NSPG13/agent-bounties",
+    "is:issue is:open bounty in:title,body -repo:NSPG13/agent-bounties",
+    "is:issue is:open \"paid task\" in:title,body"
+  ];
+  const groups = [];
+  for (const q of queries) groups.push(...await githubIssueSearch(q, 15));
+  return dedupeIssues(groups).slice(0, 35).map((x) =>
+    githubIssueToOpportunity(
+      x,
+      "github_paid",
+      "bounty_unverified",
+      "[DISCOVERY ONLY · 실제 지급/claim 가능 여부 검증 전 작업 금지]"
+    )
+  );
+}
+
+export async function collectGitHubDemandSignals() {
+  const queries = [
+    "is:issue is:open automation manual in:title,body",
+    "is:issue is:open spreadsheet automation in:title,body",
+    "is:issue is:open bot integration \"feature request\" in:title,body"
+  ];
+  const groups = [];
+  for (const q of queries) groups.push(...await githubIssueSearch(q, 15));
+  return dedupeIssues(groups).slice(0, 35).map((x) =>
+    githubIssueToOpportunity(
+      x,
+      "github_demand",
+      "business_opportunity",
+      "[PRODUCT SIGNAL · 직접 지급 일감이 아니라 반복 문제/상품화 후보]"
+    )
+  );
+}
+
 export const SOURCE_REGISTRY = {
-  remoteok: collectRemoteOK,
-  agent_bounties: collectAgentBounties
+  agent_bounties: collectAgentBounties,
+  github_paid: collectGitHubPaidDiscovery,
+  github_demand: collectGitHubDemandSignals,
+  remoteok: collectRemoteOK
 };
 
 export async function collectSources(names = Object.keys(SOURCE_REGISTRY)) {
