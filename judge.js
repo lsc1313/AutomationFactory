@@ -111,54 +111,65 @@ function fixedMoneyScore(usd) {
 }
 
 function parseRewardEvidence(o, text) {
+  const source = String(o.source || "").toLowerCase();
   const stable = new Set(["USD","USDC","USDT"]);
+  const clean = String(text || "").replace(/,/g, " ");
+  const label = "(?:bount(?:y|ies)|reward|prize|payout|payment|compensation)";
+  let m;
+
+  const stableRangeDollar = new RegExp("\\b" + label + "\\b[^.\\n]{0,80}\\$\\s*(\\d+(?:\\.\\d+)?)\\s*(?:-|–|~|to)\\s*\\$?\\s*(\\d+(?:\\.\\d+)?)\\s*(usd|usdc|usdt)?\\b", "i");
+  m = clean.match(stableRangeDollar);
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[2]), currency:String(m[3] || "USD").toUpperCase(), evidence:"explicit_label" };
+
+  const stableRange = new RegExp("\\b" + label + "\\b[^.\\n]{0,80}\\b(\\d+(?:\\.\\d+)?)\\s*(?:-|–|~|to)\\s*(\\d+(?:\\.\\d+)?)\\s*(usd|usdc|usdt)\\b", "i");
+  m = clean.match(stableRange);
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[2]), currency:String(m[3]).toUpperCase(), evidence:"explicit_label" };
+
+  const stableSingleDollar = new RegExp("\\b" + label + "\\b\\s*(?:amount|tier|range)?\\s*[:=\\-]?\\s*\\$\\s*(\\d+(?:\\.\\d+)?)\\s*(usd|usdc|usdt)?\\b", "i");
+  m = clean.match(stableSingleDollar);
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[1]), currency:String(m[2] || "USD").toUpperCase(), evidence:"explicit_label" };
+
+  const stableSingle = new RegExp("\\b" + label + "\\b\\s*(?:amount|tier|range)?\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)\\s*(usdc|usdt|usd)\\b", "i");
+  m = clean.match(stableSingle);
+  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[1]), currency:String(m[2]).toUpperCase(), evidence:"explicit_label" };
+
+  const tokenRange = new RegExp("\\b" + label + "\\b[^.\\n]{0,80}\\b(\\d+(?:\\.\\d+)?)\\s*(?:-|–|~|to)\\s*(\\d+(?:\\.\\d+)?)\\s+\\$?([a-z][a-z0-9]{1,9})\\b", "i");
+  m = clean.match(tokenRange);
+  if (m && !stable.has(String(m[3]).toUpperCase())) {
+    return { kind:"token", min:Number(m[1]), max:Number(m[2]), currency:String(m[3]).toUpperCase(), evidence:"explicit_label" };
+  }
+
+  const tokenSingle = new RegExp("\\b" + label + "\\b\\s*(?:amount|tier|range)?\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)\\s+\\$?([a-z][a-z0-9]{1,9})\\b", "i");
+  m = clean.match(tokenSingle);
+  if (m && !stable.has(String(m[2]).toUpperCase())) {
+    return { kind:"token", min:Number(m[1]), max:Number(m[1]), currency:String(m[2]).toUpperCase(), evidence:"explicit_label" };
+  }
+
+  // GitHub discovery는 구조화 필드가 과거 오탐에서 만들어졌을 수 있으므로
+  // 반드시 원문에 explicit payout 문구가 있어야 한다.
+  if (source === "github_paid") return { kind:"none", min:null, max:null, currency:"", evidence:"none" };
+
   const c = String(o.currency || "").toUpperCase();
   const min0 = Number(o.budget_min);
   const max0 = Number(o.budget_max ?? o.budget_min);
   if (c && Number.isFinite(max0) && max0 > 0) {
     if (stable.has(c)) {
-      return { kind:"stable", min:Number.isFinite(min0) && min0 > 0 ? min0 : max0, max:max0, currency:c };
+      return { kind:"stable", min:Number.isFinite(min0) && min0 > 0 ? min0 : max0, max:max0, currency:c, evidence:"structured" };
     }
-    return { kind:"token", min:Number.isFinite(min0) && min0 > 0 ? min0 : max0, max:max0, currency:c };
+    return { kind:"token", min:Number.isFinite(min0) && min0 > 0 ? min0 : max0, max:max0, currency:c, evidence:"structured" };
   }
 
-  const clean = String(text || "").replace(/,/g, " ");
-  let m = clean.match(/\$\s*(\d+(?:\.\d+)?)\s*(?:-|–|~|to)\s*\$?\s*(\d+(?:\.\d+)?)\s*(usd|usdc|usdt)?\b/i);
-  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[2]), currency:String(m[3] || "USD").toUpperCase() };
-
-  m = clean.match(/\b(\d+(?:\.\d+)?)\s*(?:-|–|~|to)\s*(\d+(?:\.\d+)?)\s*(usd|usdc|usdt)\b/i);
-  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[2]), currency:String(m[3]).toUpperCase() };
-
-  m = clean.match(/(?:bounty|reward|paid|payment|pays?|earn(?:ed)?)\s*[:=-]?\s*\$\s*(\d+(?:\.\d+)?)\s*(usd|usdc|usdt)?\b/i)
-    || clean.match(/\bbounty\s*:\s*\$\s*(\d+(?:\.\d+)?)\s*(usd|usdc|usdt)?/i);
-  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[1]), currency:String(m[2] || "USD").toUpperCase() };
-
-  m = clean.match(/(?:bounty|reward|paid|payment|pays?)\s*[:=-]?\s*(\d+(?:\.\d+)?)\s*(usdc|usdt|usd)\b/i)
-    || clean.match(/\b(\d+(?:\.\d+)?)\s*(usdc|usdt)\b/i);
-  if (m) return { kind:"stable", min:Number(m[1]), max:Number(m[1]), currency:String(m[2]).toUpperCase() };
-
-  m = clean.match(/\b(\d+(?:\.\d+)?)\s*(?:-|–|~|to)\s*(\d+(?:\.\d+)?)\s+\$?([a-z][a-z0-9]{1,9})\b/i);
-  if (m && !stable.has(String(m[3]).toUpperCase())) {
-    return { kind:"token", min:Number(m[1]), max:Number(m[2]), currency:String(m[3]).toUpperCase() };
-  }
-
-  m = clean.match(/(?:bounty|reward|paid|payment|pays?)\s*[:=-]?\s*(\d+(?:\.\d+)?)\s+\$?([a-z][a-z0-9]{1,9})\b/i)
-    || clean.match(/\b(\d+(?:\.\d+)?)\s+\$([a-z][a-z0-9]{1,9})\b/i);
-  if (m && !stable.has(String(m[2]).toUpperCase())) {
-    return { kind:"token", min:Number(m[1]), max:Number(m[1]), currency:String(m[2]).toUpperCase() };
-  }
-
-  return { kind:"none", min:null, max:null, currency:"" };
+  return { kind:"none", min:null, max:null, currency:"", evidence:"none" };
 }
 
 function claimEvidence(text) {
-  const t = String(text || "").toLowerCase();
-  const apply = /(apply on|apply at|apply here|click apply|application|submit.*application)/i.test(t);
-  const claim = /\bclaim(?:ed|ing)?\b|claim work|claim job/i.test(t);
-  const draw = /(weighted draw|lottery|random draw|drawn and assigned|selected at random)/i.test(t);
-  const firstCome = /(first[- ]come|first come|fcfs)/i.test(t);
-  const wallet = /(wallet|solana|ethereum|base mainnet|on-chain|onchain)/i.test(t);
-  const accountAge = /(account.{0,20}(?:days|day|months|month)|at least \d+ days old)/i.test(t);
+  const raw = String(text || "");
+  const apply = /(apply on|apply at|apply here|click apply|applications? are open|how to apply|submit (?:an |your )?application)/i.test(raw);
+  const claim = /(claim (?:this |the )?(?:bounty|issue|task|job)|claim work|claim job|claim bounty|\/claim\b)/i.test(raw);
+  const draw = /(weighted draw|lottery|random draw|drawn and assigned|selected at random)/i.test(raw);
+  const firstCome = /(first[- ]come|first come|fcfs)/i.test(raw);
+  const wallet = /(wallet|solana|ethereum|base mainnet|on-chain|onchain)/i.test(raw);
+  const accountAge = /(account.{0,20}(?:days|day|months|month)|at least \d+ days old)/i.test(raw);
   return {
     has_action: apply || claim || draw || firstCome,
     assignment: draw ? "draw" : firstCome ? "first_come" : apply ? "application" : claim ? "claim" : "unknown",
@@ -183,6 +194,13 @@ const DEMAND_NOISE_WORDS = [
   "trending daily","github trending daily","open source trends","generated at:","今日热榜","早报"
 ];
 
+const DEMAND_DOCUMENT_NOISE_WORDS = [
+  "position paper","draft v1.","draft v2.","## abstract","companion papers",
+  "prior papers in this series","this paper addresses","the paper is speculative",
+  "research agenda","literature review"
+];
+
+
 function parseDemandRepeat(text) {
   const m = String(text || "").match(/demand_repeat:(\d+)/i);
   return m ? Math.max(1, Number(m[1]) || 1) : 1;
@@ -200,6 +218,7 @@ function parseDemandFingerprint(text) {
 
 function judgeDemandOpportunity(o, text) {
   const noiseHits = hits(text, DEMAND_NOISE_WORDS);
+  const documentNoiseHits = hits(text, DEMAND_DOCUMENT_NOISE_WORDS);
   const problemHits = hits(text, DEMAND_PROBLEM_WORDS);
   const monetizeHits = hits(text, DEMAND_MONETIZE_WORDS);
   const autoHits = hits(text, AUTOMATION_WORDS);
@@ -213,7 +232,7 @@ function judgeDemandOpportunity(o, text) {
   const repeat = repeatCount >= 5 ? 100 : repeatCount === 4 ? 92 : repeatCount === 3 ? 80 : repeatCount === 2 ? 55 : 20;
   const build = hitScore(autoHits.length + fastHits.length, [35,50,62,74,84,92,97,100]);
   const monetize = monetizeHits.length ? hitScore(monetizeHits.length, [35,50,65,78,88,95,100]) : 20;
-  const noise = noiseHits.length ? 100 : 0;
+  const noise = (noiseHits.length || documentNoiseHits.length) ? 100 : 0;
 
   let score = Math.round(clamp(
     demand * 0.35 + repeat * 0.25 + build * 0.20 + monetize * 0.20 - noise * 0.70,
@@ -222,9 +241,9 @@ function judgeDemandOpportunity(o, text) {
 
   let status = repeatCount >= 3 ? "product_candidate" : repeatCount === 2 ? "watch_signal" : "signal";
   let grade = (!noiseHits.length && !legacyOrUnknownFingerprint && repeatCount >= 2 && demand >= 55 && score >= 50) ? "watch" : "cold";
-  if (noiseHits.length) {
+  if (noiseHits.length || documentNoiseHits.length) {
     score = Math.min(score, 15);
-    status = "noise";
+    status = documentNoiseHits.length ? "document_noise" : "noise";
     grade = "cold";
   } else if (legacyOrUnknownFingerprint) {
     score = Math.min(score, 39);
@@ -241,7 +260,8 @@ function judgeDemandOpportunity(o, text) {
     "BUILD " + build,
     "MONETIZE " + monetize
   ];
-  if (noiseHits.length) reasons.push("자동생성/리포트형 노이즈 → 제외");
+  if (documentNoiseHits.length) reasons.push("논문/리서치 문서형 → 상품수요에서 제외");
+  else if (noiseHits.length) reasons.push("자동생성/리포트형 노이즈 → 제외");
   else if (legacyOrUnknownFingerprint) reasons.push("정확한 수요 fingerprint 없음 → COLD");
   else if (repeatCount < 2) reasons.push("동일 문제 단일 repo 신호 → 시장수요 확정 전 COLD");
 
@@ -250,7 +270,7 @@ function judgeDemandOpportunity(o, text) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand-v0.4.2",
+      judge_version: "payout+demand-v0.4.3",
       judge_mode: "demand",
       opportunity_type: "business_opportunity",
       demand_status: status,
@@ -262,6 +282,7 @@ function judgeDemandOpportunity(o, text) {
       build,
       monetize,
       noise,
+      document_noise: documentNoiseHits.length ? 100 : 0,
       money: 0,
       automation: build,
       speed: 0,
@@ -510,7 +531,7 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand-v0.4.2",
+      judge_version: "payout+demand-v0.4.3",
       judge_mode: "paid",
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
