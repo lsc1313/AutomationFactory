@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.4.1";
+const APP_VERSION = "0.4.2";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -285,7 +285,7 @@ async function rejudgeAll(env) {
     await env.DB.batch(statements.slice(i, i + 50));
   }
 
-  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "payout+demand-v0.4.1" };
+  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "payout+demand-fingerprint-v0.4.2" };
 }
 
 async function getStats(env) {
@@ -399,7 +399,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.4.1 · Payout Verifier + Demand Validator · 돈 받을 기회와 상품수요 분리</div>
+  <div class="footer">v0.4.2 · Demand Fingerprint · 같은 문제의 독립 repo 반복만 PRODUCT 후보</div>
 </div>
 <script>
 let grade='all';
@@ -439,7 +439,7 @@ async function load(){
    const pillClass=(paycheck||tokenCheck)?'paycheck':j.grade;
    const metric=(icon,name,val)=>'<span class="metric">'+icon+' '+name+' '+esc(val??0)+'</span>';
    const paidMetrics=metric('💰','MONEY',bd.money)+metric('🤖','AUTO',bd.automation)+metric('⚡','SPEED',bd.speed)+metric('📈','SCALE',bd.scale)+metric('🧭','TYPE',bd.opportunity_type||j.type);
-   const demandMetrics=metric('📣','DEMAND',bd.demand)+metric('🔁','REPEAT',bd.demand_repeat_count)+metric('🛠','BUILD',bd.build)+metric('💼','MONETIZE',bd.monetize)+metric('🧩','GROUP',bd.demand_group||'unknown');
+   const demandMetrics=metric('📣','DEMAND',bd.demand)+metric('🔁','REPEAT',bd.demand_repeat_count)+metric('🛠','BUILD',bd.build)+metric('💼','MONETIZE',bd.monetize)+metric('🧬','FINGERPRINT',bd.demand_fingerprint||'legacy');
    const payout=isDemand?'':'<span class="metric">💳 '+esc(bd.payout_kind||'unknown')+' · '+esc(bd.payout_trust||'unknown')+'</span>';
    const metrics2=(isDemand?demandMetrics:paidMetrics)+payout;
    return '<div class="card"><div class="head"><div><div><span class="pill '+esc(pillClass)+'">'+esc(label)+'</span></div><div class="title">'+esc(j.title)+'</div><div class="meta">'+meta+'</div><div class="metrics">'+metrics2+'</div></div><div class="score">'+esc(j.score)+'<small>/100</small></div></div><div class="desc">'+esc(j.description||'설명 없음')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="meta">'+link+' · 현재결정: '+esc(stateLabel(j.user_state))+'</div><div class="decisions">'+btn('proceed','✅ 진행')+btn('hold','⏸ 보류')+btn('reject','✕ 제외')+btn('unreviewed','↺ 미검토')+'</div></div>';
