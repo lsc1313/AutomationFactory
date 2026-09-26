@@ -1,19 +1,19 @@
-# Automation Factory · Money Scout v0.3
+# Automation Factory · Money Scout v0.3.1
 
-Money Scout의 Opportunity Judge를 **Money-first** 방식으로 교체한 버전입니다.
+v0.3 HOT 검증에서 발견된 **연봉/시간제/본문 숫자를 1회 일감 보상으로 오인하는 문제**를 수정한 버전입니다.
 
-## v0.3 핵심 변경
-- 보상 미확인 항목은 `PAY CHECK` 표시, HOT 금지
-- 1~9 USD는 자동 COLD
-- 10~29 USD는 자동 COLD
-- 30~99 USD는 자동화/처리속도가 매우 높은 경우에만 WATCH 가능
-- 일반 원격 채용형(RemoteOK 등)은 우선순위 대폭 하향
-- 카드에 MONEY / AUTO / SPEED / SCALE 세부 점수 표시
-- 기존 D1 데이터 삭제 없이 `기존 데이터 재채점` 버튼으로 전체 재평가
-- 기존 진행/보류/제외 결정은 유지
+## v0.3.1 핵심 변경
+- 점수 계산 전에 `Opportunity Type Classifier` 실행
+  - bounty / fixed_project / freelance_gig / hourly_contract / employment / content / affiliate / business
+- `Payout Normalizer` 추가
+  - fixed_total / hourly / annual_salary / variable / unverified_text_amount 구분
+- RemoteOK의 salary_min/max는 **연봉**으로 취급하여 HOT 산정에서 제외
+- 시간제 계약은 단발 자동납품과 분리하고 기본 COLD 처리
+- 기존 `github_bounty` 데이터의 본문 달러 숫자는 지급액으로 신뢰하지 않고 `PAY CHECK` 처리
+- 신규 bounty 수집은 GitHub issue 검색 대신 Agent Bounties의 **공식 claimable-only API** 사용
+- 카드에 TYPE / payout kind / payout trust 표시
+- 기존 D1 70건은 삭제하지 않고 `기존 데이터 재채점`으로 새 기준 적용
 
-## 배포
-기존 GitHub 저장소의 파일을 이 패키지 파일들로 교체/추가 후 커밋합니다.
-Cloudflare Git 연결이 되어 있으면 자동으로 재배포됩니다.
-
-기존 D1 데이터는 삭제하지 않습니다.
+## 중요
+기존 D1과 사용자 결정(진행/보류/제외)은 유지됩니다.
+새 D1을 만들 필요가 없습니다.

@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.3.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -285,7 +285,7 @@ async function rejudgeAll(env) {
     await env.DB.batch(statements.slice(i, i + 50));
   }
 
-  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "money-first-v0.3" };
+  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "type+payout-v0.3.1" };
 }
 
 async function getStats(env) {
@@ -386,8 +386,9 @@ function appHtml() {
     </select>
     <select id="sourceFilter">
       <option value="all">소스 전체</option>
-      <option value="github_bounty">GitHub Bounty</option>
+      <option value="agent_bounties">Agent Bounties (공식 claimable)</option>
       <option value="remoteok">RemoteOK</option>
+      <option value="github_bounty">Legacy GitHub Bounty</option>
     </select>
   </div>
   <div class="token">
@@ -396,7 +397,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.3 · Money-first Judge · 보상 미확인 PAY CHECK · 기존 데이터 재채점 지원</div>
+  <div class="footer">v0.3.1 · Type Classifier + Payout Normalizer · 공식 claimable bounty feed</div>
 </div>
 <script>
 let grade='all';
@@ -431,8 +432,10 @@ async function load(){
    const label=paycheck?'PAY CHECK':j.grade.toUpperCase();
    const pillClass=paycheck?'paycheck':j.grade;
    const metric=(icon,name,val)=>'<span class="metric">'+icon+' '+name+' '+esc(val??0)+'</span>';
-   const metrics=metric('💰','MONEY',bd.money)+metric('🤖','AUTO',bd.automation)+metric('⚡','SPEED',bd.speed)+metric('📈','SCALE',bd.scale);
-   return '<div class="card"><div class="head"><div><div><span class="pill '+esc(pillClass)+'">'+esc(label)+'</span></div><div class="title">'+esc(j.title)+'</div><div class="meta">'+meta+'</div><div class="metrics">'+metrics+'</div></div><div class="score">'+esc(j.score)+'<small>/100</small></div></div><div class="desc">'+esc(j.description||'설명 없음')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="meta">'+link+' · 현재결정: '+esc(stateLabel(j.user_state))+'</div><div class="decisions">'+btn('proceed','✅ 진행')+btn('hold','⏸ 보류')+btn('reject','✕ 제외')+btn('unreviewed','↺ 미검토')+'</div></div>';
+   const metrics=metric('💰','MONEY',bd.money)+metric('🤖','AUTO',bd.automation)+metric('⚡','SPEED',bd.speed)+metric('📈','SCALE',bd.scale)+metric('🧭','TYPE',bd.opportunity_type||j.type);
+   const payout='<span class="metric">💳 '+esc(bd.payout_kind||'unknown')+' · '+esc(bd.payout_trust||'unknown')+'</span>';
+   const metrics2=metrics+payout;
+   return '<div class="card"><div class="head"><div><div><span class="pill '+esc(pillClass)+'">'+esc(label)+'</span></div><div class="title">'+esc(j.title)+'</div><div class="meta">'+meta+'</div><div class="metrics">'+metrics2+'</div></div><div class="score">'+esc(j.score)+'<small>/100</small></div></div><div class="desc">'+esc(j.description||'설명 없음')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="meta">'+link+' · 현재결정: '+esc(stateLabel(j.user_state))+'</div><div class="decisions">'+btn('proceed','✅ 진행')+btn('hold','⏸ 보류')+btn('reject','✕ 제외')+btn('unreviewed','↺ 미검토')+'</div></div>';
  }).join('');
  document.querySelectorAll('[data-id][data-state]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/api/opportunities/'+encodeURIComponent(b.dataset.id)+'/decision',{method:'POST',body:JSON.stringify({state:b.dataset.state})});await load();}catch(e){alert(e.message);}finally{b.disabled=false;}});
 }
