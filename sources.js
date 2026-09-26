@@ -293,8 +293,11 @@ function demandGroup(text) {
   return "other";
 }
 
-function demandFingerprint(text) {
+export function demandFingerprint(text) {
   const t = String(text || "").toLowerCase();
+  const platforms = ["tiktok","youtube","pinterest"].filter((p) => t.includes(p));
+  if (platforms.length >= 2 && /\b(download|downloader|media)\b/.test(t)) return "multi_platform_downloader";
+
   const patterns = [
     ["csv_export", /\bcsv\b.{0,80}\b(export|download|report)|\b(export|download)\b.{0,80}\bcsv\b/],
     ["markdown_export", /\bmarkdown\b.{0,80}\b(export|report|generate)|\b(export|generate)\b.{0,80}\bmarkdown\b/],
