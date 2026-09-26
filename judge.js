@@ -310,8 +310,9 @@ function normalizePayout(o, opportunityType, text) {
   }
 
   if (source === "github_paid") {
-    const reward = parseRewardEvidence(o, text);
-    const claim = claimEvidence(text);
+    const evidenceText = `${o.title || ""} ${o.description || ""}`;
+    const reward = parseRewardEvidence(o, evidenceText);
+    const claim = claimEvidence(evidenceText);
 
     if (reward.kind === "none") {
       return {
