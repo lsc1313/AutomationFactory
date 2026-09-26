@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.2.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -28,8 +28,12 @@ function safeId(source, sourceItemId) {
 
 async function ensureSchema(env) {
   if (!env.DB) throw new Error("D1 binding DB가 없습니다. wrangler.jsonc의 DB 설정을 확인하세요.");
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS opportunities (
+
+  // D1Database.exec()는 여러 쿼리를 줄바꿈으로 구분해 해석할 수 있어
+  // 여러 줄 CREATE TABLE 문을 한 번에 넘기면 첫 줄만 잘려 실행될 수 있다.
+  // 각 DDL을 완전한 prepared statement로 만든 뒤 batch()로 실행한다.
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunities (
       opportunity_id TEXT PRIMARY KEY,
       source TEXT NOT NULL,
       source_item_id TEXT NOT NULL,
@@ -54,12 +58,11 @@ async function ensureSchema(env) {
       last_seen_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(source, source_item_id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_opportunities_grade_score ON opportunities(grade, score DESC);
-    CREATE INDEX IF NOT EXISTS idx_opportunities_state_score ON opportunities(user_state, score DESC);
-    CREATE INDEX IF NOT EXISTS idx_opportunities_source_seen ON opportunities(source, last_seen_at DESC);
-
-    CREATE TABLE IF NOT EXISTS scout_runs (
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_opportunities_grade_score ON opportunities(grade, score DESC)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_opportunities_state_score ON opportunities(user_state, score DESC)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_opportunities_source_seen ON opportunities(source, last_seen_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS scout_runs (
       run_id TEXT PRIMARY KEY,
       started_at TEXT NOT NULL,
       finished_at TEXT NOT NULL DEFAULT '',
@@ -71,10 +74,9 @@ async function ensureSchema(env) {
       cold_count INTEGER NOT NULL DEFAULT 0,
       error_count INTEGER NOT NULL DEFAULT 0,
       errors_json TEXT NOT NULL DEFAULT '[]'
-    );
-    CREATE INDEX IF NOT EXISTS idx_scout_runs_started ON scout_runs(started_at DESC);
-
-    CREATE TABLE IF NOT EXISTS opportunity_outcomes (
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_scout_runs_started ON scout_runs(started_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_outcomes (
       opportunity_id TEXT PRIMARY KEY,
       result TEXT NOT NULL DEFAULT '',
       actual_revenue REAL,
@@ -82,9 +84,10 @@ async function ensureSchema(env) {
       actual_minutes INTEGER,
       note TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
-    );
-  `);
+    )`)
+  ]);
 }
+
 
 function adminAuthorized(request, env) {
   const configured = String(env.ADMIN_TOKEN || "").trim();
