@@ -677,9 +677,59 @@ export async function collectChromeMarketplaceEvidence() {
   return evidence;
 }
 
+export function parseWorkspaceMarketplacePage(html, url = "") {
+  const text = decodeEntities(stripHtml(html));
+  const chunks = text.split(/(?=\b[1-5](?:\.[0-9])?\s*(?:stars?|rating|M\+|K\+))/i).slice(0, 80);
+  return chunks.map((chunk, i) => ({
+    marketplace:"google_workspace", app_id:"workspace-" + i, app_name:chunk.slice(0, 100),
+    description:chunk.slice(0, 2500), url, posted_at:""
+  })).filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround)/i.test(x.description));
+}
+
+export async function collectWorkspaceMarketplaceEvidence() {
+  const urls = ["https://workspace.google.com/marketplace/"];
+  const evidence = [];
+  for (const url of urls) {
+    try { evidence.push(...parseWorkspaceMarketplacePage(await fetchText(url), url)); } catch {}
+  }
+  return evidence;
+}
+
+export function parseAtlassianReviews(payload, addonKey) {
+  const reviews = payload?._embedded?.reviews || payload?.reviews || [];
+  return reviews.filter((r) => Number(r.stars) <= 2).map((r, i) => ({
+    marketplace:"atlassian", app_id:addonKey, app_name:addonKey,
+    evidence_id:String(r.id || i), rating:Number(r.stars),
+    review_text:String(r.review || r.content || ""),
+    url:"https://marketplace.atlassian.com/apps/" + encodeURIComponent(addonKey),
+    posted_at:String(r.date || "")
+  }));
+}
+
+export async function collectAtlassianMarketplaceEvidence() {
+  // REST v2 GET remains publicly documented; v3 reviews require authentication.
+  // Keep a narrow seed set and fail independently if Atlassian retires anonymous v2 access.
+  const addonKeys = ["com.onresolve.jira.groovy.groovyrunner","com.mxgraph.confluence.plugins.diagramly"];
+  const evidence = [];
+  for (const key of addonKeys) {
+    try {
+      const url = "https://marketplace.atlassian.com/rest/2/addons/" + encodeURIComponent(key) + "/reviews?limit=50&sort=recent";
+      const res = await fetch(url, { headers:{accept:"application/json","user-agent":"AutomationFactory-MoneyScout/0.4.4"} });
+      if (!res.ok) continue;
+      evidence.push(...parseAtlassianReviews(await res.json(), key));
+    } catch {}
+  }
+  return evidence;
+}
+
 export async function collectMarketplaceDemand() {
   const evidence = [];
-  const adapters = [collectShopifyMarketplaceEvidence, collectChromeMarketplaceEvidence];
+  const adapters = [
+    collectShopifyMarketplaceEvidence,
+    collectChromeMarketplaceEvidence,
+    collectWorkspaceMarketplaceEvidence,
+    collectAtlassianMarketplaceEvidence
+  ];
   for (const adapter of adapters) {
     try { evidence.push(...await adapter()); } catch {}
   }
