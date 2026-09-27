@@ -187,7 +187,8 @@ const marketplaceSingle = judged({
   skills: "marketplace:chrome, demand_group:reporting_export, demand_fingerprint:csv_export, demand_repeat:1, demand_problem:yes, demand_context:review_evidence"
 });
 assert.equal(marketplaceSingle.grade, "cold");
-assert.equal(marketplaceSingle.breakdown.demand_status, "signal");
+assert.equal(marketplaceSingle.breakdown.demand_status, "weak_marketplace_evidence");
+assert.equal(marketplaceSingle.breakdown.marketplace_evidence_ready, false);
 
 
 const normalizedMarket = normalizeMarketplaceEvidence({
