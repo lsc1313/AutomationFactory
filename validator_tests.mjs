@@ -210,4 +210,21 @@ assert.match(marketOpps[0].skills, /demand_repeat:3/);
 assert.match(marketOpps[0].skills, /low_star_reviews:3/);
 assert.equal(judged(marketOpps[0]).breakdown.demand_status, "product_candidate");
 
+const workspaceLandingFixture = `
+<a href="/marketplace/app/sheetgo/94172092257">Sheetgo</a>
+<a href="/marketplace/app/email_spreadsheets/431723916752?flow_type=12">Email Spreadsheets</a>`;
+const workspaceLinks = workspaceListingLinks(workspaceLandingFixture);
+assert.equal(workspaceLinks.length, 2);
+assert.match(workspaceLinks[0], /94172092257/);
+assert.match(workspaceLinks[1], /431723916752/);
+
+const workspaceDetail = parseWorkspaceMarketplacePage(
+  "<h1>Sheetgo</h1><p>Connect Google Sheets, Excel, and CSV files and automate data sync workflows.</p>",
+  "https://workspace.google.com/marketplace/app/sheetgo/94172092257"
+);
+assert.equal(workspaceDetail.length, 1);
+assert.equal(workspaceDetail[0].app_id, "94172092257");
+assert.equal(workspaceDetail[0].app_name, "Sheetgo");
+assert.equal(parseWorkspaceMarketplacePage("<p>CSV sync</p>", "https://workspace.google.com/marketplace/").length, 0);
+
 console.log("validator tests: OK");
