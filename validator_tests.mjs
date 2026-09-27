@@ -249,4 +249,23 @@ const guardEvidence = normalizeMarketplaceEvidence({
 assert.equal(guardEvidence.fingerprint, "automation_guard");
 assert.equal(guardEvidence.group, "reliability");
 
+const marketplaceJudgeEvidence = judged({
+  source:"marketplace_demand", type:"business_opportunity",
+  title:"Repeated automation guard pain",
+  description:"problem missing support automation workflow",
+  skills:"demand_group:reliability, demand_fingerprint:automation_guard, demand_repeat:3, demand_problem:yes, complaint_count:4, low_star_reviews:2, weak_competitor_signals:1"
+});
+assert.equal(marketplaceJudgeEvidence.breakdown.marketplace_evidence_ready, true);
+assert.equal(marketplaceJudgeEvidence.breakdown.complaint_count, 4);
+assert.equal(marketplaceJudgeEvidence.breakdown.low_star_reviews, 2);
+
+const weakMarketplaceJudgeEvidence = judged({
+  source:"marketplace_demand", type:"business_opportunity",
+  title:"Weak marketplace signal",
+  description:"problem automation workflow",
+  skills:"demand_group:reliability, demand_fingerprint:automation_guard, demand_repeat:2, demand_problem:yes, complaint_count:1, low_star_reviews:0"
+});
+assert.equal(weakMarketplaceJudgeEvidence.grade, "cold");
+assert.equal(weakMarketplaceJudgeEvidence.breakdown.marketplace_evidence_ready, false);
+
 console.log("validator tests: OK");
