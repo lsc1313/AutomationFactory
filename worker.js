@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.6.8";
+const APP_VERSION = "0.6.9";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -542,7 +542,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.8 · Market Candidate Detail · 사업후보 근거 확인</div>
+  <div class="footer">v0.6.9 · Mobile Candidate Button · 클릭 진단 강화</div>
 </div>
 <script>
 let grade='all';
@@ -629,7 +629,14 @@ async function loadMarketCandidates(){
    }catch(e){target.textContent='상세 조회 실패: '+e.message;}finally{b.disabled=false;}
  });
 }
-document.getElementById('candidateBtn').onclick=()=>loadMarketCandidates().catch(e=>alert('시장후보 조회 실패: '+e.message));
+document.addEventListener('click',async e=>{
+ const b=e.target.closest('#candidateBtn'); if(!b)return;
+ e.preventDefault(); b.disabled=true; const old=b.textContent; b.textContent='시장후보 불러오는 중…';
+ const el=document.getElementById('candidateList'); el.innerHTML='<div class="empty">시장후보 불러오는 중…</div>';
+ try{await loadMarketCandidates();el.scrollIntoView({behavior:'smooth',block:'start'});}
+ catch(err){el.innerHTML='<div class="empty error">시장후보 조회 실패: '+esc(err.message)+'</div>';alert('시장후보 조회 실패: '+err.message);}
+ finally{b.disabled=false;b.textContent=old;}
+});
 document.getElementById('scanBtn').onclick=async()=>{const b=document.getElementById('scanBtn');b.disabled=true;b.textContent='스캔 중…';try{const r=await api('/api/scout/run',{method:'POST',body:'{}'});alert('스캔 완료: '+r.found+'건 발견 / '+r.saved+'건 저장'+(r.errors?.length?' / 오류 '+r.errors.length+'\\n\\n'+r.errors.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n'):'') );await load();}catch(e){alert('스캔 실패: '+e.message);}finally{b.disabled=false;b.textContent='지금 스캔';}};
 document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('validateBtn').onclick=async()=>{const b=document.getElementById('validateBtn');b.disabled=true;b.textContent='교차검증 중…';try{const r=await api('/api/validate/markets',{method:'POST',body:'{}'});alert('시장 교차검증 완료: 원시근거 '+r.raw_evidence+'건 / fingerprint '+r.market_fingerprints+'개 / GitHub 매칭 '+r.matched+'건 / 사업화 이슈 '+r.promoted+'건 / 시장후보 '+r.market_candidates+'개\\n'+(r.diagnostics||[]).map(x=>x.marketplace+': '+x.count+(x.error?' ('+x.error+')':'')).join(' / '));await load();}catch(e){alert('교차검증 실패: '+e.message);}finally{b.disabled=false;b.textContent='시장 교차검증';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
 load().catch(e=>document.getElementById('list').innerHTML='<div class="empty error">오류: '+esc(e.message)+'</div>');
