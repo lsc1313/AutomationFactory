@@ -334,3 +334,9 @@ assert.match(provenanceOpps[0].evidence[0].url, /prov-a/);
 const uiWorkerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(uiWorkerSource, /const evidenceHtml=/);
 assert.match(uiWorkerSource, /\+evidenceHtml\+'<div class="meta">/);
+
+
+const githubCollectorSource = fs.readFileSync(new URL("./sources.js", import.meta.url), "utf8");
+assert.match(githubCollectorSource, /evidenceByFingerprint/);
+assert.match(githubCollectorSource, /app_id: repo/);
+assert.match(githubCollectorSource, /\.\.\.\(evidenceByFingerprint\.get\(fingerprint\)\?\.values\(\) \|\| \[\]\)/);
