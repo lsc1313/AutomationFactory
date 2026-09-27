@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.6.10";
+const APP_VERSION = "0.7.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -358,6 +358,26 @@ async function crossValidateMarkets(env) {
   return {ok:true,matched,promoted,market_candidates:marketCandidates,cluster_count:clusters.size,market_fingerprints:markets.size,raw_evidence:raw.evidence.length,diagnostics:raw.diagnostics};
 }
 
+async function runMoneyPipeline(env) {
+  await ensureSchema(env);
+  const scan = await runScout(env);
+  const rejudge = await rejudgeAll(env);
+  const validation = await crossValidateMarkets(env);
+  return {
+    ok: true,
+    mode: "autopilot",
+    scan: { found: scan.found, saved: scan.saved, errors: scan.errors?.length || 0 },
+    rejudge: { count: rejudge.rejudged, grades: rejudge.grades },
+    validation: {
+      raw_evidence: validation.raw_evidence,
+      matched: validation.matched,
+      promoted: validation.promoted,
+      market_candidates: validation.market_candidates
+    },
+    finished_at: nowIso()
+  };
+}
+
 async function rejudgeAll(env) {
   const rows = (await env.DB.prepare(`
     SELECT opportunity_id, source, source_item_id, type, title, description,
@@ -516,8 +536,7 @@ function appHtml() {
     <button data-grade="hot">HOT</button>
     <button data-grade="watch">WATCH</button>
     <button data-grade="cold">COLD</button>
-    <button class="scan" id="scanBtn">지금 스캔</button>
-    <button id="rejudgeBtn">기존 데이터 재채점</button>\n    <button id="validateBtn">시장 교차검증</button>\n    <button id="candidateBtn">시장후보 보기</button>\n    <button id="marketRebuildBtn">Marketplace 정리·재수집</button>
+    <button id="candidateBtn">💰 지금 돈 될 후보 보기</button>
   </div>
   <div class="filters">
     <select id="stateFilter">
@@ -542,7 +561,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.10 · Candidate View · 사업화 후보/검증 대기 분리</div>
+  <div class="footer">v0.7.0 · Money Scout Autopilot · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -670,6 +689,10 @@ export default {
         const rows = await env.DB.prepare(`SELECT evidence_key AS evidence_id,source,app_id,app_name,evidence_kind,evidence_quality,complaint_bearing,rating,text,url,posted_at FROM opportunity_evidence WHERE opportunity_id=? ORDER BY complaint_bearing DESC, rating ASC LIMIT 20`).bind(id).all();
         return json(rows.results || []);
       }
+      if (path === "/api/pipeline/run" && request.method === "POST") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        return json(await runMoneyPipeline(env));
+      }
       if (path === "/api/market-candidates") {
         const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'commercialization_candidate' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
         return json(rows.results || []);
@@ -733,6 +756,6 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runScout(env));
+    ctx.waitUntil(runMoneyPipeline(env));
   }
 };

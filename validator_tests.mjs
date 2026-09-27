@@ -381,7 +381,6 @@ assert.match(crossMarketWorkerSource, /cross_market_validation:yes/);
 assert.match(crossMarketWorkerSource, /\/api\/validate\/markets/);
 
 const uiHotfixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.match(uiHotfixSource, /id="validateBtn">시장 교차검증/);
 assert.match(uiHotfixSource, /getElementById\('validateBtn'\)\.onclick/);
 
 const runtimeFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
@@ -402,7 +401,7 @@ assert.match(clusterWorker, /시장후보 '\+r\.market_candidates\+'개/);
 
 const detailWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(detailWorker, /\/api\/market-candidates/);
-assert.match(detailWorker, /id="candidateBtn">시장후보 보기/);
+assert.match(detailWorker, /id="candidateBtn">💰 지금 돈 될 후보 보기/);
 assert.match(detailWorker, /독립수요/);
 assert.match(detailWorker, /가격근거/);
 assert.match(detailWorker, /GitHub 수요 근거/);
@@ -416,3 +415,12 @@ const candidateViewWorker = fs.readFileSync(new URL("./worker.js", import.meta.u
 assert.match(candidateViewWorker, /사업화 후보 '\+ready\.length\+'개/);
 assert.match(candidateViewWorker, /검증 대기 '\+pending\.length\+'개 보기/);
 assert.match(candidateViewWorker, /commercialization_candidate/);
+
+const autopilotWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(autopilotWorker, /async function runMoneyPipeline/);
+assert.match(autopilotWorker, /ctx\.waitUntil\(runMoneyPipeline\(env\)\)/);
+assert.match(autopilotWorker, /\/api\/pipeline\/run/);
+assert.match(autopilotWorker, /💰 지금 돈 될 후보 보기/);
+assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
+assert.doesNotMatch(autopilotWorker, /<button id="rejudgeBtn">/);
+assert.doesNotMatch(autopilotWorker, /<button id="validateBtn">/);
