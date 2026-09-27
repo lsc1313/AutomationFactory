@@ -374,3 +374,8 @@ assert.match(validationEvidenceOpps[0].skills, /competitor_evidence:2/);
 const validationJudged = judged(validationEvidenceOpps[0]);
 assert.equal(validationJudged.breakdown.willingness_to_pay, "evidenced");
 assert.equal(validationJudged.breakdown.competition_gap, "gap_evidenced");
+
+const crossMarketWorkerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(crossMarketWorkerSource, /async function crossValidateMarkets/);
+assert.match(crossMarketWorkerSource, /cross_market_validation:yes/);
+assert.match(crossMarketWorkerSource, /\/api\/validate\/markets/);
