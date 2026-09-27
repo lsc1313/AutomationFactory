@@ -229,4 +229,17 @@ assert.equal(workspaceDetail[0].app_id, "94172092257");
 assert.equal(workspaceDetail[0].app_name, "Sheetgo");
 assert.equal(parseWorkspaceMarketplacePage("<p>CSV sync</p>", "https://workspace.google.com/marketplace/").length, 0);
 
+const weakSingleMarketplaceSignal = marketplaceEvidenceToOpportunities([{
+  marketplace:"chrome", app_id:"one-extension", app_name:"One Extension",
+  rating:null, description:"Manual CSV export workaround because sync is broken", url:"https://example.invalid/one"
+}]);
+assert.equal(weakSingleMarketplaceSignal.length, 0);
+
+const corroboratedMarketplaceSignal = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"app-a", app_name:"A", rating:1, review_text:"Manual CSV workaround because inventory sync is broken", url:"https://example.invalid/a" },
+  { marketplace:"shopify", app_id:"app-b", app_name:"B", rating:2, review_text:"Inventory sync mismatch requires manual CSV export every day", url:"https://example.invalid/b" }
+]);
+assert.equal(corroboratedMarketplaceSignal.length, 1);
+assert.match(corroboratedMarketplaceSignal[0].skills, /demand_repeat:2/);
+
 console.log("validator tests: OK");
