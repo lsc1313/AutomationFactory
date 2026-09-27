@@ -242,4 +242,11 @@ const corroboratedMarketplaceSignal = marketplaceEvidenceToOpportunities([
 assert.equal(corroboratedMarketplaceSignal.length, 1);
 assert.match(corroboratedMarketplaceSignal[0].skills, /demand_repeat:2/);
 
+const guardEvidence = normalizeMarketplaceEvidence({
+  marketplace:"shopify", app_id:"guard-test", rating:1,
+  review_text:"Auto sync used the wrong SKU mapping. We need validation before sync and recovery after a failed sync."
+});
+assert.equal(guardEvidence.fingerprint, "automation_guard");
+assert.equal(guardEvidence.group, "reliability");
+
 console.log("validator tests: OK");
