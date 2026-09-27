@@ -536,8 +536,7 @@ function appHtml() {
     <button data-grade="hot">HOT</button>
     <button data-grade="watch">WATCH</button>
     <button data-grade="cold">COLD</button>
-    <button class="scan" id="scanBtn">지금 스캔</button>
-    <button id="rejudgeBtn">기존 데이터 재채점</button>\n    <button id="validateBtn">시장 교차검증</button>\n    <button id="candidateBtn">시장후보 보기</button>\n    <button id="marketRebuildBtn">Marketplace 정리·재수집</button>
+    <button id="candidateBtn">💰 지금 돈 될 후보 보기</button>
   </div>
   <div class="filters">
     <select id="stateFilter">
