@@ -406,3 +406,8 @@ assert.match(detailWorker, /id="candidateBtn">시장후보 보기/);
 assert.match(detailWorker, /독립수요/);
 assert.match(detailWorker, /가격근거/);
 assert.match(detailWorker, /GitHub 수요 근거/);
+
+const mobileButtonWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(mobileButtonWorker, /closest\('#candidateBtn'\)/);
+assert.match(mobileButtonWorker, /시장후보 불러오는 중/);
+assert.match(mobileButtonWorker, /scrollIntoView/);
