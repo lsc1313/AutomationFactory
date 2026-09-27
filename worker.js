@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.4.3";
+const APP_VERSION = "0.4.5";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -285,7 +285,7 @@ async function rejudgeAll(env) {
     await env.DB.batch(statements.slice(i, i + 50));
   }
 
-  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "evidence-context-v0.4.3" };
+  return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "marketplace-evidence-v0.4.5" };
 }
 
 async function getStats(env) {
@@ -388,7 +388,7 @@ function appHtml() {
       <option value="all">소스 전체</option>
       <option value="agent_bounties">Agent Bounties (공식 claimable)</option>
       <option value="github_paid">GitHub Paid Discovery</option>
-      <option value="github_demand">GitHub Product Demand</option>
+      <option value="github_demand">GitHub Product Demand</option>\n      <option value="marketplace_demand">Marketplace Demand</option>
       <option value="remoteok">RemoteOK (채용 참고)</option>
       <option value="github_bounty">Legacy GitHub Bounty</option>
     </select>
@@ -399,7 +399,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.4.3 · Evidence Context Filter · 명시적 보상 + 문제 맥락 중심 판정</div>
+  <div class="footer">v0.4.5 · Marketplace Evidence Gate · 반복 수요 + 저평점 + 불만 근거 중심 판정</div>
 </div>
 <script>
 let grade='all';
@@ -439,7 +439,10 @@ async function load(){
    const pillClass=(paycheck||tokenCheck)?'paycheck':j.grade;
    const metric=(icon,name,val)=>'<span class="metric">'+icon+' '+name+' '+esc(val??0)+'</span>';
    const paidMetrics=metric('💰','MONEY',bd.money)+metric('🤖','AUTO',bd.automation)+metric('⚡','SPEED',bd.speed)+metric('📈','SCALE',bd.scale)+metric('🧭','TYPE',bd.opportunity_type||j.type);
-   const demandMetrics=metric('📣','DEMAND',bd.demand)+metric('🔁','REPEAT',bd.demand_repeat_count)+metric('🛠','BUILD',bd.build)+metric('💼','MONETIZE',bd.monetize)+metric('🧬','FINGERPRINT',bd.demand_fingerprint||'legacy');
+   const evidenceMetrics=bd.opportunity_type==='business_opportunity'&&j.source==='marketplace_demand'
+     ? metric('🗣','COMPLAINTS',bd.complaint_count)+metric('⭐','LOW STAR',bd.low_star_reviews)+metric('🧱','WEAK COMP',bd.weak_competitor_signals)+metric('🔎','EVIDENCE',bd.marketplace_evidence_ready?'READY':'WEAK')
+     : '';
+   const demandMetrics=metric('📣','DEMAND',bd.demand)+metric('🔁','REPEAT',bd.demand_repeat_count)+metric('🛠','BUILD',bd.build)+metric('💼','MONETIZE',bd.monetize)+metric('🧬','FINGERPRINT',bd.demand_fingerprint||'legacy')+evidenceMetrics;
    const payout=isDemand?'':'<span class="metric">💳 '+esc(bd.payout_kind||'unknown')+' · '+esc(bd.payout_trust||'unknown')+'</span>';
    const metrics2=(isDemand?demandMetrics:paidMetrics)+payout;
    return '<div class="card"><div class="head"><div><div><span class="pill '+esc(pillClass)+'">'+esc(label)+'</span></div><div class="title">'+esc(j.title)+'</div><div class="meta">'+meta+'</div><div class="metrics">'+metrics2+'</div></div><div class="score">'+esc(j.score)+'<small>/100</small></div></div><div class="desc">'+esc(j.description||'설명 없음')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="meta">'+link+' · 현재결정: '+esc(stateLabel(j.user_state))+'</div><div class="decisions">'+btn('proceed','✅ 진행')+btn('hold','⏸ 보류')+btn('reject','✕ 제외')+btn('unreviewed','↺ 미검토')+'</div></div>';
