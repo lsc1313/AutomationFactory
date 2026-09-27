@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.4.5";
+const APP_VERSION = "0.4.7";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -288,6 +288,41 @@ async function rejudgeAll(env) {
   return { ok: true, rejudged: rows.length, grades: { hot, watch, cold }, judge: "marketplace-evidence-v0.4.5" };
 }
 
+async function rebuildMarketplace(env) {
+  await ensureSchema(env);
+
+  // Delete only legacy, unreviewed marketplace aggregates. Explicit user decisions
+  // are preserved even when the old evidence is no longer reproducible.
+  const stale = await env.DB.prepare(`
+    SELECT opportunity_id
+    FROM opportunities
+    WHERE source='marketplace_demand'
+      AND user_state='unreviewed'
+      AND description NOT LIKE '[MARKETPLACE EVIDENCE v0.4.6]%'
+  `).all();
+  const staleIds = (stale.results || []).map((x) => x.opportunity_id);
+
+  for (let i = 0; i < staleIds.length; i += 50) {
+    await env.DB.batch(staleIds.slice(i, i + 50).map((id) =>
+      env.DB.prepare(`DELETE FROM opportunities WHERE opportunity_id=? AND source='marketplace_demand' AND user_state='unreviewed'`).bind(id)
+    ));
+  }
+
+  // Recollect only Marketplace Demand under the current evidence-integrity rules.
+  const scan = await runScout(env, ["marketplace_demand"]);
+  const keptDecisions = await env.DB.prepare(`
+    SELECT COUNT(*) c FROM opportunities
+    WHERE source='marketplace_demand' AND user_state<>'unreviewed'
+  `).first();
+
+  return {
+    ok: true,
+    removed_legacy_unreviewed: staleIds.length,
+    preserved_decisions: Number(keptDecisions?.c || 0),
+    scan
+  };
+}
+
 async function getStats(env) {
   const total = await env.DB.prepare(`SELECT COUNT(*) c FROM opportunities`).first();
   const byGrade = await env.DB.prepare(`SELECT grade, COUNT(*) c FROM opportunities GROUP BY grade`).all();
@@ -374,7 +409,7 @@ function appHtml() {
     <button data-grade="watch">WATCH</button>
     <button data-grade="cold">COLD</button>
     <button class="scan" id="scanBtn">지금 스캔</button>
-    <button id="rejudgeBtn">기존 데이터 재채점</button>
+    <button id="rejudgeBtn">기존 데이터 재채점</button>\n    <button id="marketRebuildBtn">Marketplace 정리·재수집</button>
   </div>
   <div class="filters">
     <select id="stateFilter">
@@ -399,7 +434,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.4.5 · Marketplace Evidence Gate · 반복 수요 + 저평점 + 불만 근거 중심 판정</div>
+  <div class="footer">v0.4.7 · Marketplace Evidence Integrity · 약한 listing 승격 차단 + 안전 재구축</div>
 </div>
 <script>
 let grade='all';
@@ -453,7 +488,7 @@ document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.que
 document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
 document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
 document.getElementById('scanBtn').onclick=async()=>{const b=document.getElementById('scanBtn');b.disabled=true;b.textContent='스캔 중…';try{const r=await api('/api/scout/run',{method:'POST',body:'{}'});alert('스캔 완료: '+r.found+'건 발견 / '+r.saved+'건 저장'+(r.errors?.length?' / 오류 '+r.errors.length:'') );await load();}catch(e){alert('스캔 실패: '+e.message);}finally{b.disabled=false;b.textContent='지금 스캔';}};
-document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};
+document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
 load().catch(e=>document.getElementById('list').innerHTML='<div class="empty error">오류: '+esc(e.message)+'</div>');
 </script></body></html>`;
 }
@@ -492,6 +527,11 @@ export default {
         const body = await request.json();
         await setDecision(env, id, String(body.state || ""));
         return json({ ok: true });
+      }
+
+      if (path === "/api/marketplace/rebuild" && request.method === "POST") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        return json(await rebuildMarketplace(env));
       }
 
       if (path === "/api/judge/rejudge" && request.method === "POST") {
