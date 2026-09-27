@@ -5,7 +5,9 @@ import {
   parseGithubReward,
   paidMeta,
   issueDemandContext,
-  isDemandDocumentNoise
+  isDemandDocumentNoise,
+  normalizeMarketplaceEvidence,
+  marketplaceEvidenceToOpportunities
 } from "./sources.js";
 
 function judged(x) {
@@ -185,3 +187,26 @@ const marketplaceSingle = judged({
 });
 assert.equal(marketplaceSingle.grade, "cold");
 assert.equal(marketplaceSingle.breakdown.demand_status, "signal");
+
+
+const normalizedMarket = normalizeMarketplaceEvidence({
+  marketplace: "shopify",
+  app_id: "accounting-a",
+  app_name: "Accounting A",
+  rating: 1,
+  review_text: "Inventory sync is broken so we manually export CSV and re-enter orders.",
+  competitor_strength: "weak"
+});
+assert.equal(normalizedMarket.low_star, true);
+assert.equal(normalizedMarket.manual_signal, true);
+assert.equal(normalizedMarket.sync_signal, true);
+
+const marketOpps = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"a", rating:1, review_text:"Data sync mismatch forces manual CSV export and import.", competitor_strength:"weak" },
+  { marketplace:"shopify", app_id:"b", rating:2, review_text:"Data sync is broken; manual CSV workaround every day.", competitor_strength:"weak" },
+  { marketplace:"shopify", app_id:"c", rating:1, review_text:"Need data sync because records are out of sync and require manual export.", competitor_strength:"weak" }
+]);
+assert.equal(marketOpps.length, 1);
+assert.match(marketOpps[0].skills, /demand_repeat:3/);
+assert.match(marketOpps[0].skills, /low_star_reviews:3/);
+assert.equal(judged(marketOpps[0]).breakdown.demand_status, "product_candidate");
