@@ -5,7 +5,9 @@ import {
   parseGithubReward,
   paidMeta,
   issueDemandContext,
-  isDemandDocumentNoise
+  isDemandDocumentNoise,
+  normalizeMarketplaceEvidence,
+  marketplaceEvidenceToOpportunities
 } from "./sources.js";
 
 function judged(x) {
@@ -161,5 +163,51 @@ const noise = judged({
 });
 assert.equal(noise.grade, "cold");
 assert.equal(noise.breakdown.demand_status, "noise");
+
+
+
+const marketplaceRepeated = judged({
+  source: "marketplace_demand",
+  type: "business_opportunity",
+  title: "Shopify to accounting sync keeps requiring manual CSV repair",
+  description: "Recent low-star reviews repeatedly report manual export/import, sync mismatch and re-entry.",
+  skills: "marketplace:shopify, demand_group:data_pipeline, demand_fingerprint:data_sync, demand_repeat:3, demand_problem:yes, demand_context:review_evidence, complaint_count:4, low_star_reviews:3, competitor_strength:weak, automation"
+});
+assert.equal(marketplaceRepeated.grade, "watch");
+assert.equal(marketplaceRepeated.breakdown.judge_mode, "demand");
+assert.equal(marketplaceRepeated.breakdown.demand_status, "product_candidate");
+
+const marketplaceSingle = judged({
+  source: "marketplace_demand",
+  type: "business_opportunity",
+  title: "One review asks for CSV export",
+  description: "A single user asks for CSV export.",
+  skills: "marketplace:chrome, demand_group:reporting_export, demand_fingerprint:csv_export, demand_repeat:1, demand_problem:yes, demand_context:review_evidence"
+});
+assert.equal(marketplaceSingle.grade, "cold");
+assert.equal(marketplaceSingle.breakdown.demand_status, "signal");
+
+
+const normalizedMarket = normalizeMarketplaceEvidence({
+  marketplace: "shopify",
+  app_id: "accounting-a",
+  app_name: "Accounting A",
+  rating: 1,
+  review_text: "Inventory sync is broken so we manually export CSV and re-enter orders.",
+  competitor_strength: "weak"
+});
+assert.equal(normalizedMarket.low_star, true);
+assert.equal(normalizedMarket.manual_signal, true);
+assert.equal(normalizedMarket.sync_signal, true);
+
+const marketOpps = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"a", rating:1, review_text:"Data sync mismatch forces manual CSV export and import.", competitor_strength:"weak" },
+  { marketplace:"shopify", app_id:"b", rating:2, review_text:"Data sync is broken; manual CSV workaround every day.", competitor_strength:"weak" },
+  { marketplace:"shopify", app_id:"c", rating:1, review_text:"Need data sync because records are out of sync and require manual export.", competitor_strength:"weak" }
+]);
+assert.equal(marketOpps.length, 1);
+assert.match(marketOpps[0].skills, /demand_repeat:3/);
+assert.match(marketOpps[0].skills, /low_star_reviews:3/);
+assert.equal(judged(marketOpps[0]).breakdown.demand_status, "product_candidate");
 
 console.log("validator tests: OK");
