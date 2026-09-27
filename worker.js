@@ -663,7 +663,7 @@ export default {
         const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'commercialization_candidate' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
         return json(rows.results || []);
       }
-      const marketCandidateMatch = path.match(/^\\/api\\/market-candidates\\/([^/]+)$/);
+      const marketCandidateMatch = path.match(/^\/api\/market-candidates\/([^/]+)$/);
       if (marketCandidateMatch) {
         const fingerprint = decodeURIComponent(marketCandidateMatch[1]);
         const candidate = await env.DB.prepare("SELECT * FROM market_candidates WHERE fingerprint=?").bind(fingerprint).first();
