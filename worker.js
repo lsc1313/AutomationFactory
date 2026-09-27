@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.6.7";
+const APP_VERSION = "0.6.8";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -517,7 +517,7 @@ function appHtml() {
     <button data-grade="watch">WATCH</button>
     <button data-grade="cold">COLD</button>
     <button class="scan" id="scanBtn">지금 스캔</button>
-    <button id="rejudgeBtn">기존 데이터 재채점</button>\n    <button id="validateBtn">시장 교차검증</button>\n    <button id="marketRebuildBtn">Marketplace 정리·재수집</button>
+    <button id="rejudgeBtn">기존 데이터 재채점</button>\n    <button id="validateBtn">시장 교차검증</button>\n    <button id="candidateBtn">시장후보 보기</button>\n    <button id="marketRebuildBtn">Marketplace 정리·재수집</button>
   </div>
   <div class="filters">
     <select id="stateFilter">
@@ -541,8 +541,8 @@ function appHtml() {
     <button id="saveToken">저장</button>
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
-  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.7 · Market Candidates · fingerprint 단위 사업후보 압축</div>
+  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
+  <div class="footer">v0.6.8 · Market Candidate Detail · 사업후보 근거 확인</div>
 </div>
 <script>
 let grade='all';
@@ -601,6 +601,35 @@ async function load(){
 document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-grade]').forEach(x=>x.classList.remove('active'));b.classList.add('active');grade=b.dataset.grade;load();});
 document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
 document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
+async function loadMarketCandidates(){
+ const rows=await api('/api/market-candidates');
+ const el=document.getElementById('candidateList');
+ if(!rows.length){el.innerHTML='<div class="empty">아직 시장후보가 없습니다. 시장 교차검증을 먼저 실행하세요.</div>';return;}
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">🎯 압축 시장후보 '+rows.length+'개</div>'+rows.map(c=>{
+   let missing=[];try{missing=JSON.parse(c.validation_missing||'[]')}catch{}
+   return '<details class="card"><summary><b>'+esc(c.fingerprint)+'</b> · '+esc(c.commercialization_status)+'</summary>'+
+   '<div class="metrics">'+
+   '<span class="metric">🔁 독립수요 '+esc(c.independent_repo_count)+'</span>'+
+   '<span class="metric">📣 신호 '+esc(c.signal_count)+'</span>'+
+   '<span class="metric">🔎 시장근거 '+esc(c.raw_market_evidence_count)+'</span>'+
+   '<span class="metric">🏪 경쟁 '+esc(c.competitor_count)+'</span>'+
+   '<span class="metric">💳 결제근거 '+esc(c.payment_evidence_count)+'</span>'+
+   '<span class="metric">💵 가격근거 '+esc(c.pricing_evidence_count)+'</span>'+
+   '<span class="metric">🧱 약한경쟁 '+esc(c.weak_competitor_count)+'</span></div>'+
+   '<div class="desc">'+esc(c.representative_title||'')+'</div>'+
+   '<div class="reason">추가검증: '+esc(missing.length?missing.join(', '):'없음')+'</div>'+
+   '<button data-market-detail="'+esc(c.fingerprint)+'">상세 근거 보기</button><div id="market-'+esc(c.fingerprint)+'"></div></details>';
+ }).join('');
+ document.querySelectorAll('[data-market-detail]').forEach(b=>b.onclick=async()=>{
+   const fp=b.dataset.marketDetail, target=document.getElementById('market-'+fp);
+   b.disabled=true;
+   try{
+     const d=await api('/api/market-candidates/'+encodeURIComponent(fp));
+     target.innerHTML='<div class="reason"><b>GitHub 수요 근거 '+d.signals.length+'건</b><br>'+d.signals.map((x,i)=>(i+1)+'. '+esc(x.title)+' · '+esc(x.source_item_id||'')+(x.url?' <a class="link" href="'+esc(x.url)+'" target="_blank" rel="noopener">원문</a>':'')).join('<br>')+'</div>';
+   }catch(e){target.textContent='상세 조회 실패: '+e.message;}finally{b.disabled=false;}
+ });
+}
+document.getElementById('candidateBtn').onclick=()=>loadMarketCandidates().catch(e=>alert('시장후보 조회 실패: '+e.message));
 document.getElementById('scanBtn').onclick=async()=>{const b=document.getElementById('scanBtn');b.disabled=true;b.textContent='스캔 중…';try{const r=await api('/api/scout/run',{method:'POST',body:'{}'});alert('스캔 완료: '+r.found+'건 발견 / '+r.saved+'건 저장'+(r.errors?.length?' / 오류 '+r.errors.length+'\\n\\n'+r.errors.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n'):'') );await load();}catch(e){alert('스캔 실패: '+e.message);}finally{b.disabled=false;b.textContent='지금 스캔';}};
 document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('validateBtn').onclick=async()=>{const b=document.getElementById('validateBtn');b.disabled=true;b.textContent='교차검증 중…';try{const r=await api('/api/validate/markets',{method:'POST',body:'{}'});alert('시장 교차검증 완료: 원시근거 '+r.raw_evidence+'건 / fingerprint '+r.market_fingerprints+'개 / GitHub 매칭 '+r.matched+'건 / 사업화 이슈 '+r.promoted+'건 / 시장후보 '+r.market_candidates+'개\\n'+(r.diagnostics||[]).map(x=>x.marketplace+': '+x.count+(x.error?' ('+x.error+')':'')).join(' / '));await load();}catch(e){alert('교차검증 실패: '+e.message);}finally{b.disabled=false;b.textContent='시장 교차검증';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
 load().catch(e=>document.getElementById('list').innerHTML='<div class="empty error">오류: '+esc(e.message)+'</div>');
@@ -629,6 +658,18 @@ export default {
         const id = decodeURIComponent(evidenceMatch[1]);
         const rows = await env.DB.prepare(`SELECT evidence_key AS evidence_id,source,app_id,app_name,evidence_kind,evidence_quality,complaint_bearing,rating,text,url,posted_at FROM opportunity_evidence WHERE opportunity_id=? ORDER BY complaint_bearing DESC, rating ASC LIMIT 20`).bind(id).all();
         return json(rows.results || []);
+      }
+      if (path === "/api/market-candidates") {
+        const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'commercialization_candidate' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
+        return json(rows.results || []);
+      }
+      const marketCandidateMatch = path.match(/^\\/api\\/market-candidates\\/([^/]+)$/);
+      if (marketCandidateMatch) {
+        const fingerprint = decodeURIComponent(marketCandidateMatch[1]);
+        const candidate = await env.DB.prepare("SELECT * FROM market_candidates WHERE fingerprint=?").bind(fingerprint).first();
+        if (!candidate) return json({ ok:false, error:"Market candidate not found" },404);
+        const signals = await env.DB.prepare(`SELECT opportunity_id,title,source_item_id,score,grade,judge_reason,url,score_breakdown FROM opportunities WHERE source='github_demand' AND skills LIKE ? ORDER BY score DESC,last_seen_at DESC LIMIT 20`).bind("%demand_fingerprint:"+fingerprint+"%").all();
+        return json({ ...candidate, signals: signals.results || [] });
       }
       if (path === "/api/stats") return json(await getStats(env));
       if (path === "/api/opportunities") return json(await listOpportunities(env, url));
