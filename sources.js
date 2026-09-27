@@ -587,8 +587,14 @@ export function parseShopifyReviewPage(html, url = "") {
   const evidence = [];
 
   // Shopify review cards expose rating in accessible labels/text and review prose in the card.
-  const chunks = raw.split(/<(?:article|div)[^>]+(?:review|Review)[^>]*>/i);
-  for (const chunk of chunks.slice(1, 80)) {
+  // Prefer semantic/card boundaries, but fall back to date/rating text windows because
+  // Shopify does not guarantee a stable public CSS class for review cards.
+  let chunks = raw.split(/<(?:article|div)[^>]+(?:review|Review)[^>]*>/i).slice(1);
+  if (!chunks.length) {
+    const anchors = [...raw.matchAll(/(?:[1-5]\s*(?:out of|\/)\s*5|(?:rating|stars?)[^0-9]{0,40}[1-5])/gi)];
+    chunks = anchors.slice(0, 80).map((m) => raw.slice(Math.max(0, m.index - 1200), m.index + 9000));
+  }
+  for (const chunk of chunks.slice(0, 80)) {
     const block = chunk.slice(0, 12000);
     const ratingMatch = block.match(/(?:rating|stars?)[^0-9]{0,40}([1-5])(?:\s*(?:out of|\/)?\s*5)?/i)
       || block.match(/([1-5])\s*(?:out of|\/)\s*5/i);
@@ -627,7 +633,7 @@ export async function collectShopifyMarketplaceEvidence() {
   }
 
   // Stable public review pages keep the adapter useful even when category markup omits review links.
-  for (const slug of ["product-reviews-addon","judge-me","loox"]) {
+  for (const slug of ["easycsv","reviewsimportify","wise-reviews","judge-me","loox"]) {
     reviewUrls.add("https://apps.shopify.com/" + slug + "/reviews");
   }
 
