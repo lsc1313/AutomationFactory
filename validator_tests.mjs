@@ -411,3 +411,8 @@ const mobileButtonWorker = fs.readFileSync(new URL("./worker.js", import.meta.ur
 assert.match(mobileButtonWorker, /closest\('#candidateBtn'\)/);
 assert.match(mobileButtonWorker, /시장후보 불러오는 중/);
 assert.match(mobileButtonWorker, /scrollIntoView/);
+
+const candidateViewWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(candidateViewWorker, /사업화 후보 '\+ready\.length\+'개/);
+assert.match(candidateViewWorker, /검증 대기 '\+pending\.length\+'개 보기/);
+assert.match(candidateViewWorker, /commercialization_candidate/);
