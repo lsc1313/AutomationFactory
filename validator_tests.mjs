@@ -7,7 +7,9 @@ import {
   issueDemandContext,
   isDemandDocumentNoise,
   normalizeMarketplaceEvidence,
-  marketplaceEvidenceToOpportunities
+  marketplaceEvidenceToOpportunities,
+  parseWorkspaceMarketplacePage,
+  workspaceListingLinks
 } from "./sources.js";
 
 function judged(x) {
