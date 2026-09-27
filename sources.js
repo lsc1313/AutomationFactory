@@ -680,21 +680,40 @@ export async function collectChromeMarketplaceEvidence() {
   return evidence;
 }
 
+export function workspaceListingLinks(html) {
+  const links = new Set();
+  const re = /href=["'](\/marketplace\/app\/[^"'?#]+\/([0-9]+)(?:\?[^"']*)?)["']/gi;
+  let m;
+  while ((m = re.exec(String(html || "")))) {
+    links.add("https://workspace.google.com" + m[1].replace(/&amp;/g, "&"));
+  }
+  return [...links];
+}
+
 export function parseWorkspaceMarketplacePage(html, url = "") {
   const text = decodeEntities(stripHtml(html));
-  const chunks = text.split(/(?=\b[1-5](?:\.[0-9])?\s*(?:stars?|rating|M\+|K\+))/i).slice(0, 80);
-  return chunks.map((chunk, i) => ({
-    marketplace:"google_workspace", app_id:"workspace-" + i, app_name:chunk.slice(0, 100),
-    description:chunk.slice(0, 2500), url, posted_at:""
-  })).filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround)/i.test(x.description));
+  const id = (() => {
+    try { return new URL(url).pathname.split("/").filter(Boolean).at(-1) || ""; }
+    catch { return ""; }
+  })();
+  if (!id || !/^\d+$/.test(id)) return [];
+  const title = decodeEntities(stripHtml((String(html).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || text.slice(0, 120)));
+  return [{
+    marketplace:"google_workspace", app_id:id, app_name:title,
+    description:text.slice(0, 4000), url, posted_at:""
+  }].filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround|automate)/i.test(x.description));
 }
 
 export async function collectWorkspaceMarketplaceEvidence() {
-  const urls = ["https://workspace.google.com/marketplace/"];
+  const landing = "https://workspace.google.com/marketplace/";
   const evidence = [];
-  for (const url of urls) {
-    try { evidence.push(...parseWorkspaceMarketplacePage(await fetchText(url), url)); } catch {}
-  }
+  try {
+    const html = await fetchText(landing);
+    const links = workspaceListingLinks(html);
+    for (const url of links.slice(0, 24)) {
+      try { evidence.push(...parseWorkspaceMarketplacePage(await fetchText(url), url)); } catch {}
+    }
+  } catch {}
   return evidence;
 }
 
