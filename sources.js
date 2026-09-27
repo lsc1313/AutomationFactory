@@ -636,7 +636,7 @@ export async function collectShopifyMarketplaceEvidence() {
   }
 
   // Stable public review pages keep the adapter useful even when category markup omits review links.
-  for (const slug of ["easycsv","reviewsimportify","wise-reviews","judge-me","loox"]) {
+  for (const slug of ["easycsv","reviewsimportify","wise-reviews","judge-me","loox","sync-master-gogo","sync-master","sync-app-2-0","multi-store-sync-tipo"]) {
     reviewUrls.add("https://apps.shopify.com/" + slug + "/reviews");
   }
 
