@@ -647,10 +647,42 @@ export async function collectShopifyMarketplaceEvidence() {
   return evidence.slice(0, 120);
 }
 
+export function parseChromeWebStorePage(html, url = "") {
+  const text = decodeEntities(stripHtml(html));
+  const title = decodeEntities(stripHtml((String(html).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || text.slice(0, 120)));
+  const id = (() => { try { return new URL(url).pathname.split("/").filter(Boolean).at(-1) || title; } catch { return title; } })();
+  const ratingMatch = text.match(/([1-5](?:\.[0-9])?)\s*(?:out of 5|\([0-9,]+ ratings?\)|ratings?)/i);
+  const rating = ratingMatch ? Number(ratingMatch[1]) : null;
+  return [{
+    marketplace:"chrome", app_id:id, app_name:title, rating,
+    // Detail-page prose is demand evidence even when individual reviews are JS-loaded.
+    description:text.slice(0, 3500), url, posted_at:""
+  }];
+}
+
+export async function collectChromeMarketplaceEvidence() {
+  // Seed narrow workflow tools rather than generic extensions. The list can grow from discovery later.
+  const urls = [
+    "https://chromewebstore.google.com/detail/shopify-app-reviews-expor/mplcfkpihmfpnakdenkakklbiipnfijj?hl=en",
+    "https://chromewebstore.google.com/detail/shopify-exporter/mcapkakeigpnehoebmbghpchjokbphmg?hl=en",
+    "https://chromewebstore.google.com/detail/shopify-raise-shopify-sto/hdpfnbgfohonaplgnaahcefglgclmdpo?hl=en"
+  ];
+  const evidence = [];
+  for (const url of urls) {
+    try {
+      const html = await fetchText(url);
+      evidence.push(...parseChromeWebStorePage(html, url));
+    } catch {}
+  }
+  return evidence;
+}
+
 export async function collectMarketplaceDemand() {
   const evidence = [];
-  const shopify = await collectShopifyMarketplaceEvidence();
-  evidence.push(...shopify);
+  const adapters = [collectShopifyMarketplaceEvidence, collectChromeMarketplaceEvidence];
+  for (const adapter of adapters) {
+    try { evidence.push(...await adapter()); } catch {}
+  }
   return marketplaceEvidenceToOpportunities(evidence);
 }
 
