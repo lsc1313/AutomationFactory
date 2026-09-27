@@ -488,11 +488,12 @@ export function normalizeMarketplaceEvidence(input = {}) {
   const manual = /(manual|manually|copy.?paste|copy and paste|re[- ]?enter|reentry|re-enter|csv|export|import|spreadsheet|excel|workaround|수동|복붙|재입력)/i.test(text);
   const sync = /(sync|synchroni[sz]|mismatch|out of sync|doesn.?t update|not updating|delay|oversell|mapping|동기화|불일치|업데이트 안)/i.test(text);
   const pain = /(problem|issue|broken|fail|error|missing|lack|cannot|can.?t|doesn.?t work|support|frustrat|problematic|문제|오류|안됨|불편)/i.test(text);
+  const guard = /(wrong|incorrect|corrupt|data loss|lost data|oversell|duplicate|before (?:sync|run|execut)|pre.?flight|validat|verify|check (?:sku|mapping|location)|audit|monitor|rollback|recover|reconcile|try.?catch|exception|failed sync|sync error|잘못|검증|복구|감사|예외)/i.test(text);
   // Marketplace reviews often mention CSV/export as a workaround for a broken sync.
-  // In that context the product demand is sync/reconciliation, not a generic CSV exporter.
+  // Cross-market failures that need validation/audit/recovery are a distinct last-mile demand.
   const baseFingerprint = demandFingerprint(text);
-  const fingerprint = sync && manual ? "data_sync" : baseFingerprint;
-  const group = sync && manual ? "data_pipeline" : demandGroup(text);
+  const fingerprint = guard && sync ? "automation_guard" : (sync && manual ? "data_sync" : baseFingerprint);
+  const group = guard && sync ? "reliability" : (sync && manual ? "data_pipeline" : demandGroup(text));
 
   return {
     marketplace,
