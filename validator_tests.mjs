@@ -397,3 +397,10 @@ assert.ok(cvStart >= 0 && cvEnd > cvStart);
 assert.match(cvBody, /const refresh = await runScout\(env, \["marketplace_demand"\]\);/);
 assert.match(cvBody, /refresh\.found/);
 assert.match(cvBody, /refresh\.saved/);
+
+const rawMarketSource = fs.readFileSync(new URL("./sources.js", import.meta.url), "utf8");
+const rawMarketWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(rawMarketSource, /export async function collectMarketplaceValidationEvidence/);
+assert.match(rawMarketWorker, /collectMarketplaceValidationEvidence/);
+assert.match(rawMarketWorker, /raw_evidence/);
+assert.doesNotMatch(rawMarketWorker.slice(rawMarketWorker.indexOf("async function crossValidateMarkets"), rawMarketWorker.indexOf("async function rejudgeAll")), /runScout\(env, \["marketplace_demand"\]\)/);
