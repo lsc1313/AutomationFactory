@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
 import { judgeOpportunity } from "./judge.js";
 import {
   demandFingerprint,
@@ -310,3 +312,10 @@ assert.equal(weakMarketplaceJudgeEvidence.grade, "cold");
 assert.equal(weakMarketplaceJudgeEvidence.breakdown.marketplace_evidence_ready, false);
 
 console.log("validator tests: OK");
+
+
+// Generated HTML script regression: nested template output must not contain raw newlines inside quoted JS strings.
+const workerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(workerSource, /\\\\n/);
+const suspicious = workerSource.match(/re\.textContent='[^']*\n[^']*'/);
+assert.equal(suspicious, null);
