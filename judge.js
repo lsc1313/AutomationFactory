@@ -79,7 +79,7 @@ function classifyOpportunity(o, text) {
 
   if (source === "agent_bounties") return "bounty";
   if (source === "github_paid") return "bounty_unverified";
-  if (source === "github_demand") return "business_opportunity";
+  if (source === "github_demand" || source === "marketplace_demand") return "business_opportunity";
   if (source === "github_bounty") return "bounty_unverified";
   if (rawType.includes("bounty")) return "bounty";
   if (rawType.includes("affiliate") || text.includes("affiliate") || text.includes("commission only")) return "affiliate";
@@ -270,7 +270,7 @@ function judgeDemandOpportunity(o, text) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand-v0.4.3",
+      judge_version: "payout+demand+marketplace-v0.4.4",
       judge_mode: "demand",
       opportunity_type: "business_opportunity",
       demand_status: status,
@@ -451,7 +451,7 @@ function competitionScore(o) {
 export function judgeOpportunity(opportunity) {
   const text = textOf(opportunity);
   const source = String(opportunity.source || "").toLowerCase();
-  if (source === "github_demand") return judgeDemandOpportunity(opportunity, text);
+  if (source === "github_demand" || source === "marketplace_demand") return judgeDemandOpportunity(opportunity, text);
   const opportunityType = classifyOpportunity(opportunity, text);
   const payout = normalizePayout(opportunity, opportunityType, text);
 
@@ -532,7 +532,7 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand-v0.4.3",
+      judge_version: "payout+demand+marketplace-v0.4.4",
       judge_mode: "paid",
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
