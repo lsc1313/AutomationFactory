@@ -340,3 +340,24 @@ const githubCollectorSource = fs.readFileSync(new URL("./sources.js", import.met
 assert.match(githubCollectorSource, /evidenceByFingerprint/);
 assert.match(githubCollectorSource, /app_id: repo/);
 assert.match(githubCollectorSource, /\.\.\.\(evidenceByFingerprint\.get\(fingerprint\)\?\.values\(\) \|\| \[\]\)/);
+
+
+const judgeV1Unverified = judged({
+  source:"github_demand", type:"business_opportunity",
+  title:"Repeated CSV automation demand",
+  description:"Feature request: users need CSV export automation and reporting.",
+  skills:"demand_group:reporting_export, demand_fingerprint:csv_export, demand_repeat:4, demand_problem:yes, automation, csv"
+});
+assert.equal(judgeV1Unverified.breakdown.commercialization_status, "validation_required");
+assert.ok(judgeV1Unverified.breakdown.validation_missing.includes("willingness_to_pay"));
+assert.ok(judgeV1Unverified.breakdown.validation_missing.includes("competition_gap"));
+
+const judgeV1Validated = judged({
+  source:"marketplace_demand", type:"business_opportunity",
+  title:"Repeated paid sync pain",
+  description:"Problem: automation sync workflow missing support.",
+  skills:"demand_group:reliability, demand_fingerprint:automation_guard, demand_repeat:4, demand_problem:yes, complaint_count:4, low_star_reviews:2, weak_competitor_signals:2, payment_evidence:2, pricing_evidence:1, competitor_evidence:3, automation"
+});
+assert.equal(judgeV1Validated.breakdown.willingness_to_pay, "evidenced");
+assert.equal(judgeV1Validated.breakdown.competition_gap, "gap_evidenced");
+assert.equal(judgeV1Validated.breakdown.validation_missing.length, 0);
