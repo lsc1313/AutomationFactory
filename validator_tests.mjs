@@ -393,3 +393,9 @@ assert.match(rawMarketSource, /export async function collectMarketplaceValidatio
 assert.match(rawMarketWorker, /collectMarketplaceValidationEvidence/);
 assert.match(rawMarketWorker, /raw_evidence/);
 assert.doesNotMatch(rawMarketWorker.slice(rawMarketWorker.indexOf("async function crossValidateMarkets"), rawMarketWorker.indexOf("async function rejudgeAll")), /runScout\(env, \["marketplace_demand"\]\)/);
+
+const clusterWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(clusterWorker, /CREATE TABLE IF NOT EXISTS market_candidates/);
+assert.match(clusterWorker, /ON CONFLICT\(fingerprint\) DO UPDATE SET/);
+assert.match(clusterWorker, /market_candidates:marketCandidates/);
+assert.match(clusterWorker, /시장후보 '\+r\.market_candidates\+'개/);
