@@ -284,12 +284,37 @@ function judgeDemandOpportunity(o, text) {
   else if (legacyOrUnknownFingerprint) reasons.push("정확한 수요 fingerprint 없음 → COLD");
   else if (repeatCount < 2) reasons.push("동일 문제 단일 repo 신호 → 시장수요 확정 전 COLD");
 
+  const paymentEvidence = parseDemandMetric(text, "payment_evidence");
+  const pricingEvidence = parseDemandMetric(text, "pricing_evidence");
+  const competitorEvidence = parseDemandMetric(text, "competitor_evidence");
+  const weakGapEvidence = weakCompetitorSignals;
+  const willingnessToPay = paymentEvidence > 0 || pricingEvidence > 0 ? "evidenced" : "needs_validation";
+  const competitionGap = competitorEvidence > 0
+    ? (weakGapEvidence > 0 ? "gap_evidenced" : "competition_evidenced")
+    : "needs_validation";
+  const recurringRevenue = repeatCount >= 3 ? "promising" : repeatCount === 2 ? "possible" : "unproven";
+  const automationFit = build >= 70 ? "strong" : build >= 50 ? "medium" : "weak";
+  const evidenceConfidence = isMarketplace
+    ? (marketplaceEvidenceReady ? "corroborated" : "weak")
+    : (repeatCount >= 3 ? "corroborated" : repeatCount === 2 ? "partial" : "single_signal");
+  const validationMissing = [
+    ...(willingnessToPay === "needs_validation" ? ["willingness_to_pay"] : []),
+    ...(competitionGap === "needs_validation" ? ["competition_gap"] : [])
+  ];
+  const commercializationStatus = validationMissing.length
+    ? "validation_required"
+    : (repeatCount >= 3 && build >= 70 ? "commercialization_candidate" : "observe");
+
+  reasons.push("사업화 " + commercializationStatus);
+  if (validationMissing.length) reasons.push("추가검증 " + validationMissing.join(","));
+
   return {
     score,
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand+marketplace-evidence-v0.4.5",
+      judge_version: "opportunity-judge-v1",
+
       judge_mode: "demand",
       opportunity_type: "business_opportunity",
       demand_status: status,
@@ -313,7 +338,17 @@ function judgeDemandOpportunity(o, text) {
       payout_kind: "not_applicable",
       payout_trust: "not_applicable",
       requires_pay_check: false,
-      hard_cap: 69
+      hard_cap: 69,
+      commercialization_status: commercializationStatus,
+      willingness_to_pay: willingnessToPay,
+      competition_gap: competitionGap,
+      recurring_revenue: recurringRevenue,
+      automation_fit: automationFit,
+      evidence_confidence: evidenceConfidence,
+      validation_missing: validationMissing,
+      payment_evidence: paymentEvidence,
+      pricing_evidence: pricingEvidence,
+      competitor_evidence: competitorEvidence
     }
   };
 }
