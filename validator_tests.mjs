@@ -319,3 +319,13 @@ const workerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "u
 assert.match(workerSource, /\\\\n/);
 const suspicious = workerSource.match(/re\.textContent='[^']*\n[^']*'/);
 assert.equal(suspicious, null);
+
+
+const provenanceOpps = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"prov-a", app_name:"Prov A", evidence_id:"r1", rating:1, review_text:"Inventory sync is broken and requires manual CSV export.", url:"https://example.invalid/prov-a" },
+  { marketplace:"shopify", app_id:"prov-b", app_name:"Prov B", evidence_id:"r2", rating:2, review_text:"Inventory sync mismatch means manual CSV export every day.", url:"https://example.invalid/prov-b" }
+]);
+assert.equal(provenanceOpps.length, 1);
+assert.equal(provenanceOpps[0].evidence.length, 2);
+assert.equal(provenanceOpps[0].evidence[0].complaint_bearing, true);
+assert.match(provenanceOpps[0].evidence[0].url, /prov-a/);
