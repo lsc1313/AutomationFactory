@@ -561,10 +561,91 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
   return out;
 }
 
-// v0.4.4 collector seam: site adapters feed normalized review/listing evidence here.
-// Keeping adapters separate prevents marketplace HTML/API changes from corrupting Judge logic.
+// v0.4.4 public Shopify adapter. It intentionally uses only public App Store pages.
+// Site adapters stay isolated so markup changes fail this source without corrupting Judge logic.
+function decodeEntities(input) {
+  return String(input || "")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x27;/g, "'");
+}
+
+function shopifyReviewLinks(html) {
+  const links = new Set();
+  const re = /href=["'](\/[^"'?#]+\/reviews(?:\?[^"']*)?)["']/gi;
+  let m;
+  while ((m = re.exec(String(html || "")))) {
+    const path = m[1].replace(/&amp;/g, "&");
+    if (!path.includes("/categories/")) links.add("https://apps.shopify.com" + path);
+  }
+  return [...links];
+}
+
+export function parseShopifyReviewPage(html, url = "") {
+  const raw = String(html || "");
+  const title = decodeEntities(stripHtml((raw.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || "Shopify app"));
+  const slug = (() => { try { return new URL(url).pathname.split("/").filter(Boolean)[0] || title; } catch { return title; } })();
+  const evidence = [];
+
+  // Shopify review cards expose rating in accessible labels/text and review prose in the card.
+  const chunks = raw.split(/<(?:article|div)[^>]+(?:review|Review)[^>]*>/i);
+  for (const chunk of chunks.slice(1, 80)) {
+    const block = chunk.slice(0, 12000);
+    const ratingMatch = block.match(/(?:rating|stars?)[^0-9]{0,40}([1-5])(?:\s*(?:out of|\/)?\s*5)?/i)
+      || block.match(/([1-5])\s*(?:out of|\/)\s*5/i);
+    const rating = ratingMatch ? Number(ratingMatch[1]) : null;
+    if (rating == null || rating > 2) continue;
+    const text = decodeEntities(stripHtml(block)).slice(0, 1800);
+    if (text.length < 25) continue;
+    evidence.push({
+      marketplace: "shopify", app_id: slug, app_name: title, rating,
+      review_text: text, url, posted_at: ""
+    });
+  }
+  return evidence;
+}
+
+async function fetchText(url) {
+  const res = await fetch(url, {
+    headers: { "accept":"text/html,application/xhtml+xml", "user-agent":"AutomationFactory-MoneyScout/0.4.4" }
+  });
+  if (!res.ok) throw new Error("Marketplace HTTP " + res.status + " · " + url);
+  return await res.text();
+}
+
+export async function collectShopifyMarketplaceEvidence() {
+  const discovery = [
+    "https://apps.shopify.com/categories/store-management-operations",
+    "https://apps.shopify.com/categories/store-management-finances",
+    "https://apps.shopify.com/categories/store-management-orders-and-shipping"
+  ];
+  const reviewUrls = new Set();
+  for (const url of discovery) {
+    try {
+      const html = await fetchText(url);
+      for (const link of shopifyReviewLinks(html)) reviewUrls.add(link);
+    } catch {}
+  }
+
+  // Stable public review pages keep the adapter useful even when category markup omits review links.
+  for (const slug of ["product-reviews-addon","judge-me","loox"]) {
+    reviewUrls.add("https://apps.shopify.com/" + slug + "/reviews");
+  }
+
+  const evidence = [];
+  for (const url of [...reviewUrls].slice(0, 18)) {
+    try {
+      const html = await fetchText(url);
+      evidence.push(...parseShopifyReviewPage(html, url));
+    } catch {}
+  }
+  return evidence.slice(0, 120);
+}
+
 export async function collectMarketplaceDemand() {
-  return marketplaceEvidenceToOpportunities([]);
+  const evidence = [];
+  const shopify = await collectShopifyMarketplaceEvidence();
+  evidence.push(...shopify);
+  return marketplaceEvidenceToOpportunities(evidence);
 }
 
 export const SOURCE_REGISTRY = {
