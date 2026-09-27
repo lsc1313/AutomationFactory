@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.5.1";
+const APP_VERSION = "0.5.2";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -466,7 +466,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.5.1 · Evidence Provenance · 근거 UI 렌더링 수정</div>
+  <div class="footer">v0.5.2 · Independent Evidence · REPEAT와 독립 repo 근거 일치</div>
 </div>
 <script>
 let grade='all';
