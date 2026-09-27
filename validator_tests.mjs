@@ -163,3 +163,25 @@ assert.equal(noise.grade, "cold");
 assert.equal(noise.breakdown.demand_status, "noise");
 
 console.log("validator tests: OK");
+
+
+const marketplaceRepeated = judged({
+  source: "marketplace_demand",
+  type: "business_opportunity",
+  title: "Shopify to accounting sync keeps requiring manual CSV repair",
+  description: "Recent low-star reviews repeatedly report manual export/import, sync mismatch and re-entry.",
+  skills: "marketplace:shopify, demand_group:data_pipeline, demand_fingerprint:data_sync, demand_repeat:3, demand_problem:yes, demand_context:review_evidence, complaint_count:4, low_star_reviews:3, competitor_strength:weak, automation"
+});
+assert.equal(marketplaceRepeated.grade, "watch");
+assert.equal(marketplaceRepeated.breakdown.judge_mode, "demand");
+assert.equal(marketplaceRepeated.breakdown.demand_status, "product_candidate");
+
+const marketplaceSingle = judged({
+  source: "marketplace_demand",
+  type: "business_opportunity",
+  title: "One review asks for CSV export",
+  description: "A single user asks for CSV export.",
+  skills: "marketplace:chrome, demand_group:reporting_export, demand_fingerprint:csv_export, demand_repeat:1, demand_problem:yes, demand_context:review_evidence"
+});
+assert.equal(marketplaceSingle.grade, "cold");
+assert.equal(marketplaceSingle.breakdown.demand_status, "signal");
