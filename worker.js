@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.6.4";
+const APP_VERSION = "0.6.5";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -284,6 +284,7 @@ async function runScout(env, sourceNames = null) {
 
 async function crossValidateMarkets(env) {
   await ensureSchema(env);
+  const refresh = await runScout(env, ["marketplace_demand"]);
   const rows=(await env.DB.prepare(`SELECT opportunity_id,source,source_item_id,type,title,description,budget_min,budget_max,currency,location,skills,posted_at,deadline,competition,url FROM opportunities WHERE source IN ('github_demand','marketplace_demand') ORDER BY last_seen_at DESC LIMIT 2000`).all()).results||[];
   const fp=v=>(String(v||"").match(/demand_fingerprint:([a-z0-9_-]+)/i)||[])[1]||"";
   const metric=(v,n)=>Number((String(v||"").match(new RegExp(n+":(\\d+)","i"))||[])[1]||0);
@@ -291,16 +292,20 @@ async function crossValidateMarkets(env) {
   for(const r of rows.filter(x=>x.source==="marketplace_demand")){
     const k=fp(r.skills); if(!k)continue;
     const m=markets.get(k)||{payment:0,pricing:0,competitors:0,weak:0};
-    m.payment+=metric(r.skills,"payment_evidence");m.pricing+=metric(r.skills,"pricing_evidence");
-    m.competitors+=metric(r.skills,"competitor_evidence");m.weak+=metric(r.skills,"weak_competitor_signals");
+    m.payment+=metric(r.skills,"payment_evidence");
+    m.pricing+=metric(r.skills,"pricing_evidence");
+    m.competitors+=metric(r.skills,"competitor_evidence");
+    m.weak+=metric(r.skills,"weak_competitor_signals");
     markets.set(k,m);
   }
   let matched=0,promoted=0;
   for(const r of rows.filter(x=>x.source==="github_demand")){
-    const k=fp(r.skills),m=markets.get(k); if(!k||!m)continue; matched++;
+    const k=fp(r.skills),m=markets.get(k); if(!k||!m)continue;
+    matched++;
     const base=String(r.skills||"").replace(/,?\\s*(payment_evidence|pricing_evidence|competitor_evidence|weak_competitor_signals|cross_market_validation):[^,]+/gi,"").replace(/^,\\s*|,\\s*$/g,"");
     r.skills=[base,"payment_evidence:"+m.payment,"pricing_evidence:"+m.pricing,"competitor_evidence:"+m.competitors,"weak_competitor_signals:"+m.weak,"cross_market_validation:yes"].filter(Boolean).join(", ");
-    const j=judgeOpportunity(r); if(j.breakdown?.commercialization_status==="commercialization_candidate")promoted++;
+    const j=judgeOpportunity(r);
+    if(j.breakdown?.commercialization_status==="commercialization_candidate")promoted++;
     await env.DB.prepare(`UPDATE opportunities SET skills=?,score=?,grade=?,score_breakdown=?,judge_reason=?,updated_at=? WHERE opportunity_id=?`).bind(r.skills,j.score,j.grade,JSON.stringify(j.breakdown),j.reason,nowIso(),r.opportunity_id).run();
   }
   return {ok:true,matched,promoted,market_fingerprints:markets.size,marketplace_refresh:{found:refresh.found,saved:refresh.saved,errors:refresh.errors}};
@@ -490,7 +495,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.4 · Cross-Market Validator · 최신 Marketplace 자동갱신</div>
+  <div class="footer">v0.6.5 · Cross-Market Validator · refresh 런타임 수정</div>
 </div>
 <script>
 let grade='all';
