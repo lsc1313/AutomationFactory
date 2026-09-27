@@ -416,3 +416,12 @@ const candidateViewWorker = fs.readFileSync(new URL("./worker.js", import.meta.u
 assert.match(candidateViewWorker, /사업화 후보 '\+ready\.length\+'개/);
 assert.match(candidateViewWorker, /검증 대기 '\+pending\.length\+'개 보기/);
 assert.match(candidateViewWorker, /commercialization_candidate/);
+
+const autopilotWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(autopilotWorker, /async function runMoneyPipeline/);
+assert.match(autopilotWorker, /ctx\.waitUntil\(runMoneyPipeline\(env\)\)/);
+assert.match(autopilotWorker, /\/api\/pipeline\/run/);
+assert.match(autopilotWorker, /💰 지금 돈 될 후보 보기/);
+assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
+assert.doesNotMatch(autopilotWorker, /<button id="rejudgeBtn">/);
+assert.doesNotMatch(autopilotWorker, /<button id="validateBtn">/);
