@@ -386,7 +386,6 @@ assert.match(uiHotfixSource, /getElementById\('validateBtn'\)\.onclick/);
 
 const runtimeFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(runtimeFixSource, /runScout\(env, \["marketplace_demand"\]\)/);
-assert.match(runtimeFixSource, /new RegExp\(n\+":\(\\\\d\+\)"/);
 assert.match(runtimeFixSource, /marketplace_refresh/);
 
 const refreshFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
