@@ -510,7 +510,12 @@ export function normalizeMarketplaceEvidence(input = {}) {
     text,
     url: String(input.url || input.review_url || input.app_url || ""),
     posted_at: String(input.posted_at || input.review_date || input.updated_at || ""),
-    competitor_strength: String(input.competitor_strength || "unknown").toLowerCase()
+    competitor_strength: String(input.competitor_strength || "unknown").toLowerCase(),
+    evidence_kind: String(input.evidence_kind || (input.review_text ? "review" : input.complaint ? "support" : "listing")).toLowerCase(),
+    evidence_quality: String(input.evidence_quality || (input.review_text ? "strong" : input.complaint ? "medium" : "weak")).toLowerCase(),
+    complaint_bearing: input.complaint_bearing != null
+      ? Boolean(input.complaint_bearing)
+      : Boolean(input.review_text || input.complaint)
   };
 }
 
@@ -528,10 +533,15 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
 
   const out = [];
   for (const [key, items] of groups) {
-    const repos = new Set(items.map((x) => x.app_id));
+    // Only corroborated complaint-bearing review/support evidence can promote demand.
+    // Listing/directory prose is useful market context but must never count as a user complaint.
+    const complaintEvidence = items.filter((x) =>
+      x.complaint_bearing && (x.evidence_quality === "strong" || x.evidence_quality === "medium")
+    );
+    const repos = new Set(complaintEvidence.map((x) => x.app_id));
     const repeat = repos.size;
-    const lowStars = items.filter((x) => x.low_star).length;
-    const complaints = items.filter((x) => x.pain_signal || x.manual_signal || x.sync_signal).length;
+    const lowStars = complaintEvidence.filter((x) => x.low_star).length;
+    const complaints = complaintEvidence.filter((x) => x.pain_signal || x.manual_signal || x.sync_signal).length;
     const sample = items[0];
     const weakCompetitors = items.filter((x) => x.competitor_strength === "weak").length;
     const description = items.slice(0, 5).map((x) => x.text).join(" | ").slice(0, 3000);
@@ -540,7 +550,7 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
       source_item_id: key,
       type: "business_opportunity",
       title: "[" + sample.marketplace + "] " + sample.fingerprint + " · repeated marketplace pain",
-      description: "[MARKETPLACE EVIDENCE v0.4.4] " + description,
+      description: "[MARKETPLACE EVIDENCE v0.4.6] " + description,
       budget_min: null,
       budget_max: null,
       currency: "",
@@ -618,7 +628,8 @@ export function parseShopifyReviewPage(html, url = "") {
     if (text.length < 25) continue;
     evidence.push({
       marketplace: "shopify", app_id: slug, app_name: title, rating,
-      review_text: text, url, posted_at: ""
+      review_text: text, url, posted_at: "",
+      evidence_kind:"review", evidence_quality:"strong", complaint_bearing:true
     });
   }
   return evidence;
@@ -668,9 +679,11 @@ export function parseChromeWebStorePage(html, url = "") {
   const ratingMatch = text.match(/([1-5](?:\.[0-9])?)\s*(?:out of 5|\([0-9,]+ ratings?\)|ratings?)/i);
   const rating = ratingMatch ? Number(ratingMatch[1]) : null;
   return [{
-    marketplace:"chrome", app_id:id, app_name:title, rating,
-    // Detail-page prose is demand evidence even when individual reviews are JS-loaded.
-    description:text.slice(0, 3500), url, posted_at:""
+    marketplace:"chrome", app_id:id, app_name:title,
+    // Chrome detail-page prose is listing/competition context, not a user review.
+    // Do not infer review stars from aggregate/listing rating text.
+    rating:null, description:text.slice(0, 3500), url, posted_at:"",
+    evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false
   }];
 }
 
@@ -711,7 +724,8 @@ export function parseWorkspaceMarketplacePage(html, url = "") {
   const title = decodeEntities(stripHtml((String(html).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || text.slice(0, 120)));
   return [{
     marketplace:"google_workspace", app_id:id, app_name:title,
-    description:text.slice(0, 4000), url, posted_at:""
+    description:text.slice(0, 4000), url, posted_at:"",
+    evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false
   }].filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround|automate)/i.test(x.description));
 }
 
@@ -734,6 +748,7 @@ export function parseAtlassianReviews(payload, addonKey) {
     marketplace:"atlassian", app_id:addonKey, app_name:addonKey,
     evidence_id:String(r.id || i), rating:Number(r.stars),
     review_text:String(r.review || r.content || ""),
+    evidence_kind:"review", evidence_quality:"strong", complaint_bearing:true,
     url:"https://marketplace.atlassian.com/apps/" + encodeURIComponent(addonKey),
     posted_at:String(r.date || "")
   }));
@@ -768,7 +783,8 @@ export function parseDiscordDirectoryApps(payload) {
       url:"https://discord.com/discovery/applications/" + encodeURIComponent(id),
       posted_at:"",
       // Directory presence is competition evidence, not complaint evidence.
-      competitor_strength: installs >= 100000 ? "strong" : installs >= 10000 ? "medium" : "unknown"
+      competitor_strength: installs >= 100000 ? "strong" : installs >= 10000 ? "medium" : "unknown",
+      evidence_kind:"directory", evidence_quality:"weak", complaint_bearing:false
     };
   }).filter((x) => x.description.length > 10);
 }

@@ -9,7 +9,9 @@ import {
   normalizeMarketplaceEvidence,
   marketplaceEvidenceToOpportunities,
   parseWorkspaceMarketplacePage,
-  workspaceListingLinks
+  workspaceListingLinks,
+  parseChromeWebStorePage,
+  parseShopifyReviewPage
 } from "./sources.js";
 
 function judged(x) {
@@ -249,6 +251,44 @@ const guardEvidence = normalizeMarketplaceEvidence({
 });
 assert.equal(guardEvidence.fingerprint, "automation_guard");
 assert.equal(guardEvidence.group, "reliability");
+
+
+// v0.4.6 evidence-integrity regression: listing prose must never become complaint demand.
+const chromeListing = parseChromeWebStorePage(
+  "<h1>Exporter</h1><p>CSV export and sync workflow. 1 out of 5 ratings.</p>",
+  "https://chromewebstore.google.com/detail/exporter/abcdefghijklmnop"
+);
+assert.equal(chromeListing[0].evidence_kind, "listing");
+assert.equal(chromeListing[0].evidence_quality, "weak");
+assert.equal(chromeListing[0].complaint_bearing, false);
+assert.equal(chromeListing[0].rating, null);
+
+assert.equal(workspaceDetail[0].evidence_kind, "listing");
+assert.equal(workspaceDetail[0].evidence_quality, "weak");
+assert.equal(workspaceDetail[0].complaint_bearing, false);
+
+const threeWeakListings = marketplaceEvidenceToOpportunities([
+  { marketplace:"chrome", app_id:"a", description:"CSV export sync workflow", evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false },
+  { marketplace:"chrome", app_id:"b", description:"CSV export sync workflow", evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false },
+  { marketplace:"chrome", app_id:"c", description:"CSV export sync workflow", evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false }
+]);
+assert.equal(threeWeakListings.length, 0);
+
+const reviewPlusListings = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"review-a", rating:1, review_text:"CSV export sync is broken and requires manual work", evidence_kind:"review", evidence_quality:"strong", complaint_bearing:true },
+  { marketplace:"shopify", app_id:"listing-b", description:"CSV export sync workflow", evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false },
+  { marketplace:"shopify", app_id:"listing-c", description:"CSV export sync workflow", evidence_kind:"listing", evidence_quality:"weak", complaint_bearing:false }
+]);
+assert.equal(reviewPlusListings.length, 0);
+
+const twoStrongReviews = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"review-a", rating:1, review_text:"CSV export sync is broken and requires manual work", evidence_kind:"review", evidence_quality:"strong", complaint_bearing:true },
+  { marketplace:"shopify", app_id:"review-b", rating:2, review_text:"CSV export sync is broken and requires manual work", evidence_kind:"review", evidence_quality:"strong", complaint_bearing:true }
+]);
+assert.equal(twoStrongReviews.length, 1);
+assert.match(twoStrongReviews[0].skills, /demand_repeat:2/);
+assert.match(twoStrongReviews[0].skills, /complaint_count:2/);
+assert.match(twoStrongReviews[0].skills, /low_star_reviews:2/);
 
 const marketplaceJudgeEvidence = judged({
   source:"marketplace_demand", type:"business_opportunity",
