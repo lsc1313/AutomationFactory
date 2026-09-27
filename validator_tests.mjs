@@ -379,3 +379,7 @@ const crossMarketWorkerSource = fs.readFileSync(new URL("./worker.js", import.me
 assert.match(crossMarketWorkerSource, /async function crossValidateMarkets/);
 assert.match(crossMarketWorkerSource, /cross_market_validation:yes/);
 assert.match(crossMarketWorkerSource, /\/api\/validate\/markets/);
+
+const uiHotfixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(uiHotfixSource, /id="validateBtn">시장 교차검증/);
+assert.match(uiHotfixSource, /getElementById\('validateBtn'\)\.onclick/);
