@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
-import { collectSources, SOURCE_REGISTRY } from "./sources.js";
+import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.6.5";
+const APP_VERSION = "0.6.6";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -284,31 +284,32 @@ async function runScout(env, sourceNames = null) {
 
 async function crossValidateMarkets(env) {
   await ensureSchema(env);
-  const refresh = await runScout(env, ["marketplace_demand"]);
-  const rows=(await env.DB.prepare(`SELECT opportunity_id,source,source_item_id,type,title,description,budget_min,budget_max,currency,location,skills,posted_at,deadline,competition,url FROM opportunities WHERE source IN ('github_demand','marketplace_demand') ORDER BY last_seen_at DESC LIMIT 2000`).all()).results||[];
+  const raw = await collectMarketplaceValidationEvidence();
+  const rows=(await env.DB.prepare(`SELECT opportunity_id,source,source_item_id,type,title,description,budget_min,budget_max,currency,location,skills,posted_at,deadline,competition,url FROM opportunities WHERE source='github_demand' ORDER BY last_seen_at DESC LIMIT 2000`).all()).results||[];
   const fp=v=>(String(v||"").match(/demand_fingerprint:([a-z0-9_-]+)/i)||[])[1]||"";
-  const metric=(v,n)=>Number((String(v||"").match(new RegExp(n+":(\\d+)","i"))||[])[1]||0);
   const markets=new Map();
-  for(const r of rows.filter(x=>x.source==="marketplace_demand")){
-    const k=fp(r.skills); if(!k)continue;
-    const m=markets.get(k)||{payment:0,pricing:0,competitors:0,weak:0};
-    m.payment+=metric(r.skills,"payment_evidence");
-    m.pricing+=metric(r.skills,"pricing_evidence");
-    m.competitors+=metric(r.skills,"competitor_evidence");
-    m.weak+=metric(r.skills,"weak_competitor_signals");
+  for(const e of raw.evidence){
+    const k=String(e.fingerprint||""); if(!k||k==="unclassified")continue;
+    const m=markets.get(k)||{payment:0,pricing:0,competitors:new Set(),weak:0,evidence:0};
+    const text=String(e.text||"");
+    if(/(paid|pricing|price|plan|subscription|monthly|annual|per month|per year|\$\s*\d+|€\s*\d+|£\s*\d+)/i.test(text))m.payment++;
+    if(/(\$|€|£)\s*\d+|\b\d+(?:\.\d+)?\s*(?:usd|eur|gbp)\b|per month|per year|\/month|\/year/i.test(text))m.pricing++;
+    if(e.app_id)m.competitors.add(e.marketplace+":"+e.app_id);
+    if(e.competitor_strength==="weak")m.weak++;
+    m.evidence++;
     markets.set(k,m);
   }
   let matched=0,promoted=0;
-  for(const r of rows.filter(x=>x.source==="github_demand")){
+  for(const r of rows){
     const k=fp(r.skills),m=markets.get(k); if(!k||!m)continue;
     matched++;
-    const base=String(r.skills||"").replace(/,?\\s*(payment_evidence|pricing_evidence|competitor_evidence|weak_competitor_signals|cross_market_validation):[^,]+/gi,"").replace(/^,\\s*|,\\s*$/g,"");
-    r.skills=[base,"payment_evidence:"+m.payment,"pricing_evidence:"+m.pricing,"competitor_evidence:"+m.competitors,"weak_competitor_signals:"+m.weak,"cross_market_validation:yes"].filter(Boolean).join(", ");
+    const base=String(r.skills||"").replace(/,?\s*(payment_evidence|pricing_evidence|competitor_evidence|weak_competitor_signals|cross_market_validation):[^,]+/gi,"").replace(/^,\s*|,\s*$/g,"");
+    r.skills=[base,"payment_evidence:"+m.payment,"pricing_evidence:"+m.pricing,"competitor_evidence:"+m.competitors.size,"weak_competitor_signals:"+m.weak,"cross_market_validation:yes"].filter(Boolean).join(", ");
     const j=judgeOpportunity(r);
     if(j.breakdown?.commercialization_status==="commercialization_candidate")promoted++;
     await env.DB.prepare(`UPDATE opportunities SET skills=?,score=?,grade=?,score_breakdown=?,judge_reason=?,updated_at=? WHERE opportunity_id=?`).bind(r.skills,j.score,j.grade,JSON.stringify(j.breakdown),j.reason,nowIso(),r.opportunity_id).run();
   }
-  return {ok:true,matched,promoted,market_fingerprints:markets.size,marketplace_refresh:{found:refresh.found,saved:refresh.saved,errors:refresh.errors}};
+  return {ok:true,matched,promoted,market_fingerprints:markets.size,raw_evidence:raw.evidence.length,diagnostics:raw.diagnostics};
 }
 
 async function rejudgeAll(env) {
@@ -495,7 +496,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.5 · Cross-Market Validator · refresh 런타임 수정</div>
+  <div class="footer">v0.6.6 · Raw Market Validator · 수요필터와 시장근거 분리</div>
 </div>
 <script>
 let grade='all';
@@ -555,7 +556,7 @@ document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.que
 document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
 document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
 document.getElementById('scanBtn').onclick=async()=>{const b=document.getElementById('scanBtn');b.disabled=true;b.textContent='스캔 중…';try{const r=await api('/api/scout/run',{method:'POST',body:'{}'});alert('스캔 완료: '+r.found+'건 발견 / '+r.saved+'건 저장'+(r.errors?.length?' / 오류 '+r.errors.length+'\\n\\n'+r.errors.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n'):'') );await load();}catch(e){alert('스캔 실패: '+e.message);}finally{b.disabled=false;b.textContent='지금 스캔';}};
-document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('validateBtn').onclick=async()=>{const b=document.getElementById('validateBtn');b.disabled=true;b.textContent='교차검증 중…';try{const r=await api('/api/validate/markets',{method:'POST',body:'{}'});alert('시장 교차검증 완료: Marketplace '+(r.marketplace_refresh?.saved||0)+'건 갱신 / fingerprint '+r.market_fingerprints+'개 / GitHub 매칭 '+r.matched+'건 / 사업화 후보 '+r.promoted+'건'+(r.marketplace_refresh?.errors?.length?' / 수집오류 '+r.marketplace_refresh.errors.length:''));await load();}catch(e){alert('교차검증 실패: '+e.message);}finally{b.disabled=false;b.textContent='시장 교차검증';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
+document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('validateBtn').onclick=async()=>{const b=document.getElementById('validateBtn');b.disabled=true;b.textContent='교차검증 중…';try{const r=await api('/api/validate/markets',{method:'POST',body:'{}'});alert('시장 교차검증 완료: 원시근거 '+r.raw_evidence+'건 / fingerprint '+r.market_fingerprints+'개 / GitHub 매칭 '+r.matched+'건 / 사업화 후보 '+r.promoted+'건\\n'+(r.diagnostics||[]).map(x=>x.marketplace+': '+x.count+(x.error?' ('+x.error+')':'')).join(' / '));await load();}catch(e){alert('교차검증 실패: '+e.message);}finally{b.disabled=false;b.textContent='시장 교차검증';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
 load().catch(e=>document.getElementById('list').innerHTML='<div class="empty error">오류: '+esc(e.message)+'</div>');
 </script></body></html>`;
 }
