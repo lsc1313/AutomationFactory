@@ -860,18 +860,30 @@ export async function collectDiscordMarketplaceEvidence() {
   return evidence;
 }
 
-export async function collectMarketplaceDemand() {
+export async function collectMarketplaceValidationEvidence() {
   const evidence = [];
+  const diagnostics = [];
   const adapters = [
-    collectShopifyMarketplaceEvidence,
-    collectChromeMarketplaceEvidence,
-    collectWorkspaceMarketplaceEvidence,
-    collectAtlassianMarketplaceEvidence,
-    collectDiscordMarketplaceEvidence
+    ["shopify", collectShopifyMarketplaceEvidence],
+    ["chrome", collectChromeMarketplaceEvidence],
+    ["google_workspace", collectWorkspaceMarketplaceEvidence],
+    ["atlassian", collectAtlassianMarketplaceEvidence],
+    ["discord", collectDiscordMarketplaceEvidence]
   ];
-  for (const adapter of adapters) {
-    try { evidence.push(...await adapter()); } catch {}
+  for (const [marketplace, adapter] of adapters) {
+    try {
+      const items = await adapter();
+      evidence.push(...items);
+      diagnostics.push({ marketplace, count: items.length, error: "" });
+    } catch (error) {
+      diagnostics.push({ marketplace, count: 0, error: error?.message || String(error) });
+    }
   }
+  return { evidence: evidence.map(normalizeMarketplaceEvidence), diagnostics };
+}
+
+export async function collectMarketplaceDemand() {
+  const { evidence } = await collectMarketplaceValidationEvidence();
   return marketplaceEvidenceToOpportunities(evidence);
 }
 
