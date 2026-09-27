@@ -469,7 +469,312 @@ export async function collectGitHubDemandSignals() {
   });
 }
 
+
+const MARKETPLACE_NAMES = new Set(["shopify","discord","chrome","google_workspace","atlassian"]);
+
+function marketplaceProblemText(x) {
+  return [
+    x?.title, x?.review_title, x?.review_text, x?.description, x?.complaint, x?.notes
+  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+export function normalizeMarketplaceEvidence(input = {}) {
+  const marketplace = String(input.marketplace || input.platform || "").toLowerCase().trim();
+  if (!MARKETPLACE_NAMES.has(marketplace)) throw new Error("지원하지 않는 marketplace: " + marketplace);
+
+  const text = marketplaceProblemText(input);
+  const rating = num(input.rating);
+  const lowStar = rating != null && rating <= 2;
+  const manual = /(manual|manually|copy.?paste|copy and paste|re[- ]?enter|reentry|re-enter|csv|export|import|spreadsheet|excel|workaround|수동|복붙|재입력)/i.test(text);
+  const sync = /(sync|synchroni[sz]|mismatch|out of sync|doesn.?t update|not updating|delay|oversell|mapping|동기화|불일치|업데이트 안)/i.test(text);
+  const pain = /(problem|issue|broken|fail|error|missing|lack|cannot|can.?t|doesn.?t work|support|frustrat|problematic|문제|오류|안됨|불편)/i.test(text);
+  const fingerprint = demandFingerprint(text);
+  const group = demandGroup(text);
+
+  return {
+    marketplace,
+    app_id: String(input.app_id || input.product_id || input.slug || input.app_name || "unknown"),
+    app_name: String(input.app_name || input.product_name || input.title || "Unknown app"),
+    evidence_id: String(input.evidence_id || input.review_id || input.id || ""),
+    rating,
+    low_star: lowStar,
+    manual_signal: manual,
+    sync_signal: sync,
+    pain_signal: pain,
+    fingerprint,
+    group,
+    text,
+    url: String(input.url || input.review_url || input.app_url || ""),
+    posted_at: String(input.posted_at || input.review_date || input.updated_at || ""),
+    competitor_strength: String(input.competitor_strength || "unknown").toLowerCase()
+  };
+}
+
+export function marketplaceEvidenceToOpportunities(rawItems = []) {
+  const normalized = rawItems.map(normalizeMarketplaceEvidence)
+    .filter((x) => x.text && (x.low_star || x.manual_signal || x.sync_signal || x.pain_signal))
+    .filter((x) => x.fingerprint !== "unclassified");
+
+  const groups = new Map();
+  for (const x of normalized) {
+    const key = x.marketplace + ":" + x.fingerprint;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(x);
+  }
+
+  const out = [];
+  for (const [key, items] of groups) {
+    const repos = new Set(items.map((x) => x.app_id));
+    const repeat = repos.size;
+    const lowStars = items.filter((x) => x.low_star).length;
+    const complaints = items.filter((x) => x.pain_signal || x.manual_signal || x.sync_signal).length;
+    const sample = items[0];
+    const weakCompetitors = items.filter((x) => x.competitor_strength === "weak").length;
+    const description = items.slice(0, 5).map((x) => x.text).join(" | ").slice(0, 3000);
+    out.push({
+      source: "marketplace_demand",
+      source_item_id: key,
+      type: "business_opportunity",
+      title: "[" + sample.marketplace + "] " + sample.fingerprint + " · repeated marketplace pain",
+      description: "[MARKETPLACE EVIDENCE v0.4.4] " + description,
+      budget_min: null,
+      budget_max: null,
+      currency: "",
+      location: "Online",
+      skills: [
+        "marketplace:" + sample.marketplace,
+        "demand_group:" + sample.group,
+        "demand_fingerprint:" + sample.fingerprint,
+        "demand_repeat:" + repeat,
+        "demand_problem:yes",
+        "demand_context:review_evidence",
+        "complaint_count:" + complaints,
+        "low_star_reviews:" + lowStars,
+        "weak_competitor_signals:" + weakCompetitors
+      ].join(", "),
+      posted_at: items.map((x) => x.posted_at).filter(Boolean).sort().at(-1) || "",
+      deadline: "",
+      competition: null,
+      url: sample.url
+    });
+  }
+  return out;
+}
+
+// v0.4.4 public Shopify adapter. It intentionally uses only public App Store pages.
+// Site adapters stay isolated so markup changes fail this source without corrupting Judge logic.
+function decodeEntities(input) {
+  return String(input || "")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x27;/g, "'");
+}
+
+function shopifyReviewLinks(html) {
+  const links = new Set();
+  const re = /href=["'](\/[^"'?#]+\/reviews(?:\?[^"']*)?)["']/gi;
+  let m;
+  while ((m = re.exec(String(html || "")))) {
+    const path = m[1].replace(/&amp;/g, "&");
+    if (!path.includes("/categories/")) links.add("https://apps.shopify.com" + path);
+  }
+  return [...links];
+}
+
+export function parseShopifyReviewPage(html, url = "") {
+  const raw = String(html || "");
+  const title = decodeEntities(stripHtml((raw.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || "Shopify app"));
+  const slug = (() => { try { return new URL(url).pathname.split("/").filter(Boolean)[0] || title; } catch { return title; } })();
+  const evidence = [];
+
+  // Shopify review cards expose rating in accessible labels/text and review prose in the card.
+  // Prefer semantic/card boundaries, but fall back to date/rating text windows because
+  // Shopify does not guarantee a stable public CSS class for review cards.
+  let chunks = raw.split(/<(?:article|div)[^>]+(?:review|Review)[^>]*>/i).slice(1);
+  if (!chunks.length) {
+    const anchors = [...raw.matchAll(/(?:[1-5]\s*(?:out of|\/)\s*5|(?:rating|stars?)[^0-9]{0,40}[1-5])/gi)];
+    chunks = anchors.slice(0, 80).map((m) => raw.slice(Math.max(0, m.index - 1200), m.index + 9000));
+  }
+  for (const chunk of chunks.slice(0, 80)) {
+    const block = chunk.slice(0, 12000);
+    const ratingMatch = block.match(/(?:rating|stars?)[^0-9]{0,40}([1-5])(?:\s*(?:out of|\/)?\s*5)?/i)
+      || block.match(/([1-5])\s*(?:out of|\/)\s*5/i);
+    const rating = ratingMatch ? Number(ratingMatch[1]) : null;
+    if (rating == null || rating > 2) continue;
+    const text = decodeEntities(stripHtml(block)).slice(0, 1800);
+    if (text.length < 25) continue;
+    evidence.push({
+      marketplace: "shopify", app_id: slug, app_name: title, rating,
+      review_text: text, url, posted_at: ""
+    });
+  }
+  return evidence;
+}
+
+async function fetchText(url) {
+  const res = await fetch(url, {
+    headers: { "accept":"text/html,application/xhtml+xml", "user-agent":"AutomationFactory-MoneyScout/0.4.4" }
+  });
+  if (!res.ok) throw new Error("Marketplace HTTP " + res.status + " · " + url);
+  return await res.text();
+}
+
+export async function collectShopifyMarketplaceEvidence() {
+  const discovery = [
+    "https://apps.shopify.com/categories/store-management-operations",
+    "https://apps.shopify.com/categories/store-management-finances",
+    "https://apps.shopify.com/categories/store-management-orders-and-shipping"
+  ];
+  const reviewUrls = new Set();
+  for (const url of discovery) {
+    try {
+      const html = await fetchText(url);
+      for (const link of shopifyReviewLinks(html)) reviewUrls.add(link);
+    } catch {}
+  }
+
+  // Stable public review pages keep the adapter useful even when category markup omits review links.
+  for (const slug of ["easycsv","reviewsimportify","wise-reviews","judge-me","loox"]) {
+    reviewUrls.add("https://apps.shopify.com/" + slug + "/reviews");
+  }
+
+  const evidence = [];
+  for (const url of [...reviewUrls].slice(0, 18)) {
+    try {
+      const html = await fetchText(url);
+      evidence.push(...parseShopifyReviewPage(html, url));
+    } catch {}
+  }
+  return evidence.slice(0, 120);
+}
+
+export function parseChromeWebStorePage(html, url = "") {
+  const text = decodeEntities(stripHtml(html));
+  const title = decodeEntities(stripHtml((String(html).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || text.slice(0, 120)));
+  const id = (() => { try { return new URL(url).pathname.split("/").filter(Boolean).at(-1) || title; } catch { return title; } })();
+  const ratingMatch = text.match(/([1-5](?:\.[0-9])?)\s*(?:out of 5|\([0-9,]+ ratings?\)|ratings?)/i);
+  const rating = ratingMatch ? Number(ratingMatch[1]) : null;
+  return [{
+    marketplace:"chrome", app_id:id, app_name:title, rating,
+    // Detail-page prose is demand evidence even when individual reviews are JS-loaded.
+    description:text.slice(0, 3500), url, posted_at:""
+  }];
+}
+
+export async function collectChromeMarketplaceEvidence() {
+  // Seed narrow workflow tools rather than generic extensions. The list can grow from discovery later.
+  const urls = [
+    "https://chromewebstore.google.com/detail/shopify-app-reviews-expor/mplcfkpihmfpnakdenkakklbiipnfijj?hl=en",
+    "https://chromewebstore.google.com/detail/shopify-exporter/mcapkakeigpnehoebmbghpchjokbphmg?hl=en",
+    "https://chromewebstore.google.com/detail/shopify-raise-shopify-sto/hdpfnbgfohonaplgnaahcefglgclmdpo?hl=en"
+  ];
+  const evidence = [];
+  for (const url of urls) {
+    try {
+      const html = await fetchText(url);
+      evidence.push(...parseChromeWebStorePage(html, url));
+    } catch {}
+  }
+  return evidence;
+}
+
+export function parseWorkspaceMarketplacePage(html, url = "") {
+  const text = decodeEntities(stripHtml(html));
+  const chunks = text.split(/(?=\b[1-5](?:\.[0-9])?\s*(?:stars?|rating|M\+|K\+))/i).slice(0, 80);
+  return chunks.map((chunk, i) => ({
+    marketplace:"google_workspace", app_id:"workspace-" + i, app_name:chunk.slice(0, 100),
+    description:chunk.slice(0, 2500), url, posted_at:""
+  })).filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround)/i.test(x.description));
+}
+
+export async function collectWorkspaceMarketplaceEvidence() {
+  const urls = ["https://workspace.google.com/marketplace/"];
+  const evidence = [];
+  for (const url of urls) {
+    try { evidence.push(...parseWorkspaceMarketplacePage(await fetchText(url), url)); } catch {}
+  }
+  return evidence;
+}
+
+export function parseAtlassianReviews(payload, addonKey) {
+  const reviews = payload?._embedded?.reviews || payload?.reviews || [];
+  return reviews.filter((r) => Number(r.stars) <= 2).map((r, i) => ({
+    marketplace:"atlassian", app_id:addonKey, app_name:addonKey,
+    evidence_id:String(r.id || i), rating:Number(r.stars),
+    review_text:String(r.review || r.content || ""),
+    url:"https://marketplace.atlassian.com/apps/" + encodeURIComponent(addonKey),
+    posted_at:String(r.date || "")
+  }));
+}
+
+export async function collectAtlassianMarketplaceEvidence() {
+  // REST v2 GET remains publicly documented; v3 reviews require authentication.
+  // Keep a narrow seed set and fail independently if Atlassian retires anonymous v2 access.
+  const addonKeys = ["com.onresolve.jira.groovy.groovyrunner","com.mxgraph.confluence.plugins.diagramly"];
+  const evidence = [];
+  for (const key of addonKeys) {
+    try {
+      const url = "https://marketplace.atlassian.com/rest/2/addons/" + encodeURIComponent(key) + "/reviews?limit=50&sort=recent";
+      const res = await fetch(url, { headers:{accept:"application/json","user-agent":"AutomationFactory-MoneyScout/0.4.4"} });
+      if (!res.ok) continue;
+      evidence.push(...parseAtlassianReviews(await res.json(), key));
+    } catch {}
+  }
+  return evidence;
+}
+
+export function parseDiscordDirectoryApps(payload) {
+  const apps = Array.isArray(payload) ? payload : (payload?.applications || payload?.results || []);
+  return apps.map((a) => {
+    const name = String(a.name || a.application?.name || "Discord app");
+    const id = String(a.id || a.application_id || a.application?.id || name);
+    const description = String(a.description || a.application?.description || "");
+    const installs = Number(a.approximate_guild_count || a.install_count || a.guild_count || 0);
+    return {
+      marketplace:"discord", app_id:id, app_name:name,
+      description:[description, installs ? "installed_servers:" + installs : "", "directory_listing:yes"].filter(Boolean).join(" "),
+      url:"https://discord.com/discovery/applications/" + encodeURIComponent(id),
+      posted_at:"",
+      // Directory presence is competition evidence, not complaint evidence.
+      competitor_strength: installs >= 100000 ? "strong" : installs >= 10000 ? "medium" : "unknown"
+    };
+  }).filter((x) => x.description.length > 10);
+}
+
+export async function collectDiscordMarketplaceEvidence() {
+  const urls = [
+    "https://discord.com/api/v9/application-directory-static/categories"
+  ];
+  const evidence = [];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers:{accept:"application/json","user-agent":"AutomationFactory-MoneyScout/0.4.4"} });
+      if (!res.ok) continue;
+      const payload = await res.json();
+      // Categories are useful market-size context but contain no user complaint evidence.
+      // Do not synthesize demand opportunities from category counts alone.
+      void payload;
+    } catch {}
+  }
+  return evidence;
+}
+
+export async function collectMarketplaceDemand() {
+  const evidence = [];
+  const adapters = [
+    collectShopifyMarketplaceEvidence,
+    collectChromeMarketplaceEvidence,
+    collectWorkspaceMarketplaceEvidence,
+    collectAtlassianMarketplaceEvidence,
+    collectDiscordMarketplaceEvidence
+  ];
+  for (const adapter of adapters) {
+    try { evidence.push(...await adapter()); } catch {}
+  }
+  return marketplaceEvidenceToOpportunities(evidence);
+}
+
 export const SOURCE_REGISTRY = {
+  marketplace_demand: collectMarketplaceDemand,
   agent_bounties: collectAgentBounties,
   github_paid: collectGitHubPaidDiscovery,
   github_demand: collectGitHubDemandSignals,
