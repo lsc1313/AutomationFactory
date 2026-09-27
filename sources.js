@@ -572,6 +572,13 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
     const complaints = complaintEvidence.filter((x) => x.pain_signal || x.manual_signal || x.sync_signal).length;
     const sample = items[0];
     const weakCompetitors = items.filter((x) => x.competitor_strength === "weak").length;
+    const paidSignal = /(paid|pricing|price|plan|subscription|monthly|annual|per month|per year|\$\s*\d+|€\s*\d+|£\s*\d+)/i;
+    const pricingSignal = /(\$|€|£)\s*\d+|\b\d+(?:\.\d+)?\s*(?:usd|eur|gbp)\b|per month|per year|\/month|\/year/i;
+    const paymentEvidence = items.filter((x) => paidSignal.test(x.text)).length;
+    const pricingEvidence = items.filter((x) => pricingSignal.test(x.text)).length;
+    // Each distinct app/listing is concrete competition evidence. Weak-competitor
+    // flags remain a separate signal for whitespace rather than being inferred.
+    const competitorEvidence = new Set(items.map((x) => x.app_id).filter(Boolean)).size;
     const description = items.slice(0, 5).map((x) => x.text).join(" | ").slice(0, 3000);
     out.push({
       source: "marketplace_demand",
@@ -592,7 +599,10 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
         "demand_context:review_evidence",
         "complaint_count:" + complaints,
         "low_star_reviews:" + lowStars,
-        "weak_competitor_signals:" + weakCompetitors
+        "weak_competitor_signals:" + weakCompetitors,
+        "payment_evidence:" + paymentEvidence,
+        "pricing_evidence:" + pricingEvidence,
+        "competitor_evidence:" + competitorEvidence
       ].join(", "),
       posted_at: items.map((x) => x.posted_at).filter(Boolean).sort().at(-1) || "",
       deadline: "",
