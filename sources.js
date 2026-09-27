@@ -488,11 +488,12 @@ export function normalizeMarketplaceEvidence(input = {}) {
   const manual = /(manual|manually|copy.?paste|copy and paste|re[- ]?enter|reentry|re-enter|csv|export|import|spreadsheet|excel|workaround|수동|복붙|재입력)/i.test(text);
   const sync = /(sync|synchroni[sz]|mismatch|out of sync|doesn.?t update|not updating|delay|oversell|mapping|동기화|불일치|업데이트 안)/i.test(text);
   const pain = /(problem|issue|broken|fail|error|missing|lack|cannot|can.?t|doesn.?t work|support|frustrat|problematic|문제|오류|안됨|불편)/i.test(text);
+  const guard = /(wrong|incorrect|corrupt|data loss|lost data|oversell|duplicate|before (?:sync|run|execut)|pre.?flight|validat|verify|check (?:sku|mapping|location)|audit|monitor|rollback|recover|reconcile|try.?catch|exception|failed sync|sync error|잘못|검증|복구|감사|예외)/i.test(text);
   // Marketplace reviews often mention CSV/export as a workaround for a broken sync.
-  // In that context the product demand is sync/reconciliation, not a generic CSV exporter.
+  // Cross-market failures that need validation/audit/recovery are a distinct last-mile demand.
   const baseFingerprint = demandFingerprint(text);
-  const fingerprint = sync && manual ? "data_sync" : baseFingerprint;
-  const group = sync && manual ? "data_pipeline" : demandGroup(text);
+  const fingerprint = guard && sync ? "automation_guard" : (sync && manual ? "data_sync" : baseFingerprint);
+  const group = guard && sync ? "reliability" : (sync && manual ? "data_pipeline" : demandGroup(text));
 
   return {
     marketplace,
@@ -561,7 +562,17 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
       url: sample.url
     });
   }
-  return out;
+  return out.filter((x) => {
+    const tags = Object.fromEntries(String(x.skills || "").split(", ").map((t) => {
+      const i = t.indexOf(":"); return i > 0 ? [t.slice(0, i), t.slice(i + 1)] : [t, "yes"];
+    }));
+    const repeat = Number(tags.demand_repeat || 0);
+    const complaints = Number(tags.complaint_count || 0);
+    const lowStars = Number(tags.low_star_reviews || 0);
+    // Product candidates need corroboration. A single listing/review remains evidence,
+    // but it must not masquerade as repeated marketplace demand.
+    return repeat >= 2 && complaints >= 2 && (lowStars >= 1 || repeat >= 3);
+  });
 }
 
 // v0.4.4 public Shopify adapter. It intentionally uses only public App Store pages.
@@ -636,7 +647,7 @@ export async function collectShopifyMarketplaceEvidence() {
   }
 
   // Stable public review pages keep the adapter useful even when category markup omits review links.
-  for (const slug of ["easycsv","reviewsimportify","wise-reviews","judge-me","loox"]) {
+  for (const slug of ["easycsv","reviewsimportify","wise-reviews","judge-me","loox","sync-master-gogo","sync-master","sync-app-2-0","multi-store-sync-tipo"]) {
     reviewUrls.add("https://apps.shopify.com/" + slug + "/reviews");
   }
 
@@ -680,21 +691,40 @@ export async function collectChromeMarketplaceEvidence() {
   return evidence;
 }
 
+export function workspaceListingLinks(html) {
+  const links = new Set();
+  const re = /href=["'](\/marketplace\/app\/[^"'?#]+\/([0-9]+)(?:\?[^"']*)?)["']/gi;
+  let m;
+  while ((m = re.exec(String(html || "")))) {
+    links.add("https://workspace.google.com" + m[1].replace(/&amp;/g, "&"));
+  }
+  return [...links];
+}
+
 export function parseWorkspaceMarketplacePage(html, url = "") {
   const text = decodeEntities(stripHtml(html));
-  const chunks = text.split(/(?=\b[1-5](?:\.[0-9])?\s*(?:stars?|rating|M\+|K\+))/i).slice(0, 80);
-  return chunks.map((chunk, i) => ({
-    marketplace:"google_workspace", app_id:"workspace-" + i, app_name:chunk.slice(0, 100),
-    description:chunk.slice(0, 2500), url, posted_at:""
-  })).filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround)/i.test(x.description));
+  const id = (() => {
+    try { return new URL(url).pathname.split("/").filter(Boolean).at(-1) || ""; }
+    catch { return ""; }
+  })();
+  if (!id || !/^\d+$/.test(id)) return [];
+  const title = decodeEntities(stripHtml((String(html).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || text.slice(0, 120)));
+  return [{
+    marketplace:"google_workspace", app_id:id, app_name:title,
+    description:text.slice(0, 4000), url, posted_at:""
+  }].filter((x) => /(manual|csv|export|import|sync|integration|workflow|spreadsheet|excel|workaround|automate)/i.test(x.description));
 }
 
 export async function collectWorkspaceMarketplaceEvidence() {
-  const urls = ["https://workspace.google.com/marketplace/"];
+  const landing = "https://workspace.google.com/marketplace/";
   const evidence = [];
-  for (const url of urls) {
-    try { evidence.push(...parseWorkspaceMarketplacePage(await fetchText(url), url)); } catch {}
-  }
+  try {
+    const html = await fetchText(landing);
+    const links = workspaceListingLinks(html);
+    for (const url of links.slice(0, 24)) {
+      try { evidence.push(...parseWorkspaceMarketplacePage(await fetchText(url), url)); } catch {}
+    }
+  } catch {}
   return evidence;
 }
 

@@ -216,6 +216,11 @@ function parseDemandFingerprint(text) {
   return m ? m[1] : "";
 }
 
+function parseDemandMetric(text, name) {
+  const m = String(text || "").match(new RegExp(name + ":(\\d+)", "i"));
+  return m ? Math.max(0, Number(m[1]) || 0) : 0;
+}
+
 function judgeDemandOpportunity(o, text) {
   const noiseHits = hits(text, DEMAND_NOISE_WORDS);
   const documentNoiseHits = hits(text, DEMAND_DOCUMENT_NOISE_WORDS);
@@ -227,6 +232,11 @@ function judgeDemandOpportunity(o, text) {
   const group = parseDemandGroup(text);
   const fingerprint = parseDemandFingerprint(text);
   const legacyOrUnknownFingerprint = !fingerprint || fingerprint === "unclassified";
+  const isMarketplace = String(o.source || "").toLowerCase() === "marketplace_demand";
+  const complaintCount = parseDemandMetric(text, "complaint_count");
+  const lowStarReviews = parseDemandMetric(text, "low_star_reviews");
+  const weakCompetitorSignals = parseDemandMetric(text, "weak_competitor_signals");
+  const marketplaceEvidenceReady = !isMarketplace || (repeatCount >= 2 && complaintCount >= 2 && (lowStarReviews >= 1 || repeatCount >= 3));
 
   const demand = problemHits.length ? hitScore(problemHits.length, [38,55,70,82,92,100]) : 10;
   const repeat = repeatCount >= 5 ? 100 : repeatCount === 4 ? 92 : repeatCount === 3 ? 80 : repeatCount === 2 ? 55 : 20;
@@ -249,6 +259,10 @@ function judgeDemandOpportunity(o, text) {
     score = Math.min(score, 39);
     status = fingerprint === "unclassified" ? "unclassified" : "legacy_signal";
     grade = "cold";
+  } else if (!marketplaceEvidenceReady) {
+    score = Math.min(score, 39);
+    status = "weak_marketplace_evidence";
+    grade = "cold";
   }
 
   const reasons = [
@@ -258,7 +272,12 @@ function judgeDemandOpportunity(o, text) {
     "동일 문제 독립 repo 반복 " + repeatCount,
     "문제신호 " + demand,
     "BUILD " + build,
-    "MONETIZE " + monetize
+    "MONETIZE " + monetize,
+    ...(isMarketplace ? [
+      "MARKETPLACE complaints " + complaintCount,
+      "low-star " + lowStarReviews,
+      "weak-competitor " + weakCompetitorSignals
+    ] : [])
   ];
   if (documentNoiseHits.length) reasons.push("논문/리서치 문서형 → 상품수요에서 제외");
   else if (noiseHits.length) reasons.push("자동생성/리포트형 노이즈 → 제외");
@@ -270,7 +289,7 @@ function judgeDemandOpportunity(o, text) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand+marketplace-v0.4.4",
+      judge_version: "payout+demand+marketplace-evidence-v0.4.5",
       judge_mode: "demand",
       opportunity_type: "business_opportunity",
       demand_status: status,
@@ -279,6 +298,10 @@ function judgeDemandOpportunity(o, text) {
       demand,
       repeat,
       demand_repeat_count: repeatCount,
+      complaint_count: complaintCount,
+      low_star_reviews: lowStarReviews,
+      weak_competitor_signals: weakCompetitorSignals,
+      marketplace_evidence_ready: marketplaceEvidenceReady,
       build,
       monetize,
       noise,

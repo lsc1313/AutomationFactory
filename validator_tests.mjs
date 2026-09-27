@@ -7,7 +7,9 @@ import {
   issueDemandContext,
   isDemandDocumentNoise,
   normalizeMarketplaceEvidence,
-  marketplaceEvidenceToOpportunities
+  marketplaceEvidenceToOpportunities,
+  parseWorkspaceMarketplacePage,
+  workspaceListingLinks
 } from "./sources.js";
 
 function judged(x) {
@@ -185,7 +187,8 @@ const marketplaceSingle = judged({
   skills: "marketplace:chrome, demand_group:reporting_export, demand_fingerprint:csv_export, demand_repeat:1, demand_problem:yes, demand_context:review_evidence"
 });
 assert.equal(marketplaceSingle.grade, "cold");
-assert.equal(marketplaceSingle.breakdown.demand_status, "signal");
+assert.equal(marketplaceSingle.breakdown.demand_status, "weak_marketplace_evidence");
+assert.equal(marketplaceSingle.breakdown.marketplace_evidence_ready, false);
 
 
 const normalizedMarket = normalizeMarketplaceEvidence({
@@ -209,5 +212,61 @@ assert.equal(marketOpps.length, 1);
 assert.match(marketOpps[0].skills, /demand_repeat:3/);
 assert.match(marketOpps[0].skills, /low_star_reviews:3/);
 assert.equal(judged(marketOpps[0]).breakdown.demand_status, "product_candidate");
+
+const workspaceLandingFixture = `
+<a href="/marketplace/app/sheetgo/94172092257">Sheetgo</a>
+<a href="/marketplace/app/email_spreadsheets/431723916752?flow_type=12">Email Spreadsheets</a>`;
+const workspaceLinks = workspaceListingLinks(workspaceLandingFixture);
+assert.equal(workspaceLinks.length, 2);
+assert.match(workspaceLinks[0], /94172092257/);
+assert.match(workspaceLinks[1], /431723916752/);
+
+const workspaceDetail = parseWorkspaceMarketplacePage(
+  "<h1>Sheetgo</h1><p>Connect Google Sheets, Excel, and CSV files and automate data sync workflows.</p>",
+  "https://workspace.google.com/marketplace/app/sheetgo/94172092257"
+);
+assert.equal(workspaceDetail.length, 1);
+assert.equal(workspaceDetail[0].app_id, "94172092257");
+assert.equal(workspaceDetail[0].app_name, "Sheetgo");
+assert.equal(parseWorkspaceMarketplacePage("<p>CSV sync</p>", "https://workspace.google.com/marketplace/").length, 0);
+
+const weakSingleMarketplaceSignal = marketplaceEvidenceToOpportunities([{
+  marketplace:"chrome", app_id:"one-extension", app_name:"One Extension",
+  rating:null, description:"Manual CSV export workaround because sync is broken", url:"https://example.invalid/one"
+}]);
+assert.equal(weakSingleMarketplaceSignal.length, 0);
+
+const corroboratedMarketplaceSignal = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"app-a", app_name:"A", rating:1, review_text:"Manual CSV workaround because inventory sync is broken", url:"https://example.invalid/a" },
+  { marketplace:"shopify", app_id:"app-b", app_name:"B", rating:2, review_text:"Inventory sync mismatch requires manual CSV export every day", url:"https://example.invalid/b" }
+]);
+assert.equal(corroboratedMarketplaceSignal.length, 1);
+assert.match(corroboratedMarketplaceSignal[0].skills, /demand_repeat:2/);
+
+const guardEvidence = normalizeMarketplaceEvidence({
+  marketplace:"shopify", app_id:"guard-test", rating:1,
+  review_text:"Auto sync used the wrong SKU mapping. We need validation before sync and recovery after a failed sync."
+});
+assert.equal(guardEvidence.fingerprint, "automation_guard");
+assert.equal(guardEvidence.group, "reliability");
+
+const marketplaceJudgeEvidence = judged({
+  source:"marketplace_demand", type:"business_opportunity",
+  title:"Repeated automation guard pain",
+  description:"problem missing support automation workflow",
+  skills:"demand_group:reliability, demand_fingerprint:automation_guard, demand_repeat:3, demand_problem:yes, complaint_count:4, low_star_reviews:2, weak_competitor_signals:1"
+});
+assert.equal(marketplaceJudgeEvidence.breakdown.marketplace_evidence_ready, true);
+assert.equal(marketplaceJudgeEvidence.breakdown.complaint_count, 4);
+assert.equal(marketplaceJudgeEvidence.breakdown.low_star_reviews, 2);
+
+const weakMarketplaceJudgeEvidence = judged({
+  source:"marketplace_demand", type:"business_opportunity",
+  title:"Weak marketplace signal",
+  description:"problem automation workflow",
+  skills:"demand_group:reliability, demand_fingerprint:automation_guard, demand_repeat:2, demand_problem:yes, complaint_count:1, low_star_reviews:0"
+});
+assert.equal(weakMarketplaceJudgeEvidence.grade, "cold");
+assert.equal(weakMarketplaceJudgeEvidence.breakdown.marketplace_evidence_ready, false);
 
 console.log("validator tests: OK");
