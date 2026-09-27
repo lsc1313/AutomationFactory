@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.6.9";
+const APP_VERSION = "0.6.10";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -542,7 +542,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.9 · Mobile Candidate Button · 클릭 진단 강화</div>
+  <div class="footer">v0.6.10 · Candidate View · 사업화 후보/검증 대기 분리</div>
 </div>
 <script>
 let grade='all';
@@ -605,7 +605,9 @@ async function loadMarketCandidates(){
  const rows=await api('/api/market-candidates');
  const el=document.getElementById('candidateList');
  if(!rows.length){el.innerHTML='<div class="empty">아직 시장후보가 없습니다. 시장 교차검증을 먼저 실행하세요.</div>';return;}
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">🎯 압축 시장후보 '+rows.length+'개</div>'+rows.map(c=>{
+ const ready=rows.filter(c=>c.commercialization_status==='commercialization_candidate');
+ const pending=rows.filter(c=>c.commercialization_status!=='commercialization_candidate');
+ const card=c=>{
    let missing=[];try{missing=JSON.parse(c.validation_missing||'[]')}catch{}
    return '<details class="card"><summary><b>'+esc(c.fingerprint)+'</b> · '+esc(c.commercialization_status)+'</summary>'+
    '<div class="metrics">'+
@@ -619,7 +621,9 @@ async function loadMarketCandidates(){
    '<div class="desc">'+esc(c.representative_title||'')+'</div>'+
    '<div class="reason">추가검증: '+esc(missing.length?missing.join(', '):'없음')+'</div>'+
    '<button data-market-detail="'+esc(c.fingerprint)+'">상세 근거 보기</button><div id="market-'+esc(c.fingerprint)+'"></div></details>';
- }).join('');
+ };
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">🎯 사업화 후보 '+ready.length+'개</div>'+ready.map(card).join('')+
+   '<details style="margin-top:12px"><summary class="sub">🧪 검증 대기 '+pending.length+'개 보기</summary>'+pending.map(card).join('')+'</details>';
  document.querySelectorAll('[data-market-detail]').forEach(b=>b.onclick=async()=>{
    const fp=b.dataset.marketDetail, target=document.getElementById('market-'+fp);
    b.disabled=true;
