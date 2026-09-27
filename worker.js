@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.6.6";
+const APP_VERSION = "0.6.7";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -93,6 +93,23 @@ async function ensureSchema(env) {
       PRIMARY KEY(opportunity_id, evidence_key)
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_evidence_opportunity ON opportunity_evidence(opportunity_id)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS market_candidates (
+      fingerprint TEXT PRIMARY KEY,
+      demand_group TEXT NOT NULL DEFAULT '',
+      signal_count INTEGER NOT NULL DEFAULT 0,
+      independent_repo_count INTEGER NOT NULL DEFAULT 0,
+      promoted_signal_count INTEGER NOT NULL DEFAULT 0,
+      raw_market_evidence_count INTEGER NOT NULL DEFAULT 0,
+      competitor_count INTEGER NOT NULL DEFAULT 0,
+      payment_evidence_count INTEGER NOT NULL DEFAULT 0,
+      pricing_evidence_count INTEGER NOT NULL DEFAULT 0,
+      weak_competitor_count INTEGER NOT NULL DEFAULT 0,
+      commercialization_status TEXT NOT NULL DEFAULT 'validation_required',
+      validation_missing TEXT NOT NULL DEFAULT '[]',
+      representative_title TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_market_candidates_status ON market_candidates(commercialization_status, signal_count DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_outcomes (
       opportunity_id TEXT PRIMARY KEY,
       result TEXT NOT NULL DEFAULT '',
@@ -309,7 +326,36 @@ async function crossValidateMarkets(env) {
     if(j.breakdown?.commercialization_status==="commercialization_candidate")promoted++;
     await env.DB.prepare(`UPDATE opportunities SET skills=?,score=?,grade=?,score_breakdown=?,judge_reason=?,updated_at=? WHERE opportunity_id=?`).bind(r.skills,j.score,j.grade,JSON.stringify(j.breakdown),j.reason,nowIso(),r.opportunity_id).run();
   }
-  return {ok:true,matched,promoted,market_fingerprints:markets.size,raw_evidence:raw.evidence.length,diagnostics:raw.diagnostics};
+  const clusters=new Map();
+  for(const r of rows){
+    const k=fp(r.skills); if(!k||k==="unclassified")continue;
+    let bd={}; try{bd=JSON.parse((await env.DB.prepare("SELECT score_breakdown FROM opportunities WHERE opportunity_id=?").bind(r.opportunity_id).first())?.score_breakdown||"{}");}catch{}
+    const c=clusters.get(k)||{fingerprint:k,demand_group:bd.demand_group||"",signals:0,repos:new Set(),promoted:0,title:r.title||"",missing:new Set()};
+    c.signals++;
+    const repo=String(r.source_item_id||"").split("#")[0]; if(repo)c.repos.add(repo);
+    if(bd.commercialization_status==="commercialization_candidate")c.promoted++;
+    for(const x of (Array.isArray(bd.validation_missing)?bd.validation_missing:[]))c.missing.add(x);
+    clusters.set(k,c);
+  }
+  for(const [k,c] of clusters){
+    const m=markets.get(k)||{payment:0,pricing:0,competitors:new Set(),weak:0,evidence:0};
+    const status=c.promoted>0?"commercialization_candidate":"validation_required";
+    await env.DB.prepare(`INSERT INTO market_candidates (
+      fingerprint,demand_group,signal_count,independent_repo_count,promoted_signal_count,
+      raw_market_evidence_count,competitor_count,payment_evidence_count,pricing_evidence_count,
+      weak_competitor_count,commercialization_status,validation_missing,representative_title,updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(fingerprint) DO UPDATE SET
+      demand_group=excluded.demand_group,signal_count=excluded.signal_count,
+      independent_repo_count=excluded.independent_repo_count,promoted_signal_count=excluded.promoted_signal_count,
+      raw_market_evidence_count=excluded.raw_market_evidence_count,competitor_count=excluded.competitor_count,
+      payment_evidence_count=excluded.payment_evidence_count,pricing_evidence_count=excluded.pricing_evidence_count,
+      weak_competitor_count=excluded.weak_competitor_count,commercialization_status=excluded.commercialization_status,
+      validation_missing=excluded.validation_missing,representative_title=excluded.representative_title,updated_at=excluded.updated_at
+    `).bind(k,c.demand_group,c.signals,c.repos.size,c.promoted,m.evidence,m.competitors.size,m.payment,m.pricing,m.weak,status,JSON.stringify([...c.missing]),c.title,nowIso()).run();
+  }
+  const marketCandidates=[...clusters.values()].filter(c=>c.promoted>0).length;
+  return {ok:true,matched,promoted,market_candidates:marketCandidates,cluster_count:clusters.size,market_fingerprints:markets.size,raw_evidence:raw.evidence.length,diagnostics:raw.diagnostics};
 }
 
 async function rejudgeAll(env) {
@@ -496,7 +542,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.6.6 · Raw Market Validator · 수요필터와 시장근거 분리</div>
+  <div class="footer">v0.6.7 · Market Candidates · fingerprint 단위 사업후보 압축</div>
 </div>
 <script>
 let grade='all';
@@ -556,7 +602,7 @@ document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.que
 document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
 document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
 document.getElementById('scanBtn').onclick=async()=>{const b=document.getElementById('scanBtn');b.disabled=true;b.textContent='스캔 중…';try{const r=await api('/api/scout/run',{method:'POST',body:'{}'});alert('스캔 완료: '+r.found+'건 발견 / '+r.saved+'건 저장'+(r.errors?.length?' / 오류 '+r.errors.length+'\\n\\n'+r.errors.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n'):'') );await load();}catch(e){alert('스캔 실패: '+e.message);}finally{b.disabled=false;b.textContent='지금 스캔';}};
-document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('validateBtn').onclick=async()=>{const b=document.getElementById('validateBtn');b.disabled=true;b.textContent='교차검증 중…';try{const r=await api('/api/validate/markets',{method:'POST',body:'{}'});alert('시장 교차검증 완료: 원시근거 '+r.raw_evidence+'건 / fingerprint '+r.market_fingerprints+'개 / GitHub 매칭 '+r.matched+'건 / 사업화 후보 '+r.promoted+'건\\n'+(r.diagnostics||[]).map(x=>x.marketplace+': '+x.count+(x.error?' ('+x.error+')':'')).join(' / '));await load();}catch(e){alert('교차검증 실패: '+e.message);}finally{b.disabled=false;b.textContent='시장 교차검증';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
+document.getElementById('rejudgeBtn').onclick=async()=>{const b=document.getElementById('rejudgeBtn');b.disabled=true;b.textContent='재채점 중…';try{const r=await api('/api/judge/rejudge',{method:'POST',body:'{}'});alert('재채점 완료: '+r.rejudged+'건 · HOT '+r.grades.hot+' / WATCH '+r.grades.watch+' / COLD '+r.grades.cold);await load();}catch(e){alert('재채점 실패: '+e.message);}finally{b.disabled=false;b.textContent='기존 데이터 재채점';}};\ndocument.getElementById('validateBtn').onclick=async()=>{const b=document.getElementById('validateBtn');b.disabled=true;b.textContent='교차검증 중…';try{const r=await api('/api/validate/markets',{method:'POST',body:'{}'});alert('시장 교차검증 완료: 원시근거 '+r.raw_evidence+'건 / fingerprint '+r.market_fingerprints+'개 / GitHub 매칭 '+r.matched+'건 / 사업화 이슈 '+r.promoted+'건 / 시장후보 '+r.market_candidates+'개\\n'+(r.diagnostics||[]).map(x=>x.marketplace+': '+x.count+(x.error?' ('+x.error+')':'')).join(' / '));await load();}catch(e){alert('교차검증 실패: '+e.message);}finally{b.disabled=false;b.textContent='시장 교차검증';}};\ndocument.getElementById('marketRebuildBtn').onclick=async()=>{const b=document.getElementById('marketRebuildBtn');if(!confirm('과거 Marketplace 미검토 집계만 정리하고 현재 기준으로 다시 수집합니다. 진행/보류/제외 결정은 보존됩니다. 계속할까요?'))return;b.disabled=true;b.textContent='Marketplace 재구축 중…';try{const r=await api('/api/marketplace/rebuild',{method:'POST',body:'{}'});alert('Marketplace 재구축 완료: 과거 미검토 '+r.removed_legacy_unreviewed+'건 정리 / 결정 보존 '+r.preserved_decisions+'건 / 새 후보 '+r.scan.saved+'건');await load();}catch(e){alert('Marketplace 재구축 실패: '+e.message);}finally{b.disabled=false;b.textContent='Marketplace 정리·재수집';}};
 load().catch(e=>document.getElementById('list').innerHTML='<div class="empty error">오류: '+esc(e.message)+'</div>');
 </script></body></html>`;
 }
