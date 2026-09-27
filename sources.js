@@ -446,6 +446,7 @@ export async function collectGitHubDemandSignals() {
     .slice(0, 50);
 
   const reposByFingerprint = new Map();
+  const evidenceByFingerprint = new Map();
   for (const x of candidates) {
     const context = issueDemandContext(x);
     const fp = demandFingerprint(context);
@@ -453,6 +454,20 @@ export async function collectGitHubDemandSignals() {
     const repo = githubRepoName(x.repository_url) || String(x.repository_url || x.id);
     if (!reposByFingerprint.has(fp)) reposByFingerprint.set(fp, new Set());
     reposByFingerprint.get(fp).add(repo);
+    if (!evidenceByFingerprint.has(fp)) evidenceByFingerprint.set(fp, new Map());
+    const perRepo = evidenceByFingerprint.get(fp);
+    if (!perRepo.has(repo)) perRepo.set(repo, {
+      source: "github_demand",
+      evidence_kind: "github_issue",
+      evidence_quality: "strong",
+      evidence_id: repo + "#" + x.number,
+      app_id: repo,
+      app_name: repo,
+      complaint_bearing: true,
+      text: context.slice(0, 1200),
+      url: String(x.html_url || ""),
+      posted_at: String(x.created_at || x.updated_at || "")
+    });
   }
 
   return candidates.map((x) => {
@@ -460,7 +475,7 @@ export async function collectGitHubDemandSignals() {
     const group = demandGroup(context);
     const fingerprint = demandFingerprint(context);
     const repeat = fingerprint === "unclassified" ? 1 : (reposByFingerprint.get(fingerprint)?.size || 1);
-    return githubIssueToOpportunity(
+    const opportunity = githubIssueToOpportunity(
       x,
       "github_demand",
       "business_opportunity",
@@ -475,6 +490,10 @@ export async function collectGitHubDemandSignals() {
         ]
       }
     );
+    opportunity.evidence = fingerprint === "unclassified"
+      ? opportunity.evidence
+      : [...(evidenceByFingerprint.get(fingerprint)?.values() || [])];
+    return opportunity;
   });
 }
 
