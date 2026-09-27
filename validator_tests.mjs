@@ -383,3 +383,8 @@ assert.match(crossMarketWorkerSource, /\/api\/validate\/markets/);
 const uiHotfixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(uiHotfixSource, /id="validateBtn">시장 교차검증/);
 assert.match(uiHotfixSource, /getElementById\('validateBtn'\)\.onclick/);
+
+const runtimeFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(runtimeFixSource, /runScout\(env, \["marketplace_demand"\]\)/);
+assert.match(runtimeFixSource, /new RegExp\(n\+":\(\\\\d\+\)"/);
+assert.match(runtimeFixSource, /marketplace_refresh/);
