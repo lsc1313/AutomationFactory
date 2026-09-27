@@ -469,7 +469,106 @@ export async function collectGitHubDemandSignals() {
   });
 }
 
+
+const MARKETPLACE_NAMES = new Set(["shopify","discord","chrome","google_workspace","atlassian"]);
+
+function marketplaceProblemText(x) {
+  return [
+    x?.title, x?.review_title, x?.review_text, x?.description, x?.complaint, x?.notes
+  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+export function normalizeMarketplaceEvidence(input = {}) {
+  const marketplace = String(input.marketplace || input.platform || "").toLowerCase().trim();
+  if (!MARKETPLACE_NAMES.has(marketplace)) throw new Error("지원하지 않는 marketplace: " + marketplace);
+
+  const text = marketplaceProblemText(input);
+  const rating = num(input.rating);
+  const lowStar = rating != null && rating <= 2;
+  const manual = /(manual|manually|copy.?paste|copy and paste|re[- ]?enter|reentry|re-enter|csv|export|import|spreadsheet|excel|workaround|수동|복붙|재입력)/i.test(text);
+  const sync = /(sync|synchroni[sz]|mismatch|out of sync|doesn.?t update|not updating|delay|oversell|mapping|동기화|불일치|업데이트 안)/i.test(text);
+  const pain = /(problem|issue|broken|fail|error|missing|lack|cannot|can.?t|doesn.?t work|support|frustrat|problematic|문제|오류|안됨|불편)/i.test(text);
+  const fingerprint = demandFingerprint(text);
+  const group = demandGroup(text);
+
+  return {
+    marketplace,
+    app_id: String(input.app_id || input.product_id || input.slug || input.app_name || "unknown"),
+    app_name: String(input.app_name || input.product_name || input.title || "Unknown app"),
+    evidence_id: String(input.evidence_id || input.review_id || input.id || ""),
+    rating,
+    low_star: lowStar,
+    manual_signal: manual,
+    sync_signal: sync,
+    pain_signal: pain,
+    fingerprint,
+    group,
+    text,
+    url: String(input.url || input.review_url || input.app_url || ""),
+    posted_at: String(input.posted_at || input.review_date || input.updated_at || ""),
+    competitor_strength: String(input.competitor_strength || "unknown").toLowerCase()
+  };
+}
+
+export function marketplaceEvidenceToOpportunities(rawItems = []) {
+  const normalized = rawItems.map(normalizeMarketplaceEvidence)
+    .filter((x) => x.text && (x.low_star || x.manual_signal || x.sync_signal || x.pain_signal))
+    .filter((x) => x.fingerprint !== "unclassified");
+
+  const groups = new Map();
+  for (const x of normalized) {
+    const key = x.marketplace + ":" + x.fingerprint;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(x);
+  }
+
+  const out = [];
+  for (const [key, items] of groups) {
+    const repos = new Set(items.map((x) => x.app_id));
+    const repeat = repos.size;
+    const lowStars = items.filter((x) => x.low_star).length;
+    const complaints = items.filter((x) => x.pain_signal || x.manual_signal || x.sync_signal).length;
+    const sample = items[0];
+    const weakCompetitors = items.filter((x) => x.competitor_strength === "weak").length;
+    const description = items.slice(0, 5).map((x) => x.text).join(" | ").slice(0, 3000);
+    out.push({
+      source: "marketplace_demand",
+      source_item_id: key,
+      type: "business_opportunity",
+      title: "[" + sample.marketplace + "] " + sample.fingerprint + " · repeated marketplace pain",
+      description: "[MARKETPLACE EVIDENCE v0.4.4] " + description,
+      budget_min: null,
+      budget_max: null,
+      currency: "",
+      location: "Online",
+      skills: [
+        "marketplace:" + sample.marketplace,
+        "demand_group:" + sample.group,
+        "demand_fingerprint:" + sample.fingerprint,
+        "demand_repeat:" + repeat,
+        "demand_problem:yes",
+        "demand_context:review_evidence",
+        "complaint_count:" + complaints,
+        "low_star_reviews:" + lowStars,
+        "weak_competitor_signals:" + weakCompetitors
+      ].join(", "),
+      posted_at: items.map((x) => x.posted_at).filter(Boolean).sort().at(-1) || "",
+      deadline: "",
+      competition: null,
+      url: sample.url
+    });
+  }
+  return out;
+}
+
+// v0.4.4 collector seam: site adapters feed normalized review/listing evidence here.
+// Keeping adapters separate prevents marketplace HTML/API changes from corrupting Judge logic.
+export async function collectMarketplaceDemand() {
+  return marketplaceEvidenceToOpportunities([]);
+}
+
 export const SOURCE_REGISTRY = {
+  marketplace_demand: collectMarketplaceDemand,
   agent_bounties: collectAgentBounties,
   github_paid: collectGitHubPaidDiscovery,
   github_demand: collectGitHubDemandSignals,
