@@ -561,7 +561,17 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
       url: sample.url
     });
   }
-  return out;
+  return out.filter((x) => {
+    const tags = Object.fromEntries(String(x.skills || "").split(", ").map((t) => {
+      const i = t.indexOf(":"); return i > 0 ? [t.slice(0, i), t.slice(i + 1)] : [t, "yes"];
+    }));
+    const repeat = Number(tags.demand_repeat || 0);
+    const complaints = Number(tags.complaint_count || 0);
+    const lowStars = Number(tags.low_star_reviews || 0);
+    // Product candidates need corroboration. A single listing/review remains evidence,
+    // but it must not masquerade as repeated marketplace demand.
+    return repeat >= 2 && complaints >= 2 && (lowStars >= 1 || repeat >= 3);
+  });
 }
 
 // v0.4.4 public Shopify adapter. It intentionally uses only public App Store pages.
