@@ -195,7 +195,16 @@ function githubIssueToOpportunity(x, source, type, note, extra = {}) {
     posted_at: String(x.created_at || x.updated_at || ""),
     deadline: "",
     competition: null,
-    url: String(x.html_url || "")
+    url: String(x.html_url || ""),
+    evidence: [{
+      source,
+      evidence_kind: "github_issue",
+      evidence_quality: "strong",
+      evidence_id: repo ? repo + "#" + x.number : String(x.id),
+      text: stripHtml(String(x.body || "")).slice(0, 1200),
+      url: String(x.html_url || ""),
+      posted_at: String(x.created_at || x.updated_at || "")
+    }]
   };
 }
 
