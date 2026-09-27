@@ -361,3 +361,16 @@ const judgeV1Validated = judged({
 assert.equal(judgeV1Validated.breakdown.willingness_to_pay, "evidenced");
 assert.equal(judgeV1Validated.breakdown.competition_gap, "gap_evidenced");
 assert.equal(judgeV1Validated.breakdown.validation_missing.length, 0);
+
+
+const validationEvidenceOpps = marketplaceEvidenceToOpportunities([
+  { marketplace:"shopify", app_id:"paid-a", app_name:"Paid A", rating:1, review_text:"The $19 per month paid plan still has broken data sync and manual CSV work.", competitor_strength:"weak" },
+  { marketplace:"shopify", app_id:"paid-b", app_name:"Paid B", rating:2, review_text:"We pay for this subscription but sync mismatch still requires manual CSV export.", competitor_strength:"weak" }
+]);
+assert.equal(validationEvidenceOpps.length, 1);
+assert.match(validationEvidenceOpps[0].skills, /payment_evidence:[1-9]/);
+assert.match(validationEvidenceOpps[0].skills, /pricing_evidence:[1-9]/);
+assert.match(validationEvidenceOpps[0].skills, /competitor_evidence:2/);
+const validationJudged = judged(validationEvidenceOpps[0]);
+assert.equal(validationJudged.breakdown.willingness_to_pay, "evidenced");
+assert.equal(validationJudged.breakdown.competition_gap, "gap_evidenced");
