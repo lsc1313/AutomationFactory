@@ -388,3 +388,12 @@ const runtimeFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url)
 assert.match(runtimeFixSource, /runScout\(env, \["marketplace_demand"\]\)/);
 assert.match(runtimeFixSource, /new RegExp\(n\+":\(\\\\d\+\)"/);
 assert.match(runtimeFixSource, /marketplace_refresh/);
+
+const refreshFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+const cvStart = refreshFixSource.indexOf("async function crossValidateMarkets(env) {");
+const cvEnd = refreshFixSource.indexOf("async function rejudgeAll(env)", cvStart);
+const cvBody = refreshFixSource.slice(cvStart, cvEnd);
+assert.ok(cvStart >= 0 && cvEnd > cvStart);
+assert.match(cvBody, /const refresh = await runScout\(env, \["marketplace_demand"\]\);/);
+assert.match(cvBody, /refresh\.found/);
+assert.match(cvBody, /refresh\.saved/);
