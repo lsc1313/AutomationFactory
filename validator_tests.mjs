@@ -164,7 +164,6 @@ const noise = judged({
 assert.equal(noise.grade, "cold");
 assert.equal(noise.breakdown.demand_status, "noise");
 
-console.log("validator tests: OK");
 
 
 const marketplaceRepeated = judged({
@@ -210,3 +209,5 @@ assert.equal(marketOpps.length, 1);
 assert.match(marketOpps[0].skills, /demand_repeat:3/);
 assert.match(marketOpps[0].skills, /low_star_reviews:3/);
 assert.equal(judged(marketOpps[0]).breakdown.demand_status, "product_candidate");
+
+console.log("validator tests: OK");
