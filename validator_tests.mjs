@@ -329,3 +329,8 @@ assert.equal(provenanceOpps.length, 1);
 assert.equal(provenanceOpps[0].evidence.length, 2);
 assert.equal(provenanceOpps[0].evidence[0].complaint_bearing, true);
 assert.match(provenanceOpps[0].evidence[0].url, /prov-a/);
+
+
+const uiWorkerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(uiWorkerSource, /const evidenceHtml=/);
+assert.match(uiWorkerSource, /\+evidenceHtml\+'<div class="meta">/);
