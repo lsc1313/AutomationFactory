@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY } from "./sources.js";
 
-const APP_VERSION = "0.4.9";
+const APP_VERSION = "0.5.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -76,6 +76,23 @@ async function ensureSchema(env) {
       errors_json TEXT NOT NULL DEFAULT '[]'
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_scout_runs_started ON scout_runs(started_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
+      opportunity_id TEXT NOT NULL,
+      evidence_key TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      app_id TEXT NOT NULL DEFAULT '',
+      app_name TEXT NOT NULL DEFAULT '',
+      evidence_kind TEXT NOT NULL DEFAULT '',
+      evidence_quality TEXT NOT NULL DEFAULT '',
+      complaint_bearing INTEGER NOT NULL DEFAULT 0,
+      rating REAL,
+      text TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT '',
+      posted_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(opportunity_id, evidence_key)
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_evidence_opportunity ON opportunity_evidence(opportunity_id)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_outcomes (
       opportunity_id TEXT PRIMARY KEY,
       result TEXT NOT NULL DEFAULT '',
@@ -178,6 +195,21 @@ async function upsertOpportunity(env, raw) {
     ts
   ).run();
 
+  if (Array.isArray(raw.evidence)) {
+    await env.DB.prepare("DELETE FROM opportunity_evidence WHERE opportunity_id=?").bind(opportunityId).run();
+    for (const [i, e] of raw.evidence.slice(0, 20).entries()) {
+      const evidenceKey = String(e.evidence_id || e.app_id || e.url || i).slice(0, 300);
+      await env.DB.prepare(`INSERT OR REPLACE INTO opportunity_evidence (
+        opportunity_id,evidence_key,source,app_id,app_name,evidence_kind,evidence_quality,
+        complaint_bearing,rating,text,url,posted_at,updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        opportunityId,evidenceKey,String(e.marketplace||e.source||source),String(e.app_id||""),
+        String(e.app_name||""),String(e.evidence_kind||""),String(e.evidence_quality||""),
+        e.complaint_bearing ? 1 : 0,e.rating ?? null,String(e.text||"").slice(0,2000),
+        String(e.url||""),String(e.posted_at||""),ts
+      ).run();
+    }
+  }
   return { opportunity_id: opportunityId, ...judged };
 }
 
@@ -434,7 +466,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.4.9 · Scan Diagnostics Hotfix · UI 스크립트 파싱 보호</div>
+  <div class="footer">v0.5.0 · Evidence Provenance · 후보별 실제 근거 추적</div>
 </div>
 <script>
 let grade='all';
@@ -460,6 +492,7 @@ async function load(){
  const re=document.getElementById('runerrors');
  let errs=[];try{errs=JSON.parse(lr?.errors_json||'[]')}catch{}
  if(errs.length){re.style.display='block';re.textContent='⚠ 최근 스캔 오류 상세\\n'+errs.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n');}else{re.style.display='none';re.textContent='';}
+ const evidenceById={}; await Promise.all(jobs.map(async j=>{try{evidenceById[j.opportunity_id]=await api('/api/opportunities/'+encodeURIComponent(j.opportunity_id)+'/evidence')}catch{evidenceById[j.opportunity_id]=[]}}));
  const el=document.getElementById('list');
  if(!jobs.length){el.innerHTML='<div class="empty">표시할 수익 기회가 없습니다.<br>「지금 스캔」을 눌러 첫 수집을 실행하세요.</div>';return;}
  el.innerHTML=jobs.map(j=>{
@@ -467,6 +500,8 @@ async function load(){
    const bd=breakdown(j);
    const meta=[j.source,j.type,j.location,budget,j.posted_at?('등록 '+when(j.posted_at)):''].filter(Boolean).map(esc).join(' · ');
    const link=j.url?'<a class="link" href="'+esc(j.url)+'" target="_blank" rel="noopener">원문 보기</a>':'';
+   const ev=evidenceById[j.opportunity_id]||[];
+   const evidenceHtml=ev.length?'<details><summary>🔎 근거 '+ev.length+'건 보기</summary><div class="reason">'+ev.map((e,i)=>(i+1)+'. '+esc('['+(e.source||'source')+'] '+(e.app_name||e.app_id||e.evidence_id||'evidence')+' · '+(e.evidence_kind||'unknown')+' / '+(e.evidence_quality||'unknown')+(e.rating!=null?' · ★'+e.rating:''))+(e.url?' <a class="link" href="'+esc(e.url)+'" target="_blank" rel="noopener">원문</a>':'')).join('<br>')+'</div></details>':'<div class="meta">근거 상세: 다음 수집부터 기록</div>';
    const btn=(s,l)=>'<button data-id="'+esc(j.opportunity_id)+'" data-state="'+s+'" class="'+(j.user_state===s?'on':'')+'">'+l+'</button>';
    const isDemand=bd.judge_mode==='demand';
    const paycheck=!!bd.requires_pay_check;
@@ -512,6 +547,12 @@ export default {
           sources: Object.keys(SOURCE_REGISTRY),
           security_mode: env.ADMIN_TOKEN ? "관리키 보호" : "OPEN(테스트용)"
         });
+      }
+      const evidenceMatch = path.match(/^\/api\/opportunities\/([^/]+)\/evidence$/);
+      if (evidenceMatch && request.method === "GET") {
+        const id = decodeURIComponent(evidenceMatch[1]);
+        const rows = await env.DB.prepare(`SELECT evidence_key AS evidence_id,source,app_id,app_name,evidence_kind,evidence_quality,complaint_bearing,rating,text,url,posted_at FROM opportunity_evidence WHERE opportunity_id=? ORDER BY complaint_bearing DESC, rating ASC LIMIT 20`).bind(id).all();
+        return json(rows.results || []);
       }
       if (path === "/api/stats") return json(await getStats(env));
       if (path === "/api/opportunities") return json(await listOpportunities(env, url));

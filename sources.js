@@ -195,7 +195,16 @@ function githubIssueToOpportunity(x, source, type, note, extra = {}) {
     posted_at: String(x.created_at || x.updated_at || ""),
     deadline: "",
     competition: null,
-    url: String(x.html_url || "")
+    url: String(x.html_url || ""),
+    evidence: [{
+      source,
+      evidence_kind: "github_issue",
+      evidence_quality: "strong",
+      evidence_id: repo ? repo + "#" + x.number : String(x.id),
+      text: stripHtml(String(x.body || "")).slice(0, 1200),
+      url: String(x.html_url || ""),
+      posted_at: String(x.created_at || x.updated_at || "")
+    }]
   };
 }
 
@@ -569,7 +578,22 @@ export function marketplaceEvidenceToOpportunities(rawItems = []) {
       posted_at: items.map((x) => x.posted_at).filter(Boolean).sort().at(-1) || "",
       deadline: "",
       competition: null,
-      url: sample.url
+      url: sample.url,
+      evidence: items.slice(0, 12).map((x) => ({
+        marketplace: x.marketplace,
+        app_id: x.app_id,
+        app_name: x.app_name,
+        evidence_id: x.evidence_id,
+        evidence_kind: x.evidence_kind,
+        evidence_quality: x.evidence_quality,
+        complaint_bearing: x.complaint_bearing,
+        rating: x.rating,
+        low_star: x.low_star,
+        fingerprint: x.fingerprint,
+        text: x.text.slice(0, 1200),
+        url: x.url,
+        posted_at: x.posted_at
+      }))
     });
   }
   return out.filter((x) => {
