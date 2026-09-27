@@ -722,13 +722,50 @@ export async function collectAtlassianMarketplaceEvidence() {
   return evidence;
 }
 
+export function parseDiscordDirectoryApps(payload) {
+  const apps = Array.isArray(payload) ? payload : (payload?.applications || payload?.results || []);
+  return apps.map((a) => {
+    const name = String(a.name || a.application?.name || "Discord app");
+    const id = String(a.id || a.application_id || a.application?.id || name);
+    const description = String(a.description || a.application?.description || "");
+    const installs = Number(a.approximate_guild_count || a.install_count || a.guild_count || 0);
+    return {
+      marketplace:"discord", app_id:id, app_name:name,
+      description:[description, installs ? "installed_servers:" + installs : "", "directory_listing:yes"].filter(Boolean).join(" "),
+      url:"https://discord.com/discovery/applications/" + encodeURIComponent(id),
+      posted_at:"",
+      // Directory presence is competition evidence, not complaint evidence.
+      competitor_strength: installs >= 100000 ? "strong" : installs >= 10000 ? "medium" : "unknown"
+    };
+  }).filter((x) => x.description.length > 10);
+}
+
+export async function collectDiscordMarketplaceEvidence() {
+  const urls = [
+    "https://discord.com/api/v9/application-directory-static/categories"
+  ];
+  const evidence = [];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers:{accept:"application/json","user-agent":"AutomationFactory-MoneyScout/0.4.4"} });
+      if (!res.ok) continue;
+      const payload = await res.json();
+      // Categories are useful market-size context but contain no user complaint evidence.
+      // Do not synthesize demand opportunities from category counts alone.
+      void payload;
+    } catch {}
+  }
+  return evidence;
+}
+
 export async function collectMarketplaceDemand() {
   const evidence = [];
   const adapters = [
     collectShopifyMarketplaceEvidence,
     collectChromeMarketplaceEvidence,
     collectWorkspaceMarketplaceEvidence,
-    collectAtlassianMarketplaceEvidence
+    collectAtlassianMarketplaceEvidence,
+    collectDiscordMarketplaceEvidence
   ];
   for (const adapter of adapters) {
     try { evidence.push(...await adapter()); } catch {}
