@@ -550,3 +550,9 @@ assert.ok(inputDiag.includes("Manager 실제 입력 진단"));
 const browserHotfix = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(browserHotfix.includes("\\\\nDESCRIPTION LENGTH:"));
 assert.ok(browserHotfix.includes("\\\\nANALYSIS PREVIEW:"));
+
+// v0.8.9 diagnostics render + cost evidence
+const diagRender = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(diagRender.includes("</div>'+diag+'<b>🧩 요구 기능</b>"));
+assert.ok(!diagRender.includes("const externalCostKnown=/free|"));
+assert.ok(diagRender.includes("no external cost|no paid service|no paid api"));
