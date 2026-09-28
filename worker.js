@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.7.8";
+const APP_VERSION = "0.7.9";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -569,7 +569,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.7.8 · Work-Spec Gate · 명세 가능한 소프트웨어 의뢰 우선 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.7.9 · Expanded Paid Discovery · 최대 300건 탐색 → Work-Spec Gate · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
