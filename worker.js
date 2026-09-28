@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.6";
+const APP_VERSION = "0.8.7";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -553,7 +553,8 @@ function paidJobPlan(row) {
   const scopeText=deliverables.slice(0,5).join(korean?" → ":"; ");
   const proposal=korean?`안녕하세요. 요청 내용을 기준으로 ${scopeText} 범위로 구현할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·테스트를 진행하고 실행 가능한 결과물과 설치/운영 및 검수 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 구현시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"현재 원문상 별도 비용 없음":"사용 서비스가 확정된 뒤 확인"}입니다.`:`Hello, I can implement this as a concrete deliverable covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement and test the solution and deliver the runnable package with setup, operation, and acceptance-test instructions. Based on the current brief, I estimate about ${hours} hours of implementation. Any external service cost will be confirmed once the required services and access method are known.`;
   const buildSpec={spec_version:"factory-build-spec-v1",job_id:row.opportunity_id,title:row.title||"",language:korean?"ko":"en",objective:deliverables[0]||"",functional_requirements:deliverables,open_questions:questions,acceptance_criteria:[...corePriority.slice(0,3),korean?"설치 문서대로 실행 가능해야 함":"Must run successfully using the supplied setup instructions"],target_runtime:null,estimated_build_hours:hours,external_cost_status:externalCostStatus,external_cost:externalCost,risk_level:risk,risk_factors:riskFactors,source_url:row.url||""};
-  return {manager_version:"paid-job-manager-v0.8.6",status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:riskFactors,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
+  const inputDiagnostics={title:String(row.title||""),description:String(row.description||""),description_length:String(row.description||"").length,skills:String(row.skills||""),url:String(row.url||""),analysis_text_length:raw.length,analysis_preview:raw.slice(0,700)};
+  return {manager_version:"paid-job-manager-v0.8.7",input_diagnostics:inputDiagnostics,status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:riskFactors,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
 }
 
 async function listRuns(env) {
@@ -619,7 +620,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.6 · Manager Source Fix · 원문기반 명세/Builder Spec · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.7 · Manager Input Diagnostics · 실제 입력 추적 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -724,6 +725,8 @@ async function showManagerPlan(btn){
   const p=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/plan');
   const req=(p.deliverables||p.requested_functions||[]).map(x=>'• '+esc(x)).join('<br>')||'• 명세 확인 필요';
   const qs=(p.clarification_questions||[]).map((x,i)=>(i+1)+'. '+esc(x)).join('<br>');
+  const d=p.input_diagnostics||{};
+  const diag='<details style="margin:10px 0"><summary>🔎 Manager 실제 입력 진단</summary><div class="meta" style="white-space:pre-wrap;margin-top:8px">TITLE: '+esc(d.title||'')+'\nDESCRIPTION LENGTH: '+esc(d.description_length)+'\nDESCRIPTION: '+esc(d.description||'')+'\nSKILLS: '+esc(d.skills||'')+'\nURL: '+esc(d.url||'')+'\nANALYSIS LENGTH: '+esc(d.analysis_text_length)+'\nANALYSIS PREVIEW: '+esc(d.analysis_preview||'')+'</div></details>';
   el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc(p.build_spec?.spec_version||'no-build-spec')+'</div><b>🧩 요구 기능</b><br>'+req+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
  }catch(err){el.innerHTML='<div class="empty error">작업계획 조회 실패: '+esc(err.message)+'</div>';}
  finally{btn.disabled=false;btn.textContent=old;}
