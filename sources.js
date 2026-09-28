@@ -97,14 +97,29 @@ export async function collectRemoteOK() {
 }
 
 export async function collectFreelancerProjects() {
-  // Official Freelancer public Projects API. Keep this adapter isolated: collectSources
-  // records an adapter error without stopping the rest of Money Scout.
-  const url = "https://www.freelancer.com/api/projects/0.1/projects/active/?compact=true&limit=50&job_details=true&full_description=true";
-  const res = await fetch(url, { headers: { "accept":"application/json", "user-agent":"AutomationFactory-MoneyScout/0.7.3" } });
-  if (!res.ok) throw new Error(`Freelancer Projects HTTP ${res.status}`);
-  const data = await res.json();
-  const projects = Array.isArray(data?.result?.projects) ? data.result.projects : [];
-  return projects.filter(x => x && x.id && x.title && String(x.status || "active") !== "closed").map(x => {
+  // Expand the official public Projects API across multiple pages. Work-Spec Gate remains
+  // the authority on what is actually factory-deliverable; discovery should favor recall.
+  const pageSize = 50;
+  const pages = 6;
+  const all = [];
+  for (let page = 0; page < pages; page++) {
+    const offset = page * pageSize;
+    const url = `https://www.freelancer.com/api/projects/0.1/projects/active/?compact=true&limit=${pageSize}&offset=${offset}&job_details=true&full_description=true`;
+    const res = await fetch(url, { headers: { "accept":"application/json", "user-agent":"AutomationFactory-MoneyScout/0.7.9" } });
+    if (!res.ok) {
+      if (page === 0) throw new Error(`Freelancer Projects HTTP ${res.status}`);
+      break;
+    }
+    const data = await res.json();
+    const batch = Array.isArray(data?.result?.projects) ? data.result.projects : [];
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  const seen = new Set();
+  return all.filter(x => {
+    if (!x || !x.id || !x.title || String(x.status || "active") === "closed") return false;
+    const id=String(x.id); if (seen.has(id)) return false; seen.add(id); return true;
+  }).map(x => {
     const b = x.budget || {};
     const cur = x.currency || {};
     const fixed = String(x.type || "").toLowerCase() === "fixed";
@@ -123,7 +138,7 @@ export async function collectFreelancerProjects() {
       posted_at: x.submitdate ? new Date(Number(x.submitdate)*1000).toISOString() : "",
       deadline: x.time_submitted && x.timeframe ? new Date((Number(x.time_submitted)+Number(x.timeframe)*86400)*1000).toISOString() : "",
       competition: num(x.bid_stats?.bid_count ?? x.bid_count),
-      url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).replace(/^\/+|\/+$/g,"") : "https://www.freelancer.com/projects/" + x.id
+      url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).replace(/^\\/+|\\/+$/g,"") : "https://www.freelancer.com/projects/" + x.id
     };
   });
 }
