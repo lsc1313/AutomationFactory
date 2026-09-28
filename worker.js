@@ -733,7 +733,7 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
-      const paidPlanMatch = path.match(/^\\/api\\/paid-jobs\\/([^/]+)\\/plan$/);
+      const paidPlanMatch = path.startsWith("/api/paid-jobs/") && path.endsWith("/plan") ? { 1: path.slice("/api/paid-jobs/".length, -"/plan".length) } : null;
       if (paidPlanMatch && request.method === "GET") {
         const id=decodeURIComponent(paidPlanMatch[1]);
         const row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
