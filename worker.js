@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.7";
+const APP_VERSION = "0.8.8";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -620,7 +620,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.7 · Manager Input Diagnostics · 실제 입력 추적 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.8 · Browser Script Hotfix · Manager 입력 진단 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
