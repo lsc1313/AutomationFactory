@@ -381,7 +381,6 @@ assert.match(crossMarketWorkerSource, /cross_market_validation:yes/);
 assert.match(crossMarketWorkerSource, /\/api\/validate\/markets/);
 
 const uiHotfixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.match(uiHotfixSource, /getElementById\('validateBtn'\)\.onclick/);
 
 const runtimeFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(runtimeFixSource, /runScout\(env, \["marketplace_demand"\]\)/);
@@ -397,7 +396,6 @@ const clusterWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "
 assert.match(clusterWorker, /CREATE TABLE IF NOT EXISTS market_candidates/);
 assert.match(clusterWorker, /ON CONFLICT\(fingerprint\) DO UPDATE SET/);
 assert.match(clusterWorker, /market_candidates:marketCandidates/);
-assert.match(clusterWorker, /시장후보 '\+r\.market_candidates\+'개/);
 
 const detailWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(detailWorker, /\/api\/market-candidates/);
@@ -424,3 +422,9 @@ assert.match(autopilotWorker, /💰 지금 돈 될 후보 보기/);
 assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="rejudgeBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="validateBtn">/);
+
+// v0.7.0 runtime hotfix: retired controls must not have live DOM handlers
+const runtimeHotfixWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+for (const retiredId of ["scanBtn","rejudgeBtn","validateBtn","marketRebuildBtn"]) {
+  assert.doesNotMatch(runtimeHotfixWorker, new RegExp("getElementById\\\\(['\\\"]" + retiredId + "['\\\"]\\\\)\\\\.onclick"));
+}
