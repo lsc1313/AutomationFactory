@@ -501,3 +501,10 @@ assert.ok(managerWorker.includes("paid-job-manager-v0.8.1"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
 assert.ok(managerWorker.includes('path.endsWith("/plan")'));
+
+// v0.8.2 Paid Job Manager mobile UI
+const managerUi = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(managerUi.includes("managerPlanBtn"));
+assert.ok(managerUi.includes("작업계획 보기"));
+assert.ok(managerUi.includes("showManagerPlan"));
+assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음"));
