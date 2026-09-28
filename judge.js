@@ -61,6 +61,26 @@ const HUMAN_EXECUTION_WORDS = [
   "운영 대행","홍보","캠페인 운영","수동 테스트","기능 테스트","계정 운영"
 ];
 
+const SOFTWARE_ARTIFACT_WORDS = [
+  "api integration","webhook","telegram bot","discord bot","chatbot","automation script","python script",
+  "javascript script","scraper","crawler","browser automation","data pipeline","etl","dashboard",
+  "web app","web application","chrome extension","browser extension","plugin","cli tool","software tool",
+  "excel automation","google sheets automation","report generator","csv export","database integration",
+  "api 연동","웹훅","텔레그램 봇","디스코드 봇","자동화 스크립트","크롤러","웹앱","확장프로그램","데이터 파이프라인"
+];
+const SPEC_DETAIL_WORDS = [
+  "api","webhook","endpoint","database","csv","json","excel","google sheets","shopify","stripe","discord",
+  "telegram","slack","github","wordpress","cloudflare","email","notification","export","import","sync",
+  "login","authentication","payment","order","report","scrape","url","website","dashboard",
+  "입력","출력","저장","알림","동기화","로그인","결제","주문","보고서","내보내기","가져오기"
+];
+const NON_SOFTWARE_DOMAIN_WORDS = [
+  "commercial building","sq ft","square feet","roof","ceiling height","architect","architecture drawing",
+  "3d artist","3d model","character facelift","facial features","humanoid npc","blender artist",
+  "logo design","branding","translation","content creation","video editing","illustration",
+  "건물 증축","건축","도면","3d 모델링","캐릭터 모델링","로고 디자인","번역","영상 편집"
+];
+
 const HIGH_RISK_WORDS = [
   "onsite","on-site","relocation","6 months","12 months","security clearance","citizenship required",
   "상주","파견","출근","6개월","1년","시민권","보안인가"
@@ -589,11 +609,15 @@ export function judgeOpportunity(opportunity) {
   const buildActionHits = hits(text, BUILD_ACTION_WORDS);
   const humanServiceHits = hits(text, HUMAN_SERVICE_WORDS);
   const humanExecutionHits = hits(text, HUMAN_EXECUTION_WORDS);
-  const hasConcreteArtifact = deliverableHits.length > 0 && buildActionHits.length > 0;
+  const softwareArtifactHits = hits(text, SOFTWARE_ARTIFACT_WORDS);
+  const specDetailHits = hits(text, SPEC_DETAIL_WORDS);
+  const nonSoftwareDomainHits = hits(text, NON_SOFTWARE_DOMAIN_WORDS);
+  const hasConcreteArtifact = softwareArtifactHits.length > 0 && buildActionHits.length > 0;
+  const hasWorkSpec = hasConcreteArtifact && specDetailHits.length > 0;
   const humanExecution = humanServiceHits.length > 0 || humanExecutionHits.length > 0;
-  const factoryFulfillmentScore = clamp((deliverableHits.length * 18) + (buildActionHits.length * 22) - (humanServiceHits.length * 45) - (humanExecutionHits.length * 55), 0, 100);
-  const factoryFulfillable = hasConcreteArtifact && !humanExecution && factoryFulfillmentScore >= 55;
-  const fulfillmentStatus = factoryFulfillable ? "ready" : humanExecution ? "human_service" : deliverableHits.length ? "needs_clarification" : "not_factory_fit";
+  const factoryFulfillmentScore = clamp((softwareArtifactHits.length * 30) + (buildActionHits.length * 15) + (specDetailHits.length * 10) - (humanServiceHits.length * 50) - (humanExecutionHits.length * 60) - (nonSoftwareDomainHits.length * 70), 0, 100);
+  const factoryFulfillable = hasWorkSpec && !humanExecution && nonSoftwareDomainHits.length === 0 && factoryFulfillmentScore >= 60;
+  const fulfillmentStatus = factoryFulfillable ? "ready" : nonSoftwareDomainHits.length ? "non_software" : humanExecution ? "human_service" : softwareArtifactHits.length ? "needs_spec" : "not_factory_fit";
   const explicitPay = payout.usd != null && payout.usd > 0 && !payout.requiresPayCheck;
   const actionablePaidJob = paidJob && explicitPay && factoryFulfillable && !["micro","very_low","no_reward"].includes(payout.status);
   if (payout.requiresPayCheck && grade === "hot") grade = "watch";
@@ -630,7 +654,7 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "deliverable-judge-v0.7.7",
+      judge_version: "work-spec-gate-v0.7.8",
       judge_mode: "paid",
       paid_job: paidJob,
       explicit_pay: explicitPay,
@@ -638,6 +662,10 @@ export function judgeOpportunity(opportunity) {
       factory_fulfillable: factoryFulfillable,
       fulfillment_status: fulfillmentStatus,
       concrete_artifact: hasConcreteArtifact,
+      work_spec_ready: hasWorkSpec,
+      software_artifact_hits: softwareArtifactHits.slice(0,8),
+      spec_detail_hits: specDetailHits.slice(0,8),
+      non_software_domain_hits: nonSoftwareDomainHits.slice(0,8),
       factory_fulfillment_score: factoryFulfillmentScore,
       factory_deliverable_hits: deliverableHits.slice(0,8),
       build_action_hits: buildActionHits.slice(0,8),

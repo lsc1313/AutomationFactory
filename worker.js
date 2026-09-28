@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.7.7";
+const APP_VERSION = "0.7.8";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -569,7 +569,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.7.7 · Deliverable Judge · 실제 제작·납품 가능 의뢰 우선 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.7.8 · Work-Spec Gate · 명세 가능한 소프트웨어 의뢰 우선 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -708,7 +708,7 @@ export default {
       }
       if (path === "/api/paid-jobs") {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
-        const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'deliverable-judge-v0.7.7'`).first();
+        const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'work-spec-gate-v0.7.8'`).first();
         if (Number(staleJudge?.c || 0) > 0) await rejudgeAll(env);
         const latestPaid = await env.DB.prepare(`SELECT MAX(last_seen_at) AS last_seen FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid')`).first();
         const ageMs = latestPaid?.last_seen ? Date.now() - Date.parse(latestPaid.last_seen) : Infinity;
@@ -720,7 +720,7 @@ export default {
           else await refresh;
         }
 
-        const rows = await env.DB.prepare(`SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.judge_version')='deliverable-judge-v0.7.7' AND json_extract(score_breakdown,'$.factory_fulfillable')=1 AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT 50`).all();
+        const rows = await env.DB.prepare(`SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(score_breakdown,'$.factory_fulfillable')=1 AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT 50`).all();
         return json(rows.results || []);
       }
       if (path === "/api/market-candidates") {
