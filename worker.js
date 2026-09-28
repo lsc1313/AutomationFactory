@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.3";
+const APP_VERSION = "0.8.4";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -512,40 +512,38 @@ async function setDecision(env, opportunityId, state) {
 function paidJobPlan(row) {
   let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
   const raw=String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"");
-  const text=raw.toLowerCase();
-  const korean=(raw.match(/[가-힣]/g)||[]).length>20;
-  const artifacts=Array.isArray(bd.software_artifact_hits)?bd.software_artifact_hits:[];
-  const specs=Array.isArray(bd.spec_detail_hits)?bd.spec_detail_hits:[];
-  const requested=[...new Set([...artifacts,...specs])].slice(0,10);
-  const q=[];
-  const add=(test,answered,en,ko)=>{if(test&&!answered)q.push(korean?ko:en)};
-  add(/protected|login|authentication|auth|account/.test(text), /test account|credentials provided|login provided|access provided/.test(text),
-    "Can you provide an authorized test account and confirm the login/authentication method?",
-    "허가된 테스트 계정과 로그인/인증 방식을 제공할 수 있나요?");
-  add(/\bapi\b/.test(text), /api (?:docs|documentation|key)|oauth|endpoint/.test(text),
-    "Is there an official API or documentation, and what authentication method should be used?",
-    "공식 API/문서가 있다면 인증 방식과 함께 제공할 수 있나요?");
-  add(/telegram|discord|slack|notification|alert/.test(text), /bot token|chat id|channel id|message format/.test(text),
-    "What destination and message format should the notifications use?",
-    "알림 대상과 원하는 메시지 형식을 알려주세요.");
-  add(/scrap|crawl|browser|page|website|web site/.test(text), /every \w+ seconds|every \d+|interval|poll every|check every/.test(text),
-    "Please confirm the target URL and the exact condition that counts as a successful state change.",
-    "대상 URL과 상태 변경 성공 판정 조건을 확인해주세요.");
-  add(/database|csv|json|excel|sheet|export|import/.test(text), /sample (?:csv|json|data)|columns|schema/.test(text),
-    "Can you provide a sample input/output and the required fields or schema?",
-    "입출력 예시와 필수 필드/스키마를 제공할 수 있나요?");
-  if(!q.length) q.push(korean?"최종 검수 기준과 반드시 포함해야 할 기능을 확인해주세요.":"Please confirm the final acceptance criteria and any must-have behavior not stated in the brief.");
+  const text=raw.toLowerCase(), korean=(raw.match(/[가-힣]/g)||[]).length>20;
+  const steps=[];
+  const step=(test,en,ko)=>{if(test)steps.push(korean?ko:en)};
+  step(/scrap|crawl|browser|page|website|web site|monitor|check/.test(text),"Access and monitor the target web page/service","대상 웹페이지/서비스에 접근해 상태를 주기적으로 확인");
+  step(/protected|login|authentication|auth|account/.test(text),"Handle authorized login/session access safely","허가된 로그인/세션 접근을 안전하게 처리");
+  step(/slot|availability|available|state|status|change/.test(text),"Detect the requested availability/state transition","요청된 가용성/상태 변화를 판별");
+  step(/telegram/.test(text),"Send immediate Telegram notifications when the state changes","상태 변경 시 Telegram으로 즉시 알림 전송");
+  step(/discord/.test(text),"Send Discord notifications when the trigger condition is met","조건 충족 시 Discord 알림 전송");
+  step(/slack/.test(text),"Send Slack notifications when the trigger condition is met","조건 충족 시 Slack 알림 전송");
+  step(/api/.test(text),"Integrate the required API/authentication flow where available","사용 가능한 API/인증 흐름 연동");
+  step(/database|sqlite|mysql|postgres|store|history/.test(text),"Persist required state/history for reliable operation","안정적 운영을 위한 상태/이력 저장");
+  step(/retry|resilien|error|failure|robust/.test(text),"Add retry, error handling and recovery behavior","재시도·오류처리·복구 로직 구성");
+  step(/python/.test(text),"Package the implementation as a runnable Python service","실행 가능한 Python 서비스 형태로 패키징");
+  if(!steps.length) steps.push(korean?"요청 기능 구현 및 실행 가능한 납품물 구성":"Implement the requested behavior as a runnable software deliverable");
+  const deliverables=[...steps.slice(0,7),korean?"설치/실행 방법과 검수 절차 문서":"Setup/run instructions and acceptance-test steps"];
+  const q=[]; const add=(test,answered,en,ko)=>{if(test&&!answered)q.push(korean?ko:en)};
+  add(/protected|login|authentication|auth|account/.test(text),/test account|credentials provided|login provided|access provided/.test(text),"Can you provide an authorized test account and confirm the login/authentication method?","허가된 테스트 계정과 로그인/인증 방식을 제공할 수 있나요?");
+  add(/scrap|crawl|browser|page|website|web site|monitor/.test(text),/target url|url is|https?:\/\//.test(text),"Please provide the target URL and confirm the exact state-change condition to detect.","대상 URL과 감지해야 할 정확한 상태 변경 조건을 알려주세요.");
+  add(/telegram|discord|slack|notification|alert/.test(text),/bot token|chat id|channel id|message format/.test(text),"Please confirm the notification destination and preferred message format.","알림 대상과 원하는 메시지 형식을 확인해주세요.");
   if(!/deadline|deliver by|within \d+ (?:day|hour)|납기|마감/.test(text)) q.push(korean?"원하는 납기일과 실행환경(Windows/Linux/Cloud)을 알려주세요.":"What is your preferred delivery date and target runtime (Windows, Linux, or cloud)?");
+  if(!q.length) q.push(korean?"최종 검수 기준에서 반드시 통과해야 할 조건을 확인해주세요.":"Please confirm the final acceptance criteria that must pass before delivery.");
   const questions=q.slice(0,3);
-  const complexity=Math.min(5,Math.max(1,Math.ceil((requested.length+(questions.length>1?1:0))/3)));
+  const complexity=Math.min(5,Math.max(1,Math.ceil((deliverables.length+questions.length)/3)));
   const hours=[0,2,4,8,16,28][complexity];
-  const budget=[row.budget_min,row.budget_max].filter(v=>Number(v)>0).map(Number);
-  const scope=requested.slice(0,4);
-  const scopeText=scope.length?scope.join(", "):(korean?"요청된 자동화 기능":"the requested automation");
-  const proposal=korean
-    ? `안녕하세요. 요청하신 ${scopeText} 작업을 구현할 수 있습니다. 먼저 ${questions.join(" ")} 범위가 확정되면 구현과 테스트를 진행하고, 실행 가능한 결과물과 설치/운영 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 작업시간은 약 ${hours}시간입니다. 실제 지원 전 최종 범위와 검수 기준을 확인하겠습니다.`
-    : `Hello, I can build the requested ${scopeText} as a focused, testable software deliverable. Before starting, I would confirm: ${questions.join(" ")} Once the scope is confirmed, I will implement and test it, then deliver the runnable solution with setup/operation instructions. Based on the current brief, I estimate about ${hours} hours of implementation. I can begin as soon as the scope and acceptance criteria are confirmed.`;
-  return {manager_version:"paid-job-manager-v0.8.3",status:"needs_user_approval",detected_language:korean?"ko":"en",requested_functions:requested,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:0,budget_min:budget[0]??null,budget_max:budget[1]??budget[0]??null,currency:String(row.currency||""),delivery_risk:questions.length>=3?"medium":"low",proposal_draft:proposal,application_url:row.url||""};
+  const externalCostKnown=/free|no paid|no external cost|무료/.test(text);
+  const externalCost=externalCostKnown?0:null;
+  const externalCostStatus=externalCostKnown?"source_indicates_none":"needs_validation";
+  const riskFactors=[]; if(/protected|login|auth/.test(text))riskFactors.push(korean?"인증/접근 방식":"authentication/access"); if(/every few seconds|every \d+ seconds|real.?time/.test(text))riskFactors.push(korean?"고빈도 모니터링":"high-frequency monitoring"); if(questions.length>=3)riskFactors.push(korean?"미확정 요구사항":"open requirements");
+  const risk=riskFactors.length>=2?"medium":riskFactors.length?"low":"low";
+  const scopeText=deliverables.slice(0,5).join(korean?" → ":"; ");
+  const proposal=korean?`안녕하세요. 요청 내용을 기준으로 ${scopeText} 범위로 구현할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·테스트를 진행하고 실행 가능한 결과물과 설치/운영 및 검수 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 구현시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"현재 원문상 별도 비용 없음":"사용 서비스가 확정된 뒤 확인"}입니다.`:`Hello, I can implement this as a concrete deliverable covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement and test the solution and deliver the runnable package with setup, operation, and acceptance-test instructions. Based on the current brief, I estimate about ${hours} hours of implementation. Any external service cost will be confirmed once the required services and access method are known.`;
+  return {manager_version:"paid-job-manager-v0.8.4",status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:steps,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:riskFactors,proposal_draft:proposal,application_url:row.url||""};
 }
 
 async function listRuns(env) {
@@ -611,7 +609,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.3 · Paid Job Manager v2 · 언어맞춤/중복질문제거/지원초안 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.4 · Paid Job Manager v3 · 구현명세/납품물/비용검증/지원초안 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -714,9 +712,9 @@ async function showManagerPlan(btn){
  btn.disabled=true; const old=btn.textContent; btn.textContent='분석 중…';
  try{
   const p=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/plan');
-  const req=(p.requested_functions||[]).map(x=>'• '+esc(x)).join('<br>')||'• 명세 확인 필요';
+  const req=(p.deliverables||p.requested_functions||[]).map(x=>'• '+esc(x)).join('<br>')||'• 명세 확인 필요';
   const qs=(p.clarification_questions||[]).map((x,i)=>(i+1)+'. '+esc(x)).join('<br>');
-  el.innerHTML='<div class="reason" style="margin-top:12px"><b>🧩 요구 기능</b><br>'+req+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+esc(p.estimated_external_cost)+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
+  el.innerHTML='<div class="reason" style="margin-top:12px"><b>🧩 요구 기능</b><br>'+req+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
  }catch(err){el.innerHTML='<div class="empty error">작업계획 조회 실패: '+esc(err.message)+'</div>';}
  finally{btn.disabled=false;btn.textContent=old;}
 }
