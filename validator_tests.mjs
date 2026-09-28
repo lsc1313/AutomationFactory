@@ -436,3 +436,11 @@ assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("payment"\)/);
 assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("pricing"\)/);
 assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("buyer_market"\)/);
 assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("independent_demand"\)/);
+
+// v0.7.2 Paid Job Scout
+const paidWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+const paidJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8");
+assert.match(paidWorker, /\/api\/paid-jobs/);
+assert.match(paidWorker, /지금 지원 가능한 유료 일감/);
+assert.match(paidJudge, /actionable_paid_job/);
+assert.match(paidJudge, /paid-job-scout-v0\.7\.2/);
