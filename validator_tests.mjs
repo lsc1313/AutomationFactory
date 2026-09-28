@@ -500,4 +500,4 @@ const managerWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "
 assert.ok(managerWorker.includes("paid-job-manager-v0.8.1"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
-assert.ok(managerWorker.includes("/plan$/"));
+assert.ok(managerWorker.includes('path.endsWith("/plan")'));
