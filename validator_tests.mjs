@@ -444,3 +444,10 @@ assert.match(paidWorker, /\/api\/paid-jobs/);
 assert.match(paidWorker, /지금 지원 가능한 유료 일감/);
 assert.match(paidJudge, /actionable_paid_job/);
 assert.match(paidJudge, /paid-job-scout-v0\.7\.2/);
+
+// v0.7.3 direct paid-job sources
+const sourceV073 = fs.readFileSync(new URL("./sources.js", import.meta.url), "utf8");
+assert.match(sourceV073, /collectFreelancerProjects/);
+assert.match(sourceV073, /freelancer_projects: collectFreelancerProjects/);
+assert.match(sourceV073, /api\/projects\/0\.1\/projects\/active/);
+assert.match(sourceV073, /type: fixed \? "fixed_project" : "hourly_contract"/);
