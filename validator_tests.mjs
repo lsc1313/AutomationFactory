@@ -497,7 +497,7 @@ assert.ok(discoverySources.includes("AutomationFactory-MoneyScout/0.7.9"));
 
 // v0.8.1 Paid Job Manager
 const managerWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerWorker.includes("paid-job-manager-v0.8.7"));
+assert.ok(managerWorker.includes("paid-job-manager-v2.0"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
 assert.ok(managerWorker.includes('path.endsWith("/plan")'));
