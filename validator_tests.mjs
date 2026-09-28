@@ -451,3 +451,9 @@ assert.match(sourceV073, /collectFreelancerProjects/);
 assert.match(sourceV073, /freelancer_projects: collectFreelancerProjects/);
 assert.match(sourceV073, /api\/projects\/0\.1\/projects\/active/);
 assert.match(sourceV073, /type: fixed \? "fixed_project" : "hourly_contract"/);
+
+// v0.7.4 stale paid-job auto refresh
+const autoRefreshWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(autoRefreshWorker, /paidSources = \["freelancer_projects","agent_bounties","github_paid"\]/);
+assert.match(autoRefreshWorker, /30 \* 60 \* 1000/);
+assert.match(autoRefreshWorker, /waitUntil\(refresh\)/);
