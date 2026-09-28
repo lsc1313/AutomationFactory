@@ -49,6 +49,18 @@ const HUMAN_SERVICE_WORDS = [
   "영업","콜드메일","리드 생성","광고 운영","광고 집행","마케팅 운영","고객 응대","상담","채용 대행"
 ];
 
+const BUILD_ACTION_WORDS = [
+  "build","develop","create","implement","integrate","configure","migrate","fix","debug","code","program",
+  "build a","develop a","create a","implement a","개발","제작","구현","연동","수정","마이그레이션"
+];
+const HUMAN_EXECUTION_WORDS = [
+  "manage campaign","campaign management","promote services","social media promotion","marketing campaign",
+  "manual testing","functionality testing","test every","qa eyes","perform qa","user testing",
+  "manage account","daily posting","create and manage","gérer une","promouvoir","promotion de services",
+  "campagne","réseaux sociaux","publicité","prospection","gestion des réseaux sociaux",
+  "운영 대행","홍보","캠페인 운영","수동 테스트","기능 테스트","계정 운영"
+];
+
 const HIGH_RISK_WORDS = [
   "onsite","on-site","relocation","6 months","12 months","security clearance","citizenship required",
   "상주","파견","출근","6개월","1년","시민권","보안인가"
@@ -574,9 +586,14 @@ export function judgeOpportunity(opportunity) {
   let grade = score >= 70 ? "hot" : score >= 45 ? "watch" : "cold";
   const paidJob = ["bounty","fixed_project","freelance_gig"].includes(opportunityType);
   const deliverableHits = hits(text, FACTORY_DELIVERABLE_WORDS);
+  const buildActionHits = hits(text, BUILD_ACTION_WORDS);
   const humanServiceHits = hits(text, HUMAN_SERVICE_WORDS);
-  const factoryFulfillmentScore = clamp(deliverableHits.length * 24 - humanServiceHits.length * 35, 0, 100);
-  const factoryFulfillable = deliverableHits.length > 0 && humanServiceHits.length === 0 && factoryFulfillmentScore >= 48;
+  const humanExecutionHits = hits(text, HUMAN_EXECUTION_WORDS);
+  const hasConcreteArtifact = deliverableHits.length > 0 && buildActionHits.length > 0;
+  const humanExecution = humanServiceHits.length > 0 || humanExecutionHits.length > 0;
+  const factoryFulfillmentScore = clamp((deliverableHits.length * 18) + (buildActionHits.length * 22) - (humanServiceHits.length * 45) - (humanExecutionHits.length * 55), 0, 100);
+  const factoryFulfillable = hasConcreteArtifact && !humanExecution && factoryFulfillmentScore >= 55;
+  const fulfillmentStatus = factoryFulfillable ? "ready" : humanExecution ? "human_service" : deliverableHits.length ? "needs_clarification" : "not_factory_fit";
   const explicitPay = payout.usd != null && payout.usd > 0 && !payout.requiresPayCheck;
   const actionablePaidJob = paidJob && explicitPay && factoryFulfillable && !["micro","very_low","no_reward"].includes(payout.status);
   if (payout.requiresPayCheck && grade === "hot") grade = "watch";
@@ -613,14 +630,18 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "factory-fulfillment-v0.7.5",
+      judge_version: "deliverable-judge-v0.7.7",
       judge_mode: "paid",
       paid_job: paidJob,
       explicit_pay: explicitPay,
       actionable_paid_job: actionablePaidJob,
       factory_fulfillable: factoryFulfillable,
+      fulfillment_status: fulfillmentStatus,
+      concrete_artifact: hasConcreteArtifact,
       factory_fulfillment_score: factoryFulfillmentScore,
       factory_deliverable_hits: deliverableHits.slice(0,8),
+      build_action_hits: buildActionHits.slice(0,8),
+      human_execution_hits: humanExecutionHits.slice(0,8),
       human_service_hits: humanServiceHits.slice(0,8),
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
