@@ -465,3 +465,10 @@ assert.match(fulfillJudge, /HUMAN_SERVICE_WORDS/);
 assert.match(fulfillJudge, /factory_fulfillable/);
 assert.match(fulfillJudge, /human_service_hits/);
 assert.match(fulfillJudge, /factory-fulfillment-v0\.7\.5/);
+
+// v0.7.6 paid jobs must be rejudged after Judge upgrades
+const rejudgeWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(rejudgeWorker, /staleJudge/);
+assert.match(rejudgeWorker, /factory-fulfillment-v0\.7\.5/);
+assert.match(rejudgeWorker, /factory_fulfillable/);
+assert.match(rejudgeWorker, /await rejudgeAll\(env\)/);
