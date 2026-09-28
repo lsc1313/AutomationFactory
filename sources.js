@@ -102,7 +102,10 @@ export async function collectFreelancerProjects() {
   const pageSize = 50;
   const pages = 6;
   const all = [];
+  let pagesRequested = 0;
+  let pagesSucceeded = 0;
   for (let page = 0; page < pages; page++) {
+    pagesRequested++;
     const offset = page * pageSize;
     const url = `https://www.freelancer.com/api/projects/0.1/projects/active/?compact=true&limit=${pageSize}&offset=${offset}&job_details=true&full_description=true`;
     const res = await fetch(url, { headers: { "accept":"application/json", "user-agent":"AutomationFactory-MoneyScout/0.7.9" } });
@@ -112,11 +115,12 @@ export async function collectFreelancerProjects() {
     }
     const data = await res.json();
     const batch = Array.isArray(data?.result?.projects) ? data.result.projects : [];
+    pagesSucceeded++;
     all.push(...batch);
     if (batch.length < pageSize) break;
   }
   const seen = new Set();
-  return all.filter(x => {
+  const items = all.filter(x => {
     if (!x || !x.id || !x.title || String(x.status || "active") === "closed") return false;
     const id=String(x.id); if (seen.has(id)) return false; seen.add(id); return true;
   }).map(x => {
@@ -141,6 +145,9 @@ export async function collectFreelancerProjects() {
       url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).split("/").filter(Boolean).join("/") : "https://www.freelancer.com/projects/" + x.id
     };
   });
+  items.diagnostics = { pages_requested: pagesRequested, pages_succeeded: pagesSucceeded, raw_count: all.length, unique_count: items.length };
+  return items;
+
 }
 
 export async function collectAgentBounties() {
