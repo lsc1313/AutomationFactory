@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.2";
+const APP_VERSION = "0.8.3";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -511,24 +511,41 @@ async function setDecision(env, opportunityId, state) {
 
 function paidJobPlan(row) {
   let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
-  const text=(String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"")).toLowerCase();
+  const raw=String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"");
+  const text=raw.toLowerCase();
+  const korean=(raw.match(/[가-힣]/g)||[]).length>20;
   const artifacts=Array.isArray(bd.software_artifact_hits)?bd.software_artifact_hits:[];
   const specs=Array.isArray(bd.spec_detail_hits)?bd.spec_detail_hits:[];
   const requested=[...new Set([...artifacts,...specs])].slice(0,10);
-  const questions=[];
-  if(/protected|login|authentication|auth|account/.test(text)) questions.push("대상 서비스의 합법적인 접근 권한/로그인 방식과 테스트 계정을 제공할 수 있나요?");
-  if(/api/.test(text)) questions.push("사용 가능한 공식 API/문서와 인증 방식(API key/OAuth 등)이 있나요?");
-  if(/telegram|discord|slack|notification|alert/.test(text)) questions.push("알림 대상 채널/봇 토큰과 원하는 메시지 형식을 알려주세요.");
-  if(/scrap|crawl|browser|page|website|web site/.test(text)) questions.push("대상 URL, 확인 주기, 성공/실패 판정 조건을 정확히 알려주세요.");
-  if(/database|csv|json|excel|sheet|export|import/.test(text)) questions.push("입출력 데이터 예시와 필수 컬럼/저장 형식을 제공할 수 있나요?");
-  if(!questions.length) questions.push("완료로 인정할 핵심 기능과 검수 기준을 3~5개 항목으로 알려주세요.");
-  questions.push("납품 실행환경(Windows/Linux/Cloud)과 원하는 납기일은 언제인가요?");
-  const complexity=Math.min(5,Math.max(1,Math.ceil((requested.length+(questions.length>2?1:0))/3)));
+  const q=[];
+  const add=(test,answered,en,ko)=>{if(test&&!answered)q.push(korean?ko:en)};
+  add(/protected|login|authentication|auth|account/.test(text), /test account|credentials provided|login provided|access provided/.test(text),
+    "Can you provide an authorized test account and confirm the login/authentication method?",
+    "허가된 테스트 계정과 로그인/인증 방식을 제공할 수 있나요?");
+  add(/\bapi\b/.test(text), /api (?:docs|documentation|key)|oauth|endpoint/.test(text),
+    "Is there an official API or documentation, and what authentication method should be used?",
+    "공식 API/문서가 있다면 인증 방식과 함께 제공할 수 있나요?");
+  add(/telegram|discord|slack|notification|alert/.test(text), /bot token|chat id|channel id|message format/.test(text),
+    "What destination and message format should the notifications use?",
+    "알림 대상과 원하는 메시지 형식을 알려주세요.");
+  add(/scrap|crawl|browser|page|website|web site/.test(text), /every \w+ seconds|every \d+|interval|poll every|check every/.test(text),
+    "Please confirm the target URL and the exact condition that counts as a successful state change.",
+    "대상 URL과 상태 변경 성공 판정 조건을 확인해주세요.");
+  add(/database|csv|json|excel|sheet|export|import/.test(text), /sample (?:csv|json|data)|columns|schema/.test(text),
+    "Can you provide a sample input/output and the required fields or schema?",
+    "입출력 예시와 필수 필드/스키마를 제공할 수 있나요?");
+  if(!q.length) q.push(korean?"최종 검수 기준과 반드시 포함해야 할 기능을 확인해주세요.":"Please confirm the final acceptance criteria and any must-have behavior not stated in the brief.");
+  if(!/deadline|deliver by|within \d+ (?:day|hour)|납기|마감/.test(text)) q.push(korean?"원하는 납기일과 실행환경(Windows/Linux/Cloud)을 알려주세요.":"What is your preferred delivery date and target runtime (Windows, Linux, or cloud)?");
+  const questions=q.slice(0,3);
+  const complexity=Math.min(5,Math.max(1,Math.ceil((requested.length+(questions.length>1?1:0))/3)));
   const hours=[0,2,4,8,16,28][complexity];
   const budget=[row.budget_min,row.budget_max].filter(v=>Number(v)>0).map(Number);
-  const currency=String(row.currency||"");
-  const proposal=`Hello, I can build this as a focused software deliverable. Based on your brief, I would first confirm ${questions.slice(0,2).join(" ")} Once confirmed, I can implement, test, and provide the runnable deliverable with setup instructions. I can start after the scope and acceptance criteria are confirmed.`;
-  return {manager_version:"paid-job-manager-v0.8.1",status:"needs_user_approval",requested_functions:requested,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:0,budget_min:budget[0]??null,budget_max:budget[1]??budget[0]??null,currency,delivery_risk:questions.length>=4?"medium":"low",proposal_draft:proposal,application_url:row.url||""};
+  const scope=requested.slice(0,4);
+  const scopeText=scope.length?scope.join(", "):(korean?"요청된 자동화 기능":"the requested automation");
+  const proposal=korean
+    ? `안녕하세요. 요청하신 ${scopeText} 작업을 구현할 수 있습니다. 먼저 ${questions.join(" ")} 범위가 확정되면 구현과 테스트를 진행하고, 실행 가능한 결과물과 설치/운영 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 작업시간은 약 ${hours}시간입니다. 실제 지원 전 최종 범위와 검수 기준을 확인하겠습니다.`
+    : `Hello, I can build the requested ${scopeText} as a focused, testable software deliverable. Before starting, I would confirm: ${questions.join(" ")} Once the scope is confirmed, I will implement and test it, then deliver the runnable solution with setup/operation instructions. Based on the current brief, I estimate about ${hours} hours of implementation. I can begin as soon as the scope and acceptance criteria are confirmed.`;
+  return {manager_version:"paid-job-manager-v0.8.3",status:"needs_user_approval",detected_language:korean?"ko":"en",requested_functions:requested,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:0,budget_min:budget[0]??null,budget_max:budget[1]??budget[0]??null,currency:String(row.currency||""),delivery_risk:questions.length>=3?"medium":"low",proposal_draft:proposal,application_url:row.url||""};
 }
 
 async function listRuns(env) {
@@ -594,7 +611,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.2 · Paid Job Manager UI · 작업계획/질문/견적/지원초안 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.3 · Paid Job Manager v2 · 언어맞춤/중복질문제거/지원초안 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
