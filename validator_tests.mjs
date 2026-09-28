@@ -522,7 +522,7 @@ assert.ok(managerV3.includes("implementation_plan"));
 assert.ok(managerV3.includes("deliverables"));
 assert.ok(managerV3.includes("external_cost_status"));
 assert.ok(managerV3.includes("needs_validation"));
-assert.ok(managerV3.includes("외부비용</b> '+(p.estimated_external_cost==null?'확인 필요'"));
+assert.ok(managerV3.includes("p.external_cost_status===\'needs_validation\'||p.estimated_external_cost==null"));
 
 // v0.8.5 Builder-ready spec
 const builderReady = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
