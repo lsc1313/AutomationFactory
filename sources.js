@@ -138,7 +138,7 @@ export async function collectFreelancerProjects() {
       posted_at: x.submitdate ? new Date(Number(x.submitdate)*1000).toISOString() : "",
       deadline: x.time_submitted && x.timeframe ? new Date((Number(x.time_submitted)+Number(x.timeframe)*86400)*1000).toISOString() : "",
       competition: num(x.bid_stats?.bid_count ?? x.bid_count),
-      url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).replace(/^\\/|\\/$/g,"") : "https://www.freelancer.com/projects/" + x.id
+      url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).split("/").filter(Boolean).join("/") : "https://www.freelancer.com/projects/" + x.id
     };
   });
 }
