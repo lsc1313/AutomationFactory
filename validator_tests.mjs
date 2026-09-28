@@ -399,7 +399,7 @@ assert.match(clusterWorker, /market_candidates:marketCandidates/);
 
 const detailWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(detailWorker, /\/api\/market-candidates/);
-assert.match(detailWorker, /id="candidateBtn">💰 지금 돈 될 후보 보기/);
+assert.match(detailWorker, /id="paidJobsBtn">💵 지금 지원 가능한 유료 일감/);
 assert.match(detailWorker, /독립수요/);
 assert.match(detailWorker, /가격근거/);
 assert.match(detailWorker, /GitHub 수요 근거/);
@@ -418,7 +418,7 @@ const autopilotWorker = fs.readFileSync(new URL("./worker.js", import.meta.url),
 assert.match(autopilotWorker, /async function runMoneyPipeline/);
 assert.match(autopilotWorker, /ctx\.waitUntil\(runMoneyPipeline\(env\)\)/);
 assert.match(autopilotWorker, /\/api\/pipeline\/run/);
-assert.match(autopilotWorker, /💰 지금 돈 될 후보 보기/);
+assert.match(autopilotWorker, /💵 지금 지원 가능한 유료 일감/);
 assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="rejudgeBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="validateBtn">/);
@@ -436,3 +436,11 @@ assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("payment"\)/);
 assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("pricing"\)/);
 assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("buyer_market"\)/);
 assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("independent_demand"\)/);
+
+// v0.7.2 Paid Job Scout
+const paidWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+const paidJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8");
+assert.match(paidWorker, /\/api\/paid-jobs/);
+assert.match(paidWorker, /지금 지원 가능한 유료 일감/);
+assert.match(paidJudge, /actionable_paid_job/);
+assert.match(paidJudge, /paid-job-scout-v0\.7\.2/);

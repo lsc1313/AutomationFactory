@@ -556,6 +556,9 @@ export function judgeOpportunity(opportunity) {
   score = Math.min(score, hardCap);
 
   let grade = score >= 70 ? "hot" : score >= 45 ? "watch" : "cold";
+  const paidJob = ["bounty","fixed_project","freelance_gig"].includes(opportunityType);
+  const explicitPay = payout.usd != null && payout.usd > 0 && !payout.requiresPayCheck;
+  const actionablePaidJob = paidJob && explicitPay && automation >= 50 && !["micro","very_low","no_reward"].includes(payout.status);
   if (payout.requiresPayCheck && grade === "hot") grade = "watch";
   if (["micro","very_low","no_reward"].includes(payout.status)) grade = "cold";
   if (payout.kind === "token_fixed" && grade === "hot") grade = "watch";
@@ -590,8 +593,11 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "payout+demand+marketplace-v0.4.4",
+      judge_version: "paid-job-scout-v0.7.2",
       judge_mode: "paid",
+      paid_job: paidJob,
+      explicit_pay: explicitPay,
+      actionable_paid_job: actionablePaidJob,
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
       payout_trust: payout.trust,
