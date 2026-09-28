@@ -488,3 +488,9 @@ assert.match(workSpecJudge, /SPEC_DETAIL_WORDS/);
 assert.match(workSpecJudge, /NON_SOFTWARE_DOMAIN_WORDS/);
 assert.match(workSpecJudge, /work_spec_ready/);
 assert.match(workSpecJudge, /work-spec-gate-v0\.7\.8/);
+
+// v0.7.9 Expanded Paid Discovery
+const discoverySources = fs.readFileSync(new URL("./sources.js", import.meta.url), "utf8");
+assert.match(discoverySources, /const pages = 6/);
+assert.match(discoverySources, /offset=\\\$\\{offset\\}/);
+assert.match(discoverySources, /MoneyScout\\\/0\.7\.9/);
