@@ -556,3 +556,13 @@ const diagRender = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf
 assert.ok(diagRender.includes("</div>'+diag+'<b>🧩 요구 기능</b>"));
 assert.ok(!diagRender.includes("const externalCostKnown=/free|"));
 assert.ok(diagRender.includes("no external cost|no paid service|no paid api"));
+
+// v0.9.0 Manager v2: client-brief-driven requirements
+const managerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(managerV2.includes("paid-job-manager-v2.0"));
+assert.ok(managerV2.includes("factory-build-spec-v2"));
+assert.ok(managerV2.includes("Export the selected products from Squarespace"));
+assert.ok(managerV2.includes("Create the Etsy listings"));
+assert.ok(managerV2.includes("Connect Etsy to Prodigi"));
+assert.ok(managerV2.includes("Squarespace → Etsy → Prodigi"));
+assert.ok(managerV2.includes("US-targeted tax and shipping"));
