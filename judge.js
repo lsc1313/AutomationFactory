@@ -33,6 +33,22 @@ const CONTRACT_WORDS = [
   "프로젝트","외주","프리랜서","건별"
 ];
 
+const FACTORY_DELIVERABLE_WORDS = [
+  "automation","automate","workflow","api integration","integration","bot","chatbot","webhook",
+  "script","python","javascript","node","scrape","scraping","crawler","data extraction","data pipeline",
+  "etl","excel","spreadsheet","google sheet","dashboard","web app","website","discord bot","telegram bot",
+  "cli","plugin","extension","software","tool","program","자동화","연동","봇","스크립트","크롤링","스크래핑",
+  "데이터 수집","데이터 처리","엑셀","구글시트","대시보드","웹앱","프로그램","개발"
+];
+
+const HUMAN_SERVICE_WORDS = [
+  "cold email","cold outreach","outreach campaign","lead generation","generate leads","appointment setting",
+  "sales representative","sales closer","paid advertising","paid ads","google ads","facebook ads","meta ads",
+  "media buyer","social media manager","community manager","virtual assistant","customer support",
+  "telemarketing","recruiter","recruiting","seo specialist","copywriter","content writer",
+  "영업","콜드메일","리드 생성","광고 운영","광고 집행","마케팅 운영","고객 응대","상담","채용 대행"
+];
+
 const HIGH_RISK_WORDS = [
   "onsite","on-site","relocation","6 months","12 months","security clearance","citizenship required",
   "상주","파견","출근","6개월","1년","시민권","보안인가"
@@ -557,8 +573,12 @@ export function judgeOpportunity(opportunity) {
 
   let grade = score >= 70 ? "hot" : score >= 45 ? "watch" : "cold";
   const paidJob = ["bounty","fixed_project","freelance_gig"].includes(opportunityType);
+  const deliverableHits = hits(text, FACTORY_DELIVERABLE_WORDS);
+  const humanServiceHits = hits(text, HUMAN_SERVICE_WORDS);
+  const factoryFulfillmentScore = clamp(deliverableHits.length * 24 - humanServiceHits.length * 35, 0, 100);
+  const factoryFulfillable = deliverableHits.length > 0 && humanServiceHits.length === 0 && factoryFulfillmentScore >= 48;
   const explicitPay = payout.usd != null && payout.usd > 0 && !payout.requiresPayCheck;
-  const actionablePaidJob = paidJob && explicitPay && automation >= 50 && !["micro","very_low","no_reward"].includes(payout.status);
+  const actionablePaidJob = paidJob && explicitPay && factoryFulfillable && !["micro","very_low","no_reward"].includes(payout.status);
   if (payout.requiresPayCheck && grade === "hot") grade = "watch";
   if (["micro","very_low","no_reward"].includes(payout.status)) grade = "cold";
   if (payout.kind === "token_fixed" && grade === "hot") grade = "watch";
@@ -593,11 +613,15 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "paid-job-scout-v0.7.2",
+      judge_version: "factory-fulfillment-v0.7.5",
       judge_mode: "paid",
       paid_job: paidJob,
       explicit_pay: explicitPay,
       actionable_paid_job: actionablePaidJob,
+      factory_fulfillable: factoryFulfillable,
+      factory_fulfillment_score: factoryFulfillmentScore,
+      factory_deliverable_hits: deliverableHits.slice(0,8),
+      human_service_hits: humanServiceHits.slice(0,8),
       opportunity_type: opportunityType,
       payout_kind: payout.kind,
       payout_trust: payout.trust,
