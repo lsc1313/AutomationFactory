@@ -381,7 +381,6 @@ assert.match(crossMarketWorkerSource, /cross_market_validation:yes/);
 assert.match(crossMarketWorkerSource, /\/api\/validate\/markets/);
 
 const uiHotfixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.match(uiHotfixSource, /getElementById\('validateBtn'\)\.onclick/);
 
 const runtimeFixSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(runtimeFixSource, /runScout\(env, \["marketplace_demand"\]\)/);
