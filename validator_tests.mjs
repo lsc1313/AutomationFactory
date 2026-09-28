@@ -428,3 +428,11 @@ const runtimeHotfixWorker = fs.readFileSync(new URL("./worker.js", import.meta.u
 for (const retiredId of ["scanBtn","rejudgeBtn","validateBtn","marketRebuildBtn"]) {
   assert.doesNotMatch(runtimeHotfixWorker, new RegExp("getElementById\\\\(['\\\"]" + retiredId + "['\\\"]\\\\)\\\\.onclick"));
 }
+
+// v0.7.1: final candidates require verified money evidence, not mere commercialization possibility
+const verifiedMoneyWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.match(verifiedMoneyWorker, /verified_money/);
+assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("payment"\)/);
+assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("pricing"\)/);
+assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("buyer_market"\)/);
+assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("independent_demand"\)/);
