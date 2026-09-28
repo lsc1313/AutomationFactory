@@ -457,3 +457,11 @@ const autoRefreshWorker = fs.readFileSync(new URL("./worker.js", import.meta.url
 assert.match(autoRefreshWorker, /paidSources = \["freelancer_projects","agent_bounties","github_paid"\]/);
 assert.match(autoRefreshWorker, /30 \* 60 \* 1000/);
 assert.match(autoRefreshWorker, /waitUntil\(refresh\)/);
+
+// v0.7.5 Factory Fulfillment Gate
+const fulfillJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8");
+assert.match(fulfillJudge, /FACTORY_DELIVERABLE_WORDS/);
+assert.match(fulfillJudge, /HUMAN_SERVICE_WORDS/);
+assert.match(fulfillJudge, /factory_fulfillable/);
+assert.match(fulfillJudge, /human_service_hits/);
+assert.match(fulfillJudge, /factory-fulfillment-v0\.7\.5/);
