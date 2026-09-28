@@ -508,3 +508,10 @@ assert.ok(managerUi.includes("managerPlanBtn"));
 assert.ok(managerUi.includes("작업계획 보기"));
 assert.ok(managerUi.includes("showManagerPlan"));
 assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음"));
+
+// v0.8.3 Paid Job Manager v2
+const managerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(managerV2.includes('paid-job-manager-v0.8.3'));
+assert.ok(managerV2.includes('detected_language'));
+assert.ok(managerV2.includes('questions=q.slice(0,3)'));
+assert.ok(managerV2.includes('acceptance criteria'));
