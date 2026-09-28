@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.7.9";
+const APP_VERSION = "0.8.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -249,8 +249,10 @@ async function runScout(env, sourceNames = null) {
   let hot = 0;
   let watch = 0;
   let cold = 0;
+  const sourceDiagnostics = {};
 
   for (const group of collected.results) {
+    if (group.items?.diagnostics) sourceDiagnostics[group.source] = group.items.diagnostics;
     found += group.items.length;
     for (const item of group.items) {
       try {
@@ -282,7 +284,7 @@ async function runScout(env, sourceNames = null) {
     watch,
     cold,
     collected.errors.length,
-    JSON.stringify(collected.errors),
+    JSON.stringify([...collected.errors, ...Object.entries(sourceDiagnostics).map(([source, d]) => ({ source, diagnostic: d }))]),
     runId
   ).run();
 
@@ -295,7 +297,8 @@ async function runScout(env, sourceNames = null) {
     found,
     saved,
     grades: { hot, watch, cold },
-    errors: collected.errors
+    errors: collected.errors,
+    diagnostics: sourceDiagnostics
   };
 }
 
@@ -569,7 +572,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.7.9 · Expanded Paid Discovery · 최대 300건 탐색 → Work-Spec Gate · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.0 · Paid Discovery Diagnostics · 수집량/페이지 진단 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -591,9 +594,10 @@ async function load(){
  ['total','hot','watch','cold'].forEach(k=>document.getElementById('s-'+k).textContent=stats[k]||0);
  document.getElementById('s-proceed').textContent=stats.states?.proceed||0;
  const lr=stats.last_run;
- document.getElementById('runinfo').textContent=lr?('마지막 스캔 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count):'아직 스캔 기록이 없습니다.';
+ let runMeta=''; try{const a=JSON.parse(lr?.errors_json||'[]'); const d=a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)?.diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
+ document.getElementById('runinfo').textContent=lr?('마지막 스캔 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'아직 스캔 기록이 없습니다.';
  const re=document.getElementById('runerrors');
- let errs=[];try{errs=JSON.parse(lr?.errors_json||'[]')}catch{}
+ let errs=[];try{errs=JSON.parse(lr?.errors_json||'[]').filter(x=>x.error)}catch{}
  if(errs.length){re.style.display='block';re.textContent='⚠ 최근 스캔 오류 상세\\n'+errs.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n');}else{re.style.display='none';re.textContent='';}
  const evidenceById={}; await Promise.all(jobs.map(async j=>{try{evidenceById[j.opportunity_id]=await api('/api/opportunities/'+encodeURIComponent(j.opportunity_id)+'/evidence')}catch{evidenceById[j.opportunity_id]=[]}}));
  const el=document.getElementById('list');
