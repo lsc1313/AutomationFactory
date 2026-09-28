@@ -424,7 +424,7 @@ assert.doesNotMatch(autopilotWorker, /<button id="rejudgeBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="validateBtn">/);
 
 // v0.7.0 runtime hotfix: retired controls must not have live DOM handlers
-const runtimeHotfixWorker = await readFile(new URL("./worker.js", import.meta.url), "utf8");
+const runtimeHotfixWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 for (const retiredId of ["scanBtn","rejudgeBtn","validateBtn","marketRebuildBtn"]) {
   assert.doesNotMatch(runtimeHotfixWorker, new RegExp("getElementById\\\\(['\\\"]" + retiredId + "['\\\"]\\\\)\\\\.onclick"));
 }
