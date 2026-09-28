@@ -443,7 +443,7 @@ const paidJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8"
 assert.match(paidWorker, /\/api\/paid-jobs/);
 assert.match(paidWorker, /지금 지원 가능한 유료 일감/);
 assert.match(paidJudge, /actionable_paid_job/);
-assert.match(paidJudge, /factory-fulfillment-v0\.7\.5/);
+assert.match(paidJudge, /deliverable-judge-v0\.7\.7/);
 
 // v0.7.3 direct paid-job sources
 const sourceV073 = fs.readFileSync(new URL("./sources.js", import.meta.url), "utf8");
@@ -464,11 +464,19 @@ assert.match(fulfillJudge, /FACTORY_DELIVERABLE_WORDS/);
 assert.match(fulfillJudge, /HUMAN_SERVICE_WORDS/);
 assert.match(fulfillJudge, /factory_fulfillable/);
 assert.match(fulfillJudge, /human_service_hits/);
-assert.match(fulfillJudge, /factory-fulfillment-v0\.7\.5/);
+assert.match(fulfillJudge, /deliverable-judge-v0\.7\.7/);
 
 // v0.7.6 paid jobs must be rejudged after Judge upgrades
 const rejudgeWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(rejudgeWorker, /staleJudge/);
-assert.match(rejudgeWorker, /factory-fulfillment-v0\.7\.5/);
+assert.match(rejudgeWorker, /deliverable-judge-v0\.7\.7/);
 assert.match(rejudgeWorker, /factory_fulfillable/);
 assert.match(rejudgeWorker, /await rejudgeAll\(env\)/);
+
+// v0.7.7 Deliverable Judge
+const deliverableJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8");
+assert.match(deliverableJudge, /BUILD_ACTION_WORDS/);
+assert.match(deliverableJudge, /HUMAN_EXECUTION_WORDS/);
+assert.match(deliverableJudge, /fulfillment_status/);
+assert.match(deliverableJudge, /concrete_artifact/);
+assert.match(deliverableJudge, /deliverable-judge-v0\.7\.7/);
