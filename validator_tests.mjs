@@ -497,7 +497,7 @@ assert.ok(discoverySources.includes("AutomationFactory-MoneyScout/0.7.9"));
 
 // v0.8.1 Paid Job Manager
 const managerWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerWorker.includes("paid-job-manager-v0.8.6"));
+assert.ok(managerWorker.includes("paid-job-manager-v0.8.7"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
 assert.ok(managerWorker.includes('path.endsWith("/plan")'));
@@ -511,7 +511,7 @@ assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음
 
 // v0.8.3 Paid Job Manager v2
 const managerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerV2.includes('paid-job-manager-v0.8.6'));
+assert.ok(managerV2.includes('paid-job-manager-v0.8.7'));
 assert.ok(managerV2.includes('detected_language'));
 assert.ok(managerV2.includes('questions=q.slice(0,3)'));
 assert.ok(managerV2.includes('acceptance criteria'));
@@ -538,3 +538,10 @@ assert.ok(managerSourceFix.includes('const raw=String(row.title||"")+" "+String(
 assert.ok(!managerSourceFix.includes('const raw=String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"");'));
 assert.ok(managerSourceFix.includes("Manager '+esc(p.manager_version)"));
 assert.ok(managerSourceFix.includes("p.build_spec?.spec_version"));
+
+// v0.8.7 Manager input diagnostics
+const inputDiag = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(inputDiag.includes("input_diagnostics"));
+assert.ok(inputDiag.includes("description_length"));
+assert.ok(inputDiag.includes("analysis_preview"));
+assert.ok(inputDiag.includes("Manager 실제 입력 진단"));
