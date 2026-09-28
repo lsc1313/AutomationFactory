@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.7.1";
+const APP_VERSION = "0.7.2";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -544,7 +544,7 @@ function appHtml() {
     <button data-grade="hot">HOT</button>
     <button data-grade="watch">WATCH</button>
     <button data-grade="cold">COLD</button>
-    <button id="candidateBtn">💰 지금 돈 될 후보 보기</button>
+    <button id="paidJobsBtn">💵 지금 지원 가능한 유료 일감</button>\n    <button id="candidateBtn">🧪 장기 시장후보</button>
   </div>
   <div class="filters">
     <select id="stateFilter">
@@ -568,8 +568,8 @@ function appHtml() {
     <button id="saveToken">저장</button>
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
-  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.7.1 · Money Scout Verified Money Gate · 수집→검증→후보 자동화</div>
+  <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
+  <div class="footer">v0.7.2 · Paid Job Scout · 실제 유료 의뢰 우선 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -660,8 +660,14 @@ async function loadMarketCandidates(){
    }catch(e){target.textContent='상세 조회 실패: '+e.message;}finally{b.disabled=false;}
  });
 }
+async function loadPaidJobs(){
+ const rows=await api('/api/paid-jobs');
+ const el=document.getElementById('paidJobsList');
+ const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 지금 지원 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div></div>').join('');
+}
 document.addEventListener('click',async e=>{
- const b=e.target.closest('#candidateBtn'); if(!b)return;
+ const paid=e.target.closest('#paidJobsBtn'); if(paid){paid.disabled=true;try{await loadPaidJobs()}catch(err){alert(err.message)}finally{paid.disabled=false}return;}\n const b=e.target.closest('#candidateBtn'); if(!b)return;
  e.preventDefault(); b.disabled=true; const old=b.textContent; b.textContent='시장후보 불러오는 중…';
  const el=document.getElementById('candidateList'); el.innerHTML='<div class="empty">시장후보 불러오는 중…</div>';
  try{await loadMarketCandidates();el.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -698,6 +704,10 @@ export default {
       if (path === "/api/pipeline/run" && request.method === "POST") {
         const denied = requireAdmin(request, env); if (denied) return denied;
         return json(await runMoneyPipeline(env));
+      }
+      if (path === "/api/paid-jobs") {
+        const rows = await env.DB.prepare(`SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT 50`).all();
+        return json(rows.results || []);
       }
       if (path === "/api/market-candidates") {
         const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'verified_money' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
