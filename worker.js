@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.4";
+const APP_VERSION = "0.8.5";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -526,7 +526,16 @@ function paidJobPlan(row) {
   step(/retry|resilien|error|failure|robust/.test(text),"Add retry, error handling and recovery behavior","재시도·오류처리·복구 로직 구성");
   step(/python/.test(text),"Package the implementation as a runnable Python service","실행 가능한 Python 서비스 형태로 패키징");
   if(!steps.length) steps.push(korean?"요청 기능 구현 및 실행 가능한 납품물 구성":"Implement the requested behavior as a runnable software deliverable");
-  const deliverables=[...steps.slice(0,7),korean?"설치/실행 방법과 검수 절차 문서":"Setup/run instructions and acceptance-test steps"];
+  const corePriority=[];
+  const core=(test,en,ko)=>{if(test)corePriority.push(korean?ko:en)};
+  core(/scrap|crawl|browser|page|website|web site|monitor|check/.test(text),"Monitor the target page/service at the requested interval","요청 주기로 대상 페이지/서비스 감시");
+  core(/slot|availability|available|state|status|change/.test(text),"Detect the exact availability/state transition requested by the client","고객이 요청한 정확한 가용성/상태 변화 감지");
+  core(/telegram/.test(text),"Send an immediate Telegram alert on each relevant state transition","관련 상태 변화마다 Telegram 즉시 알림");
+  core(/retry|resilien|error|failure|robust/.test(text),"Recover from transient failures with retry/error handling","일시 오류 발생 시 재시도/복구 처리");
+  core(/python/.test(text),"Deliver the solution as a runnable Python service","실행 가능한 Python 서비스로 납품");
+  const supporting=steps.filter(x=>!corePriority.includes(x));
+  const deliverables=[...new Set([...corePriority,...supporting])].slice(0,8);
+  deliverables.push(korean?"설치/실행 방법과 검수 절차 문서":"Setup/run instructions and acceptance-test steps");
   const q=[]; const add=(test,answered,en,ko)=>{if(test&&!answered)q.push(korean?ko:en)};
   add(/protected|login|authentication|auth|account/.test(text),/test account|credentials provided|login provided|access provided/.test(text),"Can you provide an authorized test account and confirm the login/authentication method?","허가된 테스트 계정과 로그인/인증 방식을 제공할 수 있나요?");
   add(/scrap|crawl|browser|page|website|web site|monitor/.test(text),/target url|url is|https?:\/\//.test(text),"Please provide the target URL and confirm the exact state-change condition to detect.","대상 URL과 감지해야 할 정확한 상태 변경 조건을 알려주세요.");
@@ -543,7 +552,8 @@ function paidJobPlan(row) {
   const risk=riskFactors.length>=2?"medium":riskFactors.length?"low":"low";
   const scopeText=deliverables.slice(0,5).join(korean?" → ":"; ");
   const proposal=korean?`안녕하세요. 요청 내용을 기준으로 ${scopeText} 범위로 구현할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·테스트를 진행하고 실행 가능한 결과물과 설치/운영 및 검수 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 구현시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"현재 원문상 별도 비용 없음":"사용 서비스가 확정된 뒤 확인"}입니다.`:`Hello, I can implement this as a concrete deliverable covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement and test the solution and deliver the runnable package with setup, operation, and acceptance-test instructions. Based on the current brief, I estimate about ${hours} hours of implementation. Any external service cost will be confirmed once the required services and access method are known.`;
-  return {manager_version:"paid-job-manager-v0.8.4",status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:steps,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:riskFactors,proposal_draft:proposal,application_url:row.url||""};
+  const buildSpec={spec_version:"factory-build-spec-v1",job_id:row.opportunity_id,title:row.title||"",language:korean?"ko":"en",objective:deliverables[0]||"",functional_requirements:deliverables,open_questions:questions,acceptance_criteria:[...corePriority.slice(0,3),korean?"설치 문서대로 실행 가능해야 함":"Must run successfully using the supplied setup instructions"],target_runtime:null,estimated_build_hours:hours,external_cost_status:externalCostStatus,external_cost:externalCost,risk_level:risk,risk_factors:riskFactors,source_url:row.url||""};
+  return {manager_version:"paid-job-manager-v0.8.5",status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:riskFactors,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
 }
 
 async function listRuns(env) {
@@ -609,7 +619,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.4 · Paid Job Manager v3 · 구현명세/납품물/비용검증/지원초안 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.5 · Builder-ready Spec · 핵심기능/납품명세/비용검증 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -714,7 +724,7 @@ async function showManagerPlan(btn){
   const p=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/plan');
   const req=(p.deliverables||p.requested_functions||[]).map(x=>'• '+esc(x)).join('<br>')||'• 명세 확인 필요';
   const qs=(p.clarification_questions||[]).map((x,i)=>(i+1)+'. '+esc(x)).join('<br>');
-  el.innerHTML='<div class="reason" style="margin-top:12px"><b>🧩 요구 기능</b><br>'+req+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
+  el.innerHTML='<div class="reason" style="margin-top:12px"><b>🧩 요구 기능</b><br>'+req+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
  }catch(err){el.innerHTML='<div class="empty error">작업계획 조회 실패: '+esc(err.message)+'</div>';}
  finally{btn.disabled=false;btn.textContent=old;}
 }

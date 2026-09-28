@@ -497,7 +497,7 @@ assert.ok(discoverySources.includes("AutomationFactory-MoneyScout/0.7.9"));
 
 // v0.8.1 Paid Job Manager
 const managerWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerWorker.includes("paid-job-manager-v0.8.4"));
+assert.ok(managerWorker.includes("paid-job-manager-v0.8.5"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
 assert.ok(managerWorker.includes('path.endsWith("/plan")'));
@@ -511,7 +511,7 @@ assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음
 
 // v0.8.3 Paid Job Manager v2
 const managerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerV2.includes('paid-job-manager-v0.8.4'));
+assert.ok(managerV2.includes('paid-job-manager-v0.8.5'));
 assert.ok(managerV2.includes('detected_language'));
 assert.ok(managerV2.includes('questions=q.slice(0,3)'));
 assert.ok(managerV2.includes('acceptance criteria'));
@@ -522,4 +522,12 @@ assert.ok(managerV3.includes("implementation_plan"));
 assert.ok(managerV3.includes("deliverables"));
 assert.ok(managerV3.includes("external_cost_status"));
 assert.ok(managerV3.includes("needs_validation"));
-assert.ok(managerV3.includes("외부비용</b> '+(p.estimated_external_cost==null?'확인 필요'"));
+assert.ok(managerV3.includes("p.external_cost_status===\'needs_validation\'||p.estimated_external_cost==null"));
+
+// v0.8.5 Builder-ready spec
+const builderReady = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(builderReady.includes("factory-build-spec-v1"));
+assert.ok(builderReady.includes("functional_requirements"));
+assert.ok(builderReady.includes("acceptance_criteria"));
+assert.ok(builderReady.includes("corePriority"));
+assert.ok(builderReady.includes("external_cost_status==='needs_validation'"));
