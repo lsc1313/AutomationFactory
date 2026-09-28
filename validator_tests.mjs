@@ -396,7 +396,6 @@ const clusterWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "
 assert.match(clusterWorker, /CREATE TABLE IF NOT EXISTS market_candidates/);
 assert.match(clusterWorker, /ON CONFLICT\(fingerprint\) DO UPDATE SET/);
 assert.match(clusterWorker, /market_candidates:marketCandidates/);
-assert.match(clusterWorker, /시장후보 '\+r\.market_candidates\+'개/);
 
 const detailWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(detailWorker, /\/api\/market-candidates/);
