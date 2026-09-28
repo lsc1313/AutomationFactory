@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.7.2";
+const APP_VERSION = "0.7.4";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -569,7 +569,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.7.2 · Paid Job Scout · 실제 유료 의뢰 우선 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.7.4 · Paid Job Auto Refresh · 실제 유료 의뢰 우선 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -679,7 +679,8 @@ load().catch(e=>document.getElementById('list').innerHTML='<div class="empty err
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
+    globalThis.__moneyScoutCtx = ctx;
     try {
       await ensureSchema(env);
       const url = new URL(request.url);
@@ -706,6 +707,17 @@ export default {
         return json(await runMoneyPipeline(env));
       }
       if (path === "/api/paid-jobs") {
+        const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
+        const latestPaid = await env.DB.prepare(`SELECT MAX(last_seen_at) AS last_seen FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid')`).first();
+        const ageMs = latestPaid?.last_seen ? Date.now() - Date.parse(latestPaid.last_seen) : Infinity;
+        // Paid jobs are the fast-cash surface: refresh only these sources when stale.
+        // waitUntil keeps the UI responsive; the next poll receives the fresh rows.
+        if (ageMs > 30 * 60 * 1000 && paidSources.length) {
+          const refresh = runScout(env, paidSources).catch(() => null);
+          if (globalThis.__moneyScoutCtx?.waitUntil) globalThis.__moneyScoutCtx.waitUntil(refresh);
+          else await refresh;
+        }
+
         const rows = await env.DB.prepare(`SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT 50`).all();
         return json(rows.results || []);
       }
