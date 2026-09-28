@@ -96,6 +96,38 @@ export async function collectRemoteOK() {
     }));
 }
 
+export async function collectFreelancerProjects() {
+  // Official Freelancer public Projects API. Keep this adapter isolated: collectSources
+  // records an adapter error without stopping the rest of Money Scout.
+  const url = "https://www.freelancer.com/api/projects/0.1/projects/active/?compact=true&limit=50&job_details=true&full_description=true";
+  const res = await fetch(url, { headers: { "accept":"application/json", "user-agent":"AutomationFactory-MoneyScout/0.7.3" } });
+  if (!res.ok) throw new Error(`Freelancer Projects HTTP ${res.status}`);
+  const data = await res.json();
+  const projects = Array.isArray(data?.result?.projects) ? data.result.projects : [];
+  return projects.filter(x => x && x.id && x.title && String(x.status || "active") !== "closed").map(x => {
+    const b = x.budget || {};
+    const cur = x.currency || {};
+    const fixed = String(x.type || "").toLowerCase() === "fixed";
+    const skills = Array.isArray(x.jobs) ? x.jobs.map(j => j?.name).filter(Boolean) : [];
+    return {
+      source: "freelancer_projects",
+      source_item_id: String(x.id),
+      type: fixed ? "fixed_project" : "hourly_contract",
+      title: String(x.title),
+      description: stripHtml(x.description || x.preview_description || "").slice(0,3000),
+      budget_min: num(b.minimum),
+      budget_max: num(b.maximum),
+      currency: String(cur.code || ""),
+      location: "Online",
+      skills: skills.join(", "),
+      posted_at: x.submitdate ? new Date(Number(x.submitdate)*1000).toISOString() : "",
+      deadline: x.time_submitted && x.timeframe ? new Date((Number(x.time_submitted)+Number(x.timeframe)*86400)*1000).toISOString() : "",
+      competition: num(x.bid_stats?.bid_count ?? x.bid_count),
+      url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).replace(/^\/+|\/+$/g,"") : "https://www.freelancer.com/projects/" + x.id
+    };
+  });
+}
+
 export async function collectAgentBounties() {
   const url = "https://api.agentbounties.app/v1/base/autonomous-bounties/feed?network=base-mainnet&claimable_only=true";
   const res = await fetch(url, {
@@ -889,6 +921,7 @@ export async function collectMarketplaceDemand() {
 
 export const SOURCE_REGISTRY = {
   marketplace_demand: collectMarketplaceDemand,
+  freelancer_projects: collectFreelancerProjects,
   agent_bounties: collectAgentBounties,
   github_paid: collectGitHubPaidDiscovery,
   github_demand: collectGitHubDemandSignals,
