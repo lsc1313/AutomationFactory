@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.8";
+const APP_VERSION = "0.8.9";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -545,7 +545,7 @@ function paidJobPlan(row) {
   const questions=q.slice(0,3);
   const complexity=Math.min(5,Math.max(1,Math.ceil((deliverables.length+questions.length)/3)));
   const hours=[0,2,4,8,16,28][complexity];
-  const externalCostKnown=/free|no paid|no external cost|무료/.test(text);
+  const externalCostKnown=/no external cost|no paid service|no paid api|no additional cost|without paid services|외부비용 없음|추가 비용 없음/.test(text);
   const externalCost=externalCostKnown?0:null;
   const externalCostStatus=externalCostKnown?"source_indicates_none":"needs_validation";
   const riskFactors=[]; if(/protected|login|auth/.test(text))riskFactors.push(korean?"인증/접근 방식":"authentication/access"); if(/every few seconds|every \d+ seconds|real.?time/.test(text))riskFactors.push(korean?"고빈도 모니터링":"high-frequency monitoring"); if(questions.length>=3)riskFactors.push(korean?"미확정 요구사항":"open requirements");
@@ -620,7 +620,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.8 · Browser Script Hotfix · Manager 입력 진단 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.8.9 · Diagnostics Render Fix · 실제 입력 추적 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
