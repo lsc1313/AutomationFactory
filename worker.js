@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "0.7.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -339,7 +339,15 @@ async function crossValidateMarkets(env) {
   }
   for(const [k,c] of clusters){
     const m=markets.get(k)||{payment:0,pricing:0,competitors:new Set(),weak:0,evidence:0};
-    const status=c.promoted>0?"commercialization_candidate":"validation_required";
+    const verifiedMissing=[];
+    if(c.repos.size<2) verifiedMissing.push("independent_demand");
+    if(m.evidence<2) verifiedMissing.push("market_evidence");
+    if(m.payment<1) verifiedMissing.push("payment");
+    if(m.pricing<1) verifiedMissing.push("pricing");
+    if(m.competitors.size<1) verifiedMissing.push("buyer_market");
+    const verifiedMoney=verifiedMissing.length===0 && c.promoted>0;
+    const status=verifiedMoney?"verified_money":"validation_required";
+    const combinedMissing=new Set([...c.missing,...verifiedMissing]);
     await env.DB.prepare(`INSERT INTO market_candidates (
       fingerprint,demand_group,signal_count,independent_repo_count,promoted_signal_count,
       raw_market_evidence_count,competitor_count,payment_evidence_count,pricing_evidence_count,
@@ -352,7 +360,7 @@ async function crossValidateMarkets(env) {
       payment_evidence_count=excluded.payment_evidence_count,pricing_evidence_count=excluded.pricing_evidence_count,
       weak_competitor_count=excluded.weak_competitor_count,commercialization_status=excluded.commercialization_status,
       validation_missing=excluded.validation_missing,representative_title=excluded.representative_title,updated_at=excluded.updated_at
-    `).bind(k,c.demand_group,c.signals,c.repos.size,c.promoted,m.evidence,m.competitors.size,m.payment,m.pricing,m.weak,status,JSON.stringify([...c.missing]),c.title,nowIso()).run();
+    `).bind(k,c.demand_group,c.signals,c.repos.size,c.promoted,m.evidence,m.competitors.size,m.payment,m.pricing,m.weak,status,JSON.stringify([...combinedMissing]),c.title,nowIso()).run();
   }
   const marketCandidates=[...clusters.values()].filter(c=>c.promoted>0).length;
   return {ok:true,matched,promoted,market_candidates:marketCandidates,cluster_count:clusters.size,market_fingerprints:markets.size,raw_evidence:raw.evidence.length,diagnostics:raw.diagnostics};
@@ -561,7 +569,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.7.0 · Money Scout Autopilot · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.7.1 · Money Scout Verified Money Gate · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -624,8 +632,8 @@ async function loadMarketCandidates(){
  const rows=await api('/api/market-candidates');
  const el=document.getElementById('candidateList');
  if(!rows.length){el.innerHTML='<div class="empty">아직 시장후보가 없습니다. 시장 교차검증을 먼저 실행하세요.</div>';return;}
- const ready=rows.filter(c=>c.commercialization_status==='commercialization_candidate');
- const pending=rows.filter(c=>c.commercialization_status!=='commercialization_candidate');
+ const ready=rows.filter(c=>c.commercialization_status==='verified_money');
+ const pending=rows.filter(c=>c.commercialization_status!=='verified_money');
  const card=c=>{
    let missing=[];try{missing=JSON.parse(c.validation_missing||'[]')}catch{}
    return '<details class="card"><summary><b>'+esc(c.fingerprint)+'</b> · '+esc(c.commercialization_status)+'</summary>'+
@@ -692,7 +700,7 @@ export default {
         return json(await runMoneyPipeline(env));
       }
       if (path === "/api/market-candidates") {
-        const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'commercialization_candidate' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
+        const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'verified_money' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
         return json(rows.results || []);
       }
       const marketCandidateMatch = path.match(/^\/api\/market-candidates\/([^/]+)$/);
