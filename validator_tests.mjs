@@ -608,7 +608,7 @@ assert.ok(artifactGeneratorV1.includes("🛠 Artifact Generator"));
 
 // v0.14.0 Code Worker v1 contract
 const codeWorkerV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(codeWorkerV1.includes("code-worker-v2"));
+assert.ok(codeWorkerV1.includes("code-worker-v2.1"));
 assert.ok(codeWorkerV1.includes("source_generated"));
 assert.ok(codeWorkerV1.includes("project/package.json"));
 assert.ok(codeWorkerV1.includes("project/src/index.js"));
@@ -644,12 +644,12 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.17.0"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.17.1"'));
 
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.17.0"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.17.1"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v1"));
 assert.ok(productionV017.includes("job-production-bundle-v1"));
@@ -665,3 +665,19 @@ assert.ok(productionV017.includes("sandbox_required"));
 assert.ok(productionV017.includes("/production/package"));
 assert.ok(productionV017.includes("client_access_required"));
 assert.ok(productionV017.includes("external_actions_allowed:false"));
+
+
+// v0.17.1 client-ready package + ZIP artifact contract
+const deliveryV0171 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+const workflowV0171 = fs.readFileSync(new URL("./.github/workflows/sandbox-runner.yml", import.meta.url), "utf8");
+assert.ok(deliveryV0171.includes("project/src/live-connectors.js"));
+assert.ok(deliveryV0171.includes("https://api.squarespace.com/v2/commerce/products"));
+assert.ok(deliveryV0171.includes("https://openapi.etsy.com/v3/application/shops/"));
+assert.ok(deliveryV0171.includes("https://api.sandbox.prodigi.com"));
+assert.ok(deliveryV0171.includes("External action blocked: explicit approval required"));
+assert.ok(deliveryV0171.includes("productionDownloadBtn"));
+assert.ok(deliveryV0171.includes("/production/download"));
+assert.ok(deliveryV0171.includes("job-package-"));
+assert.ok(workflowV0171.includes("actions/upload-artifact@v4"));
+assert.ok(workflowV0171.includes("npm run build --if-present"));
+assert.ok(workflowV0171.includes("job-package-${{ inputs.run_id }}"));

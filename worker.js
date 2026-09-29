@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.17.0";
+const APP_VERSION = "0.17.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -635,11 +635,11 @@ function artifactGenerator(plan) {
 function codeWorker(plan) {
   const req=plan?.build_spec?.functional_requirements||[], text=req.join(" ").toLowerCase();
   const isAutomation=/api|integration|automat|monitor|scrap|webhook|migration|import|export/.test(text);
-  if(!isAutomation) return {code_worker_version:"code-worker-v2",status:"not_applicable",files:[],test_execution:"not_requested"};
+  if(!isAutomation) return {code_worker_version:"code-worker-v2.1",status:"not_applicable",files:[],test_execution:"not_requested"};
   const safeReq=req.map(x=>String(x));
   const isCommerceMigration=/squarespace/.test(text)&&/etsy/.test(text);
   const files=[
-    {path:"project/package.json",language:"json",content:JSON.stringify({name:"automation-factory-deliverable",version:"1.0.0",private:true,type:"module",scripts:{test:"node --test",build:"node src/cli.js fixtures/squarespace-products.json config/example.json delivery-output.json"}},null,2)},
+    {path:"project/package.json",language:"json",content:JSON.stringify({name:"automation-factory-deliverable",version:"1.0.0",private:true,type:"module",scripts:isCommerceMigration?{test:"node --test",build:"node src/cli.js fixtures/squarespace-products.json config/example.json delivery-output.json"}:{test:"node --test"}},null,2)},
     {path:"project/src/spec.js",language:"javascript",content:"export const requirements = "+JSON.stringify(safeReq,null,2)+";\nexport const externalActionsAllowed = false;\n"}
   ];
 
@@ -714,6 +714,25 @@ function codeWorker(plan) {
       ].join("\n")},
       {path:"project/fixtures/squarespace-products.json",language:"json",content:JSON.stringify({products:[{id:"demo-shirt",title:"Demo POD Shirt",description:"Fixture used for internal validation only.",tags:["shirt","pod"],images:["https://example.invalid/demo.jpg"],variants:[{sku:"DEMO-BLK-M",price:29.95,options:{color:"Black",size:"M"}},{sku:"DEMO-BLK-L",price:29.95,options:{color:"Black",size:"L"}}]}]},null,2)},
       {path:"project/config/example.json",language:"json",content:JSON.stringify({etsy:{defaultQuantity:999,defaultTags:["print on demand"],sectionId:null,shippingProfileId:null},prodigi:{skuMap:{"DEMO-BLK-M":{prodigiProductId:"FIXTURE-PRODUCT",printArea:"front",attributes:{size:"M",color:"Black"}},"DEMO-BLK-L":{prodigiProductId:"FIXTURE-PRODUCT",printArea:"front",attributes:{size:"L",color:"Black"}}}}},null,2)},
+
+      {path:"project/src/live-connectors.js",language:"javascript",content:[
+        "export const endpoints={squarespaceProducts:'https://api.squarespace.com/v2/commerce/products',etsyListings:shopId=>'https://openapi.etsy.com/v3/application/shops/'+encodeURIComponent(shopId)+'/listings',prodigiProduct:(sku,sandbox=true)=>(sandbox?'https://api.sandbox.prodigi.com':'https://api.prodigi.com')+'/v4.0/products/'+encodeURIComponent(sku),prodigiOrders:(sandbox=true)=>(sandbox?'https://api.sandbox.prodigi.com':'https://api.prodigi.com')+'/v4.0/orders'};",
+        "const need=(v,name)=>{if(v==null||v==='')throw new Error('Missing '+name);return v};",
+        "const approved=o=>{if(o?.allowExternalActions!==true)throw new Error('External action blocked: explicit approval required')};",
+        "async function readJson(r){const text=await r.text();let body;try{body=text?JSON.parse(text):{}}catch{body={raw:text}}if(!r.ok)throw new Error('HTTP '+r.status+': '+JSON.stringify(body).slice(0,500));return body}",
+        "export async function fetchSquarespaceProducts({token,userAgent='AutomationFactory-Deliverable/1.0',fetchImpl=fetch,cursor=null}={}){need(token,'Squarespace token');const u=new URL(endpoints.squarespaceProducts);if(cursor)u.searchParams.set('cursor',cursor);const r=await fetchImpl(u,{headers:{Authorization:'Bearer '+token,'User-Agent':userAgent,Accept:'application/json'}});return readJson(r)}",
+        "export async function createEtsyDraft({shopId,token,apiKey,listing,allowExternalActions=false,fetchImpl=fetch}={}){approved({allowExternalActions});need(shopId,'Etsy shop id');need(token,'Etsy OAuth token');need(apiKey,'Etsy API key');const body=new URLSearchParams();const src={quantity:listing?.quantity,title:listing?.title,description:listing?.description,price:listing?.price,who_made:listing?.whoMade,when_made:listing?.whenMade,taxonomy_id:listing?.taxonomyId,shipping_profile_id:listing?.shippingProfileId,readiness_state_id:listing?.readinessStateId};for(const [k,v] of Object.entries(src))if(v!=null&&v!=='')body.set(k,String(v));for(const tag of listing?.tags||[])body.append('tags[]',tag);const r=await fetchImpl(endpoints.etsyListings(shopId),{method:'POST',headers:{Authorization:'Bearer '+token,'x-api-key':apiKey,'Content-Type':'application/x-www-form-urlencoded'},body});return readJson(r)}",
+        "export async function getProdigiProduct({sku,apiKey,sandbox=true,fetchImpl=fetch}={}){need(sku,'Prodigi SKU');need(apiKey,'Prodigi API key');const r=await fetchImpl(endpoints.prodigiProduct(sku,sandbox),{headers:{'X-API-Key':apiKey,Accept:'application/json'}});return readJson(r)}",
+        "export async function createProdigiOrder({order,apiKey,sandbox=true,allowExternalActions=false,fetchImpl=fetch}={}){approved({allowExternalActions});need(apiKey,'Prodigi API key');if(sandbox!==true)throw new Error('Live Prodigi orders require a separate production approval step');const r=await fetchImpl(endpoints.prodigiOrders(true),{method:'POST',headers:{'X-API-Key':apiKey,'Content-Type':'application/json'},body:JSON.stringify(order||{})});return readJson(r)}"
+      ].join("\n")},
+      {path:"project/test/live-connectors.test.js",language:"javascript",content:[
+        "import test from 'node:test';import assert from 'node:assert/strict';import {endpoints,createEtsyDraft,createProdigiOrder} from '../src/live-connectors.js';",
+        "test('official API endpoints are wired',()=>{assert.equal(endpoints.squarespaceProducts,'https://api.squarespace.com/v2/commerce/products');assert.match(endpoints.etsyListings('123'),/openapi\\.etsy\\.com\\/v3\\/application\\/shops\\/123\\/listings/);assert.match(endpoints.prodigiProduct('SKU',true),/api\\.sandbox\\.prodigi\\.com\\/v4\\.0\\/products\\/SKU/)});",
+        "test('write operations require explicit approval',async()=>{await assert.rejects(()=>createEtsyDraft({shopId:'1',token:'t',apiKey:'k',listing:{}}),/explicit approval/);await assert.rejects(()=>createProdigiOrder({order:{},apiKey:'k'}),/explicit approval/)})"
+      ].join("\n")},
+      {path:"project/.env.example",language:"text",content:["SQUARESPACE_TOKEN=","ETSY_SHOP_ID=","ETSY_OAUTH_TOKEN=","ETSY_API_KEY=","PRODIGI_SANDBOX_API_KEY=","# Live credentials are intentionally not enabled by default."].join("\n")},
+      {path:"project/LIVE_RUNBOOK.md",language:"markdown",content:["# Live connector runbook","","The package includes real connector functions for Squarespace Products API v2, Etsy Open API v3 draft listings, and Prodigi Print API v4 sandbox.","","## Safety model","- Read operations can be used after credentials are supplied.","- Etsy write calls require allowExternalActions=true.","- Prodigi order creation is restricted to the Sandbox host in the generated connector.","- Prodigi Live order submission remains blocked until a separate production approval step is implemented.","","## Required Etsy fields","Before creating physical draft listings, provide quantity, title, description, price, whoMade, whenMade, taxonomyId, shippingProfileId and readinessStateId.","","## Acceptance","Run npm test, create one Etsy draft in an authorized shop, verify SKU/variant mapping, then create one Prodigi Sandbox order before any live rollout."].join("\n")},
+
       {path:"project/README.md",language:"markdown",content:["# Squarespace → Etsy → Prodigi delivery package","","Implements the repeatable transformation layer without touching external accounts.","","## Implemented","- Normalize Squarespace-style product JSON, variants, images and tags.","- Produce Etsy listing drafts with title/tag/price/variant constraints.","- Map variant SKUs to client-supplied Prodigi product/template settings.","- Validate missing titles, invalid prices and missing Prodigi mappings.","- Run deterministic tests with npm test.","","## Run","1. Replace fixtures/squarespace-products.json with the authorized client export.","2. Fill config/example.json with approved Etsy profile IDs and Prodigi SKU mappings.","3. Run npm test.","4. Run node src/cli.js <products.json> <config.json> delivery-output.json.","","External publishing is intentionally disabled. Credentials are never embedded."].join("\n")},
       {path:"project/HANDOVER.md",language:"markdown",content:["# Hand-over and client-access gate","","## Internal production complete","Migration transformation, listing-draft generation, SKU mapping and validation can be built and tested without client credentials.","","## Required before live execution","- Authorized Squarespace product export or account access.","- Etsy shop access plus approved section/shipping profile identifiers.","- Prodigi account/API access and the real SKU-to-product/template mapping.","- Client approval for shipping/tax configuration and a live test order.","","## Live acceptance sequence","Authorized export → validation → Etsy listing creation with approved access → real Prodigi mapping → controlled end-to-end test order → acceptance evidence.","","No external account action is performed until explicitly authorized."].join("\n")}
     );
@@ -748,7 +767,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -785,7 +804,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1004,7 +1023,7 @@ async function runProduction(btn){
       if(p.status==='completed'){
         const ok=p.conclusion==='success', sm=p.summary||{};
         const gate=sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
-        el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
+        el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button><button class="productionDownloadBtn" data-job-id="'+esc(id)+'">⬇ ZIP 다운로드</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
         return;
       }
       if(p.status==='dispatch_failed'){el.textContent='실제 제작 dispatch 실패: '+esc(p.log_summary||'');return;}
@@ -1014,6 +1033,18 @@ async function runProduction(btn){
   }catch(err){el.textContent='실제 제작 실패: '+esc(err.message);}
   finally{btn.disabled=false;btn.textContent=old;}
 }
+
+async function downloadProduction(btn){
+  const id=btn.dataset.jobId; btn.disabled=true; const old=btn.textContent; btn.textContent='ZIP 준비 중…';
+  try{
+    const r=await fetch('/api/paid-jobs/'+encodeURIComponent(id)+'/production/download',{headers:headers()});
+    if(!r.ok){const j=await r.json().catch(()=>({error:'다운로드 실패'}));throw new Error(j.error||('HTTP '+r.status));}
+    const blob=await r.blob(), a=document.createElement('a'), url=URL.createObjectURL(blob);
+    a.href=url; a.download='automation-factory-deliverable.zip'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }catch(err){alert('ZIP 다운로드 실패: '+err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+
 async function showProductionPackage(btn){
   const id=btn.dataset.jobId, target=document.getElementById('production-package-'+id); if(!target)return;
   btn.disabled=true;
@@ -1043,6 +1074,7 @@ async function showManagerPlan(btn){
 }
 
 document.addEventListener('click',async e=>{
+ const downloadBtn=e.target.closest('.productionDownloadBtn'); if(downloadBtn){await downloadProduction(downloadBtn);return;}
  const packageBtn=e.target.closest('.productionPackageBtn'); if(packageBtn){await showProductionPackage(packageBtn);return;}
  const production=e.target.closest('.productionRunBtn'); if(production){await runProduction(production);return;}
  const sandbox=e.target.closest('.sandboxRunBtn'); if(sandbox){await runSandbox(sandbox);return;}
@@ -1132,6 +1164,23 @@ export default {
         let summary={};try{summary=JSON.parse(r.package_summary_json||"{}")}catch{}
         return json({...r,summary});
       }
+      const productionDownloadMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production\/download$/);
+      if(productionDownloadMatch&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
+        const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
+        if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"};
+        const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
+        if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
+        const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
+        if(!artifact)return json({ok:false,error:"Production ZIP is not available yet. Try again shortly."},404);
+        const zr=await fetch(artifact.archive_download_url,{headers:ghHeaders,redirect:"follow"});
+        if(!zr.ok)return json({ok:false,error:"GitHub artifact download failed",detail:(await zr.text()).slice(0,500)},502);
+        const h=new Headers(zr.headers);h.set("content-type","application/zip");h.set("content-disposition",'attachment; filename="automation-factory-'+r.run_id+'.zip"');h.set("cache-control","no-store");
+        return new Response(zr.body,{status:200,headers:h});
+      }
+
       const productionPackageMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production\/package$/);
       if(productionPackageMatch&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;

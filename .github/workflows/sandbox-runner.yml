@@ -62,6 +62,19 @@ jobs:
         id: tests
         working-directory: /tmp/job-sandbox
         run: npm test
+      - name: Build generated package
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.tests.outcome == 'success' }}
+        working-directory: /tmp/job-sandbox
+        run: npm run build --if-present
+      - name: Upload generated package
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_id != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-package-${{ inputs.run_id }}
+          path: /tmp/job-sandbox
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
       - name: Report result
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.callback_url != '' }}
         env:
