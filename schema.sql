@@ -1,4 +1,4 @@
--- Automation Factory · Money Scout v0.17.0
+-- Automation Factory · Money Scout v0.18.0
 -- v0.1의 jobs 테이블은 삭제하지 않습니다. v0.2는 새 opportunities 테이블을 사용합니다.
 
 CREATE TABLE IF NOT EXISTS opportunities (
@@ -76,3 +76,17 @@ CREATE TABLE IF NOT EXISTS production_runs (
 
 CREATE INDEX IF NOT EXISTS idx_production_runs_opportunity
 ON production_runs(opportunity_id, created_at DESC);
+
+
+-- v0.18.0 Client Intake
+CREATE TABLE IF NOT EXISTS client_intakes (
+  opportunity_id TEXT PRIMARY KEY,
+  public_answers_json TEXT NOT NULL DEFAULT '{}',
+  secret_answers_enc TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'not_started',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_intakes_status
+ON client_intakes(status, updated_at DESC);
