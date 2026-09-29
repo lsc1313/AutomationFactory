@@ -1178,7 +1178,7 @@ async function showClientIntake(btn){
   try{
     const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/intake");
     const a=d.answers||{}, sp=d.secret_present||{}, fields=d.spec?.fields||[];
-    const fieldHtml=fields.map(f=>{
+    const renderField=f=>{
       const val=a[f.id]??""; const req=f.required?" *":""; const help=f.help?("<div class=\\\"intakeHelp\\\">"+esc(f.help)+"</div>"):"";
       let control="";
       if(f.type==="select"){control="<select data-intake-field=\\\""+esc(f.id)+"\\\">"+((f.options||[]).map(o=>"<option value=\\\""+esc(o.value)+"\\\" "+(String(val)===String(o.value)?"selected":"")+">"+esc(o.label)+"</option>").join(""))+"</select>";}
@@ -1186,9 +1186,14 @@ async function showClientIntake(btn){
       else if(f.type==="password"){control="<input data-intake-field=\\\""+esc(f.id)+"\\\" type=\\\"password\\\" value=\\\"\\\" placeholder=\\\""+(sp[f.id]?"암호화 저장됨 — 변경할 때만 입력":"보안정보 입력")+"\\\">";}
       else {control="<input data-intake-field=\\\""+esc(f.id)+"\\\" type=\\\"text\\\" value=\\\""+esc(val)+"\\\">";}
       return "<div class=\\\"intakeField\\\"><label>"+esc(f.label)+req+(f.secret?" 🔐":"")+"</label>"+control+help+"</div>";
-    }).join("");
+    };
+    const basicHtml=fields.filter(f=>!f.advanced).map(renderField).join("");
+    const advancedHtml=fields.filter(f=>f.advanced).map(renderField).join("");
+    const discovery=(d.discovery_plan||d.spec?.discovery_plan||[]);
+    const discoveryHtml=discovery.length?("<div class=\\\"reason\\\" style=\\\"margin:10px 0\\\"><b>🤖 시스템이 자동으로 처리할 항목</b><br>"+discovery.map(x=>"• "+esc(x)).join("<br>")+"</div>"):"";
+    const advancedSection=advancedHtml?("<details style=\\\"margin:10px 0\\\"><summary><b>⚙️ 고급 입력 — 자동처리가 실패할 때만</b></summary>"+advancedHtml+"</details>"):"";
     const status=d.status==="ready_for_build"?("<div class=\\\"intakeReady\\\">✅ 고객정보 준비 완료 · 실제 제작을 다시 누르면 반영됩니다.</div>"):("<div class=\\\"intakeMissing\\\">🟡 입력 진행 중 · 필수 "+esc(d.completion?.complete||0)+"/"+esc(d.completion?.required||0)+"</div>");
-    el.innerHTML="<div class=\\\"card\\\" style=\\\"margin-top:10px\\\"><b>👤 고객정보 / Client Intake</b><div class=\\\"reason\\\" style=\\\"white-space:pre-wrap\\\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+status+"<div data-intake-form=\\\""+esc(id)+"\\\">"+fieldHtml+"<button class=\\\"clientIntakeSaveBtn\\\" data-job-id=\\\""+esc(id)+"\\\">💾 고객정보 저장</button></div></div>";
+    el.innerHTML="<div class=\\\"card\\\" style=\\\"margin-top:10px\\\"><b>👤 고객정보 / Smart Intake</b><div class=\\\"reason\\\" style=\\\"white-space:pre-wrap\\\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+discoveryHtml+status+"<div data-intake-form=\\\""+esc(id)+"\\\">"+basicHtml+advancedSection+"<button class=\\\"clientIntakeSaveBtn\\\" data-job-id=\\\""+esc(id)+"\\\">💾 고객정보 저장</button></div></div>";
   }catch(err){el.innerHTML="<div class=\\\"empty error\\\">고객정보 조회 실패: "+esc(err.message)+"</div>";}
   finally{btn.disabled=false;btn.textContent=old;}
 }
