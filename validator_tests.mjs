@@ -649,7 +649,7 @@ assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.18.1"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.18.2"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v2"));
 assert.ok(productionV017.includes("job-production-bundle-v2"));
@@ -686,7 +686,7 @@ assert.ok(workflowV0171.includes("job-package-${{ inputs.run_id }}"));
 // v0.18.0 Client Intake v1 contract
 const intakeV018 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(intakeV018.includes("CREATE TABLE IF NOT EXISTS client_intakes"));
-assert.ok(intakeV018.includes("client-intake-v1"));
+assert.ok(intakeV018.includes("client-intake-v2"));
 assert.ok(intakeV018.includes("clientIntakeSpec"));
 assert.ok(intakeV018.includes("encryptClientSecrets"));
 assert.ok(intakeV018.includes("AES-GCM"));
@@ -722,3 +722,18 @@ const browserScriptEnd = renderedHtml.lastIndexOf("</script>");
 assert.ok(browserScriptStart >= "<script>".length && browserScriptEnd > browserScriptStart);
 assert.doesNotThrow(() => new vm.Script(renderedHtml.slice(browserScriptStart, browserScriptEnd)));
 assert.ok(renderedHtml.includes("clientIntakeBtn"));
+
+
+// v0.18.2 Smart Intake v2 contract
+const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.18.2"'));
+assert.ok(smartIntakeV0182.includes("Smart Intake v2"));
+assert.ok(smartIntakeV0182.includes("discovery_plan"));
+assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
+assert.ok(smartIntakeV0182.includes("SKU mapping override"));
+assert.ok(smartIntakeV0182.includes("automatic discovery fails"));
+assert.ok(smartIntakeV0182.includes("autoMap:!Object.keys(parsedSkuMap).length"));
+assert.ok(smartIntakeV0182.includes("Taxonomy)"));
+assert.ok(smartIntakeV0182.includes("고급 입력 — 자동처리가 실패할 때만"));
+assert.ok(smartIntakeV0182.includes("🤖 시스템이 자동으로 처리할 항목"));
+assert.ok(smartIntakeV0182.includes("config/client.json"));
