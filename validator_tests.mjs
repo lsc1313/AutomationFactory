@@ -618,7 +618,7 @@ assert.ok(codeWorkerV1.includes("github-actions:sandbox-runner-v1"));
 assert.ok(codeWorkerV1.includes("A per-job run result is required before QC may claim tests passed"));
 assert.ok(codeWorkerV1.includes("💻 Code Worker"));
 
-// v0.16.0 dynamic per-job sandbox contract
+// v0.16.1 dynamic per-job sandbox auth contract
 const dynamicSandbox = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(dynamicSandbox.includes('job-sandbox-bundle-v1'));
 assert.ok(dynamicSandbox.includes('sandbox_runs'));
@@ -630,3 +630,6 @@ assert.ok(dynamicWorkflow.includes('bundle_url'));
 assert.ok(dynamicWorkflow.includes('/tmp/job-sandbox'));
 assert.ok(dynamicWorkflow.includes('external actions must be disabled'));
 assert.ok(dynamicWorkflow.includes('secrets.SANDBOX_CALLBACK_TOKEN'));
+assert.ok(dynamicWorkflow.includes('Authorization: Bearer $BUNDLE_TOKEN'));
+assert.ok(dynamicSandbox.includes('!env.GITHUB_ACTIONS_TOKEN||!env.SANDBOX_CALLBACK_TOKEN||!env.PUBLIC_BASE_URL'));
+assert.ok(dynamicSandbox.includes('request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN'));

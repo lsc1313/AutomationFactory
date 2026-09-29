@@ -7,7 +7,7 @@ on:
         required: false
         type: string
       bundle_url:
-        description: Public bundle endpoint
+        description: Authenticated bundle endpoint
         required: false
         type: string
       callback_url:
@@ -34,9 +34,11 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_url != '' }}
         env:
           BUNDLE_URL: ${{ inputs.bundle_url }}
+          BUNDLE_TOKEN: ${{ secrets.SANDBOX_CALLBACK_TOKEN }}
         run: |
+          test -n "$BUNDLE_TOKEN" || exit 1
           mkdir -p /tmp/job-sandbox
-          curl --fail --silent --show-error "$BUNDLE_URL" -o /tmp/bundle.json
+          curl --fail --silent --show-error "$BUNDLE_URL" -H "Authorization: Bearer $BUNDLE_TOKEN" -o /tmp/bundle.json
           node - <<'NODE'
           const fs=require('fs'),path=require('path');
           const b=JSON.parse(fs.readFileSync('/tmp/bundle.json','utf8'));
