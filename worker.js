@@ -662,6 +662,92 @@ async function decryptClientSecrets(env,cipher) {
   const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:base64ToBytes(parts[1])},key,base64ToBytes(parts[2]));
   return JSON.parse(new TextDecoder().decode(plain));
 }
+function base64UrlBytes(bytes) {
+  return bytesToBase64(bytes).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+
+function accountProviderSpec(row) {
+  const raw=(String(row?.title||"")+" "+String(row?.description||"")+" "+String(row?.skills||"")).toLowerCase();
+  const out=[];
+  if(/squarespace/.test(raw))out.push({provider:"squarespace",label:"Squarespace",auth_method:"api_key",required:true});
+  if(/etsy/.test(raw))out.push({provider:"etsy",label:"Etsy",auth_method:"oauth_pkce",required:true});
+  if(/prodigi/.test(raw))out.push({provider:"prodigi",label:"Prodigi",auth_method:"api_key",required:true});
+  return out;
+}
+
+async function upsertAccountConnection(env,opportunityId,provider,status,authMethod,metadata,secretObj) {
+  const ts=nowIso(), enc=secretObj&&Object.keys(secretObj).length?await encryptClientSecrets(env,secretObj):"";
+  const existing=await env.DB.prepare("SELECT created_at FROM account_connections WHERE opportunity_id=? AND provider=?").bind(opportunityId,provider).first();
+  const sql="INSERT INTO account_connections(opportunity_id,provider,status,auth_method,metadata_json,secret_enc,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(opportunity_id,provider) DO UPDATE SET status=excluded.status,auth_method=excluded.auth_method,metadata_json=excluded.metadata_json,secret_enc=CASE WHEN excluded.secret_enc=\"\" THEN account_connections.secret_enc ELSE excluded.secret_enc END,updated_at=excluded.updated_at";
+  await env.DB.prepare(sql).bind(opportunityId,provider,status,authMethod,JSON.stringify(metadata||{}),enc,existing?.created_at||ts,ts).run();
+}
+
+async function getAccountConnections(env,row) {
+  const spec=accountProviderSpec(row), rows=(await env.DB.prepare("SELECT provider,status,auth_method,metadata_json,updated_at FROM account_connections WHERE opportunity_id=?").bind(row.opportunity_id).all()).results||[];
+  const byProvider=new Map(rows.map(r=>[r.provider,r]));
+  const connections=spec.map(p=>{
+    const r=byProvider.get(p.provider); let metadata={}; try{metadata=JSON.parse(r?.metadata_json||"{}")}catch{}
+    return {...p,status:r?.status||"disconnected",metadata,updated_at:r?.updated_at||null,app_configured:p.provider!=="etsy"||Boolean(env.ETSY_CLIENT_ID)};
+  });
+  const required=connections.filter(x=>x.required).length, connected=connections.filter(x=>x.required&&x.status==="connected_verified").length;
+  return {connections,progress:{required,connected,ready:required===connected}};
+}
+
+async function connectSquarespace(env,row,apiKey) {
+  const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.18.3",Accept:"application/json"}});
+  const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
+  if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
+  const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
+  await upsertAccountConnection(env,row.opportunity_id,"squarespace","connected_verified","api_key",metadata,{api_key:key});
+  return {ok:true,status:"connected_verified",metadata};
+}
+
+async function connectProdigi(env,row,apiKey,mode="sandbox") {
+  const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Prodigi API key is required"};
+  const safeMode=mode==="live"?"live":"sandbox", base=safeMode==="live"?"https://api.prodigi.com":"https://api.sandbox.prodigi.com";
+  const r=await fetch(base+"/v4.0/orders?top=1",{headers:{"X-API-Key":key,Accept:"application/json"}});
+  const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
+  if(!r.ok)return {ok:false,error:"Prodigi verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
+  const metadata={mode:safeMode,environment:base,outcome:body.outcome||"Ok"};
+  await upsertAccountConnection(env,row.opportunity_id,"prodigi","connected_verified","api_key",metadata,{api_key:key,mode:safeMode});
+  return {ok:true,status:"connected_verified",metadata};
+}
+
+async function startEtsyOAuth(request,env,row) {
+  const clientId=String(env.ETSY_CLIENT_ID||"").trim();
+  if(!clientId)return {ok:false,status:"config_required",missing_configuration:["ETSY_CLIENT_ID"],note:"Money Scout Etsy app registration is required once; customers should not provide the app API key."};
+  const publicBase=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,""), redirectUri=String(env.ETSY_REDIRECT_URI||publicBase+"/oauth/etsy/callback");
+  const verifier=base64UrlBytes(crypto.getRandomValues(new Uint8Array(48)));
+  const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(verifier))), challenge=base64UrlBytes(digest);
+  const state=crypto.randomUUID(), created=nowIso(), expires=new Date(Date.now()+10*60*1000).toISOString();
+  const verifierEnc=await encryptClientSecrets(env,{code_verifier:verifier});
+  await env.DB.prepare("INSERT INTO oauth_states(state,opportunity_id,provider,verifier_enc,redirect_uri,expires_at,created_at) VALUES(?,?,?,?,?,?,?)").bind(state,row.opportunity_id,"etsy",verifierEnc,redirectUri,expires,created).run();
+  const u=new URL("https://www.etsy.com/oauth/connect");
+  u.searchParams.set("response_type","code");u.searchParams.set("client_id",clientId);u.searchParams.set("redirect_uri",redirectUri);
+  u.searchParams.set("scope",String(env.ETSY_SCOPES||"shops_r listings_r listings_w profile_r"));u.searchParams.set("state",state);u.searchParams.set("code_challenge",challenge);u.searchParams.set("code_challenge_method","S256");
+  return {ok:true,status:"authorization_required",authorization_url:u.toString(),redirect_uri:redirectUri};
+}
+
+async function finishEtsyOAuth(request,env) {
+  const url=new URL(request.url), state=String(url.searchParams.get("state")||""), code=String(url.searchParams.get("code")||"");
+  const oauthError=String(url.searchParams.get("error")||"");
+  if(!state)return html("<h2>Etsy 연결 실패</h2><p>state 값이 없습니다.</p>",400);
+  const st=await env.DB.prepare("SELECT * FROM oauth_states WHERE state=? AND provider=\"etsy\"").bind(state).first();
+  if(!st)return html("<h2>Etsy 연결 실패</h2><p>만료되었거나 알 수 없는 연결 요청입니다.</p>",400);
+  if(Date.parse(st.expires_at)<Date.now()){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 실패</h2><p>연결 요청이 만료되었습니다. Money Scout에서 다시 연결해주세요.</p>",400)}
+  if(oauthError||!code){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 취소</h2><p>"+String(url.searchParams.get("error_description")||oauthError||"Authorization was not completed.")+"</p>",400)}
+  const verifierObj=await decryptClientSecrets(env,st.verifier_enc||""), verifier=verifierObj.code_verifier;
+  const form=new URLSearchParams({grant_type:"authorization_code",client_id:String(env.ETSY_CLIENT_ID||""),redirect_uri:st.redirect_uri,code,code_verifier:verifier});
+  const tokenResp=await fetch("https://api.etsy.com/v3/public/oauth/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:form});
+  const txt=await tokenResp.text(); let token={}; try{token=txt?JSON.parse(txt):{}}catch{token={raw:txt}}
+  if(!tokenResp.ok||!token.access_token){return html("<h2>Etsy 연결 실패</h2><p>토큰 교환에 실패했습니다. Money Scout에서 다시 시도해주세요.</p>",502)}
+  const metadata={token_type:token.token_type||"Bearer",expires_in:Number(token.expires_in||3600),connected_at:nowIso(),scope:String(env.ETSY_SCOPES||"shops_r listings_r listings_w profile_r")};
+  await upsertAccountConnection(env,st.opportunity_id,"etsy","connected_verified","oauth_pkce",metadata,{access_token:token.access_token,refresh_token:token.refresh_token||"",expires_in:token.expires_in||3600});
+  await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();
+  return html("<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\"><body style=\"font-family:system-ui;background:#08101d;color:white;padding:28px\"><h2>✅ Etsy 연결 완료</h2><p>승인 토큰은 암호화 저장되며 납품 ZIP에는 포함되지 않습니다.</p><p><a style=\"color:#8db9ff\" href=\"/\">Money Scout로 돌아가기</a></p></body>");
+}
+
 function intakeCompletion(spec,publicAnswers,secrets) {
   const missing=[]; for(const f of spec.fields||[]){if(!f.required)continue;const v=f.secret?secrets?.[f.id]:publicAnswers?.[f.id];if(v==null||String(v).trim()==="")missing.push(f.id)}
   const required=(spec.fields||[]).filter(f=>f.required).length; return {status:missing.length?"collecting":"ready_for_build",missing,required,complete:required-missing.length};
