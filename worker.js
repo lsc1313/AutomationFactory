@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.18.5";
+const APP_VERSION = "0.19.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -132,6 +132,27 @@ async function ensureSchema(env) {
       created_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_oauth_states_expiry ON oauth_states(expires_at)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS contract_payment_gates (
+      opportunity_id TEXT PRIMARY KEY,
+      platform TEXT NOT NULL DEFAULT '',
+      application_status TEXT NOT NULL DEFAULT 'not_applied',
+      contract_status TEXT NOT NULL DEFAULT 'not_agreed',
+      payment_status TEXT NOT NULL DEFAULT 'unsecured',
+      payment_protection TEXT NOT NULL DEFAULT 'unknown',
+      gross_amount REAL,
+      currency TEXT NOT NULL DEFAULT '',
+      fee_estimate REAL,
+      net_estimate REAL,
+      payout_route TEXT NOT NULL DEFAULT '',
+      payout_destination TEXT NOT NULL DEFAULT '',
+      external_reference TEXT NOT NULL DEFAULT '',
+      evidence_url TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      verified_at TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_contract_payment_status ON contract_payment_gates(contract_status, payment_status, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
       opportunity_id TEXT NOT NULL,
       evidence_key TEXT NOT NULL,
@@ -693,7 +714,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.18.5",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.19.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -735,6 +756,9 @@ async function finishEtsyOAuth(request,env) {
   const st=await env.DB.prepare("SELECT * FROM oauth_states WHERE state=? AND provider=\"etsy\"").bind(state).first();
   if(!st)return html("<h2>Etsy 연결 실패</h2><p>만료되었거나 알 수 없는 연결 요청입니다.</p>",400);
   if(Date.parse(st.expires_at)<Date.now()){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 실패</h2><p>연결 요청이 만료되었습니다. Money Scout에서 다시 연결해주세요.</p>",400)}
+  const opportunity=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(st.opportunity_id).first();
+  if(!opportunity){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 실패</h2><p>일감 정보를 찾을 수 없습니다.</p>",404)}
+  const deal=await getContractPaymentGate(env,opportunity); if(!deal.ready){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 중단</h2><p>계약·결제 Gate가 더 이상 준비 상태가 아닙니다. Money Scout에서 계약/결제 상태를 다시 확인해주세요.</p>",409)}
   if(oauthError||!code){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();const msg=String(url.searchParams.get("error_description")||oauthError||"Authorization was not completed.").replace(/[<>&\"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));return html("<h2>Etsy 연결 취소</h2><p>"+msg+"</p>",400)}
   const verifierObj=await decryptClientSecrets(env,st.verifier_enc||""), verifier=verifierObj.code_verifier;
   const keystring=String(env.ETSY_KEYSTRING||env.ETSY_CLIENT_ID||"").trim(), sharedSecret=String(env.ETSY_SHARED_SECRET||"").trim();
@@ -749,6 +773,71 @@ async function finishEtsyOAuth(request,env) {
   await upsertAccountConnection(env,st.opportunity_id,"etsy","connected_verified","oauth_pkce",metadata,{access_token:token.access_token,refresh_token:token.refresh_token||"",expires_in:token.expires_in||3600});
   await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();
   return html("<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\"><body style=\"font-family:system-ui;background:#08101d;color:white;padding:28px\"><h2>✅ Etsy 연결 완료</h2><p>승인 토큰은 암호화 저장되며 납품 ZIP에는 포함되지 않습니다.</p><p><a style=\"color:#8db9ff\" href=\"/\">Money Scout로 돌아가기</a></p></body>");
+}
+
+function contractPaymentProfile(row) {
+  const source=String(row?.source||"");
+  if(source==="freelancer_projects") return {application_url:row?.url||"",platform:"Freelancer.com",application_method:"Open the original project and submit/confirm the platform bid",protection_hint:"Before client-account work, confirm the project is awarded and the agreed payment is secured through the platform.",payout_route_hint:"Freelancer platform balance → your configured withdrawal method",default_protection:"platform_escrow"};
+  if(source==="agent_bounties") return {application_url:row?.url||"",platform:"Agent Bounties",application_method:"Claim/accept the bounty according to the bounty page",protection_hint:"Confirm assignment/claim status and the bounty payout conditions before production.",payout_route_hint:"Bounty payout → configured wallet",default_protection:"onchain_or_bounty"};
+  if(source==="github_paid") return {application_url:row?.url||"",platform:"GitHub bounty / issuer",application_method:"Follow the issue/bounty application instructions",protection_hint:"Verify the payer, amount, assignment and payout protection before production.",payout_route_hint:"Issuer-defined payout route",default_protection:"unknown"};
+  return {application_url:row?.url||"",platform:source||"External platform",application_method:"Use the original application/support page",protection_hint:"Confirm the agreement and secure payment before production.",payout_route_hint:"Platform/customer-defined payout route",default_protection:"unknown"};
+}
+
+function contractPaymentReady(gate) {
+  return gate?.contract_status==="accepted" && (gate?.payment_status==="secured" || gate?.payment_status==="prepaid" || gate?.payment_status==="paid");
+}
+
+async function getContractPaymentGate(env,row) {
+  const profile=contractPaymentProfile(row);
+  const saved=await env.DB.prepare("SELECT * FROM contract_payment_gates WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  const gross=saved?.gross_amount ?? row.budget_max ?? row.budget_min ?? null;
+  const currency=String(saved?.currency||row.currency||"");
+  const fee=saved?.fee_estimate ?? null;
+  const net=saved?.net_estimate ?? ((gross!=null&&fee!=null)?Math.max(0,Number(gross)-Number(fee)):null);
+  const gate={
+    opportunity_id:row.opportunity_id,platform:saved?.platform||profile.platform,
+    application_status:saved?.application_status||"not_applied",contract_status:saved?.contract_status||"not_agreed",
+    payment_status:saved?.payment_status||"unsecured",payment_protection:saved?.payment_protection||profile.default_protection,
+    gross_amount:gross,currency,fee_estimate:fee,net_estimate:net,
+    payout_route:saved?.payout_route||profile.payout_route_hint,payout_destination:saved?.payout_destination||"",
+    external_reference:saved?.external_reference||"",evidence_url:saved?.evidence_url||"",note:saved?.note||"",
+    verified_at:saved?.verified_at||"",updated_at:saved?.updated_at||null
+  };
+  return {ok:true,gate,profile,ready:contractPaymentReady(gate),
+    next_action:contractPaymentReady(gate)?"client_intake_and_account_connection":"secure_contract_and_payment",
+    warning:"Do not store bank account numbers, card details, passwords, seed phrases, or wallet private keys here. Use only a payout-route label."};
+}
+
+async function saveContractPaymentGate(env,row,body) {
+  const current=await getContractPaymentGate(env,row), incoming=body&&typeof body==="object"?body:{};
+  const allowedApplication=new Set(["not_applied","applied","client_replied","assigned"]);
+  const allowedContract=new Set(["not_agreed","negotiating","accepted","cancelled"]);
+  const allowedPayment=new Set(["unsecured","secured","prepaid","paid","failed"]);
+  const allowedProtection=new Set(["unknown","platform_escrow","funded_milestone","onchain_or_bounty","direct_prepaid","other"]);
+  const application_status=allowedApplication.has(incoming.application_status)?incoming.application_status:current.gate.application_status;
+  const contract_status=allowedContract.has(incoming.contract_status)?incoming.contract_status:current.gate.contract_status;
+  const payment_status=allowedPayment.has(incoming.payment_status)?incoming.payment_status:current.gate.payment_status;
+  const payment_protection=allowedProtection.has(incoming.payment_protection)?incoming.payment_protection:current.gate.payment_protection;
+  const num=(v,fallback)=>{if(v===""||v==null)return fallback;const n=Number(v);return Number.isFinite(n)?n:fallback};
+  const gross_amount=num(incoming.gross_amount,current.gate.gross_amount), fee_estimate=num(incoming.fee_estimate,current.gate.fee_estimate);
+  const net_estimate=gross_amount!=null&&fee_estimate!=null?Math.max(0,gross_amount-fee_estimate):null;
+  const currency=String(incoming.currency??current.gate.currency??"").trim().slice(0,20);
+  const platform=String(current.gate.platform||contractPaymentProfile(row).platform).slice(0,120);
+  const payout_route=String(incoming.payout_route??current.gate.payout_route??"").trim().slice(0,300);
+  const payout_destination=String(incoming.payout_destination??current.gate.payout_destination??"").trim().slice(0,200);
+  const external_reference=String(incoming.external_reference??current.gate.external_reference??"").trim().slice(0,300);
+  const evidence_url=String(incoming.evidence_url??current.gate.evidence_url??"").trim().slice(0,800);
+  const note=String(incoming.note??current.gate.note??"").trim().slice(0,1500);
+  const ts=nowIso(), probe={contract_status,payment_status}, ready=contractPaymentReady(probe), verified_at=ready?(current.gate.verified_at||ts):"";
+  const existing=await env.DB.prepare("SELECT created_at FROM contract_payment_gates WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  const sql="INSERT INTO contract_payment_gates(opportunity_id,platform,application_status,contract_status,payment_status,payment_protection,gross_amount,currency,fee_estimate,net_estimate,payout_route,payout_destination,external_reference,evidence_url,note,verified_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET platform=excluded.platform,application_status=excluded.application_status,contract_status=excluded.contract_status,payment_status=excluded.payment_status,payment_protection=excluded.payment_protection,gross_amount=excluded.gross_amount,currency=excluded.currency,fee_estimate=excluded.fee_estimate,net_estimate=excluded.net_estimate,payout_route=excluded.payout_route,payout_destination=excluded.payout_destination,external_reference=excluded.external_reference,evidence_url=excluded.evidence_url,note=excluded.note,verified_at=excluded.verified_at,updated_at=excluded.updated_at";
+  await env.DB.prepare(sql).bind(row.opportunity_id,platform,application_status,contract_status,payment_status,payment_protection,gross_amount,currency,fee_estimate,net_estimate,payout_route,payout_destination,external_reference,evidence_url,note,verified_at,existing?.created_at||ts,ts).run();
+  return getContractPaymentGate(env,row);
+}
+
+async function requireContractPaymentGate(env,row) {
+  const deal=await getContractPaymentGate(env,row);
+  return deal.ready?null:deal;
 }
 
 function intakeCompletion(spec,publicAnswers,secrets) {
@@ -1009,7 +1098,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.5"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1039,9 +1128,9 @@ function productionBundle(opportunityId, plan) {
   const missing=(safeIntake.completion?.missing||[]);
   const conn=(plan?.account_connections?.connections||[]), accessLines=conn.map(x=>"- "+x.provider+": "+x.status+" via "+x.auth_method);
   files.push({path:"client/ACCESS_STATUS.md",content:["# Client intake/access status","","Intake status: "+safeIntake.status,"Missing required fields: "+(missing.length?missing.join(", "):"none"),"","## Account connections",...(accessLines.length?accessLines:["- none required"]), "", "Passwords, API keys, OAuth access tokens and refresh tokens are never exported to GitHub Actions artifacts or delivery ZIP files."].join("\n")});
-  const manifest={pipeline_version:"production-pipeline-v3",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,client_intake:{status:safeIntake.status,completion:safeIntake.completion},account_connections:{progress:plan?.account_connections?.progress||{},connections:(plan?.account_connections?.connections||[]).map(x=>({provider:x.provider,status:x.status,auth_method:x.auth_method}))},external_actions_allowed:false,generated_at:nowIso()};
+  const manifest={pipeline_version:"production-pipeline-v4",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,contract_payment:{ready:Boolean(plan?.contract_payment?.ready),platform:plan?.contract_payment?.gate?.platform||"",contract_status:plan?.contract_payment?.gate?.contract_status||"",payment_status:plan?.contract_payment?.gate?.payment_status||"",payment_protection:plan?.contract_payment?.gate?.payment_protection||"",gross_amount:plan?.contract_payment?.gate?.gross_amount??null,currency:plan?.contract_payment?.gate?.currency||"",fee_estimate:plan?.contract_payment?.gate?.fee_estimate??null,net_estimate:plan?.contract_payment?.gate?.net_estimate??null,payout_route:plan?.contract_payment?.gate?.payout_route||"",payout_destination:plan?.contract_payment?.gate?.payout_destination||""},client_intake:{status:safeIntake.status,completion:safeIntake.completion},account_connections:{progress:plan?.account_connections?.progress||{},connections:(plan?.account_connections?.connections||[]).map(x=>({provider:x.provider,status:x.status,auth_method:x.auth_method}))},external_actions_allowed:false,generated_at:nowIso()};
   files.push({path:"delivery/MANIFEST.json",content:JSON.stringify(manifest,null,2)});
-  return {bundle_version:"job-production-bundle-v3",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
+  return {bundle_version:"job-production-bundle-v4",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
 }
 
 async function dispatchProduction(request, env, opportunityId) {
@@ -1049,24 +1138,27 @@ async function dispatchProduction(request, env, opportunityId) {
   if(!row) return json({ok:false,error:"Paid job not found"},404);
   let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
   if(!bd.actionable_paid_job||!bd.factory_fulfillable) return json({ok:false,error:"Factory-ready paid job only"},400);
+  const deal=await getContractPaymentGate(env,row);
+  if(!deal.ready) return json({ok:true,status:"contract_payment_required",deal,note:"Contract acceptance and secured/prepaid payment are required before production."},202);
   const sandbox=await env.DB.prepare("SELECT run_id FROM sandbox_runs WHERE opportunity_id=? AND status='completed' AND conclusion='success' ORDER BY created_at DESC LIMIT 1").bind(opportunityId).first();
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
   const intake=await getClientIntake(env,row,plan), accountConnections=await getAccountConnections(env,row);
   plan.client_intake={status:intake.status,answers:intake.answers,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
   plan.account_connections=accountConnections;
+  plan.contract_payment={ready:deal.ready,gate:deal.gate,profile:deal.profile};
   if(plan.qc.status!=="preflight_pass") return json({ok:false,error:"QC preflight blocked",qc:plan.qc},400);
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for production"},400);
   const runId="prd_"+crypto.randomUUID(), bundle=productionBundle(opportunityId,plan), now=nowIso();
   const nextGate=intake.status!=="ready_for_build"?"client_intake_required":(!accountConnections.progress.ready?"account_connection_required":((plan.factory_builder.blocked_tasks||0)>0?"secure_execution_approval":"user_delivery_review"));
-  const summary={pipeline_version:"production-pipeline-v3",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,intake_status:intake.status,intake_missing:intake.completion?.missing||[],account_connections:accountConnections.progress,next_gate:nextGate,sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
+  const summary={pipeline_version:"production-pipeline-v4",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,contract_payment:{ready:deal.ready,contract_status:deal.gate.contract_status,payment_status:deal.gate.payment_status,payment_protection:deal.gate.payment_protection,net_estimate:deal.gate.net_estimate,currency:deal.gate.currency},intake_status:intake.status,intake_missing:intake.completion?.missing||[],account_connections:accountConnections.progress,next_gate:nextGate,sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
   await env.DB.prepare("INSERT INTO production_runs(run_id,opportunity_id,bundle_json,status,package_summary_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",JSON.stringify(summary),now,now).run();
   const missingConfig=[]; if(!env.GITHUB_ACTIONS_TOKEN)missingConfig.push("GITHUB_ACTIONS_TOKEN"); if(!env.SANDBOX_CALLBACK_TOKEN)missingConfig.push("SANDBOX_CALLBACK_TOKEN");
   if(missingConfig.length) return json({ok:true,run_id:runId,status:"config_required",missing_configuration:missingConfig,summary},202);
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.5"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1149,7 +1241,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v${APP_VERSION} · Account Connection Gate v1 · 고객답변→계정연결→자동발견→재제작→QC</div>
+  <div class="footer">v${APP_VERSION} · Contract & Payment Gate v1 · 계약/결제→고객답변→계정연결→제작→납품/정산</div>
 </div>
 <script>
 let grade='all';
@@ -1245,7 +1337,7 @@ async function loadPaidJobs(){
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="dealGateBtn" data-job-id="'+esc(j.opportunity_id)+'">💳 계약·결제</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="deal-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
 }
 async function runSandbox(btn){
   const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
@@ -1271,6 +1363,49 @@ async function runSandbox(btn){
 }
 
 
+
+async function showDealGate(btn){
+  const id=btn.dataset.jobId, el=document.getElementById('deal-'+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='불러오는 중…';
+  try{
+    const d=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/deal'), g=d.gate||{}, p=d.profile||{};
+    const sel=(name,value,options)=>'<select data-deal-field="'+name+'">'+options.map(o=>'<option value="'+esc(o[0])+'" '+(String(value)===String(o[0])?'selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
+    const status=d.ready?'<div class="intakeReady">✅ 계약·결제 확보 완료 — 고객정보/계정연결/실제 제작 진행 가능</div>':'<div class="intakeMissing">🟡 실제 제작 전 계약 수락 + 결제 확보가 필요합니다.</div>';
+    const app=sel('application_status',g.application_status,[['not_applied','미지원'],['applied','지원함'],['client_replied','고객 응답'],['assigned','배정/낙찰']]);
+    const contract=sel('contract_status',g.contract_status,[['not_agreed','계약 전'],['negotiating','협의 중'],['accepted','계약/작업 합의 완료'],['cancelled','취소']]);
+    const pay=sel('payment_status',g.payment_status,[['unsecured','결제 미확보'],['secured','결제 확보/에스크로·마일스톤 확인'],['prepaid','선결제 확인'],['paid','입금 완료'],['failed','결제 실패']]);
+    const protect=sel('payment_protection',g.payment_protection,[['unknown','확인 필요'],['platform_escrow','플랫폼 에스크로'],['funded_milestone','펀딩된 마일스톤'],['onchain_or_bounty','온체인/바운티'],['direct_prepaid','직접 선결제'],['other','기타']]);
+    const input=(name,value,placeholder,type='text')=>'<input data-deal-field="'+name+'" type="'+type+'" value="'+esc(value??'')+'" placeholder="'+esc(placeholder)+'">';
+    const net=g.net_estimate==null?'미확정':Number(g.net_estimate).toLocaleString()+' '+esc(g.currency||'');
+    el.innerHTML='<div class="card" style="margin-top:10px"><b>💳 Contract / Payment Gate</b><div class="reason">'+esc(p.platform||g.platform||'')+' · '+esc(p.application_method||'')+'<br>'+esc(p.protection_hint||'')+'</div>'+status+
+      '<div class="intakeField"><label>지원 상태</label>'+app+'</div>'+
+      '<div class="intakeField"><label>계약 상태 *</label>'+contract+'</div>'+
+      '<div class="intakeField"><label>결제 상태 *</label>'+pay+'</div>'+
+      '<div class="intakeField"><label>결제 보호 방식</label>'+protect+'</div>'+
+      '<div class="intakeField"><label>합의 금액 / 통화</label><div class="connectionControls">'+input('gross_amount',g.gross_amount,'합의 총액','number')+input('currency',g.currency,'USD')+'</div></div>'+
+      '<div class="intakeField"><label>플랫폼 수수료 예상액 (선택)</label>'+input('fee_estimate',g.fee_estimate,'예: 50','number')+'<div class="intakeHelp">예상 실수령액: '+net+'</div></div>'+
+      '<div class="intakeField"><label>정산 경로</label>'+input('payout_route',g.payout_route,p.payout_route_hint||'플랫폼 → 출금수단')+'</div>'+
+      '<div class="intakeField"><label>내 수령처 표시명</label>'+input('payout_destination',g.payout_destination,'예: Payoneer / 은행계좌 / Base wallet')+'<div class="intakeHelp">계좌번호·카드번호·비밀번호·시드문구·개인키는 입력하지 마세요.</div></div>'+
+      '<div class="intakeField"><label>계약/마일스톤/바운티 참조번호 (선택)</label>'+input('external_reference',g.external_reference,'프로젝트/마일스톤/Claim ID')+'</div>'+
+      '<div class="intakeField"><label>결제 확보 근거 URL (선택)</label>'+input('evidence_url',g.evidence_url,'플랫폼 계약/마일스톤 URL')+'</div>'+
+      '<div class="intakeField"><label>메모 (선택)</label><textarea data-deal-field="note">'+esc(g.note||'')+'</textarea></div>'+
+      '<button class="dealGateSaveBtn" data-job-id="'+esc(id)+'">💾 계약·결제 상태 저장</button>'+(p.application_url?' <a class="link" target="_blank" rel="noopener" href="'+esc(p.application_url)+'">지원/계약 페이지 열기</a>':'')+
+      '<div class="intakeHelp">이 Gate는 자동 입금을 받는 기능이 아니라, 실제 제작 전에 계약과 결제 확보를 확인하는 안전장치입니다.</div></div>';
+  }catch(err){el.innerHTML='<div class="empty error">계약·결제 조회 실패: '+esc(err.message)+'</div>';}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+async function saveDealGate(btn){
+  const id=btn.dataset.jobId, el=document.getElementById('deal-'+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='저장 중…';
+  try{
+    const body={}; el.querySelectorAll('[data-deal-field]').forEach(x=>body[x.dataset.dealField]=x.value);
+    const d=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/deal',{method:'POST',body:JSON.stringify(body)});
+    const fake={dataset:{jobId:id},disabled:false,textContent:'💳 계약·결제'}; await showDealGate(fake);
+    if(d.ready)alert('계약·결제 Gate 통과. 이제 고객정보/계정연결/실제 제작을 진행할 수 있습니다.');
+  }catch(err){alert('계약·결제 저장 실패: '+err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+
 async function showClientIntake(btn){
   const id=btn.dataset.jobId, el=document.getElementById("intake-"+id); if(!el)return;
   btn.disabled=true; const old=btn.textContent; btn.textContent="불러오는 중…";
@@ -1294,12 +1429,12 @@ async function showClientIntake(btn){
     const connRows=(c.connections||[]).map(x=>{
       const ok=x.status==="connected_verified", meta=x.metadata||{}, summary=x.provider==="squarespace"?(meta.title||meta.url||""):x.provider==="prodigi"?(meta.mode||""):"";
       let controls="";
-      if(!ok&&x.provider==="squarespace")controls="<div class=\\\"connectionControls\\\"><input type=\\\"password\\\" data-account-key=\\\"squarespace\\\" placeholder=\\\"Squarespace 작업용 API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"squarespace\\\">연결 확인</button></div>";
-      if(!ok&&x.provider==="etsy")controls="<div class=\\\"connectionControls\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"etsy\\\">Etsy에서 연결 승인</button></div>"+(x.app_configured?"":"<div class=\\\"intakeHelp\\\">Money Scout Etsy 앱 설정이 아직 필요합니다.</div>");
-      if(!ok&&x.provider==="prodigi")controls="<div class=\\\"connectionControls\\\"><select data-account-mode=\\\"prodigi\\\"><option value=\\\"sandbox\\\">Sandbox</option><option value=\\\"live\\\">Live (읽기 검증)</option></select><input type=\\\"password\\\" data-account-key=\\\"prodigi\\\" placeholder=\\\"Prodigi API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"prodigi\\\">연결 확인</button></div>";
+      if(c.deal_ready&&!ok&&x.provider==="squarespace")controls="<div class=\\\"connectionControls\\\"><input type=\\\"password\\\" data-account-key=\\\"squarespace\\\" placeholder=\\\"Squarespace 작업용 API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"squarespace\\\">연결 확인</button></div>";
+      if(c.deal_ready&&!ok&&x.provider==="etsy")controls="<div class=\\\"connectionControls\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"etsy\\\">Etsy에서 연결 승인</button></div>"+(x.app_configured?"":"<div class=\\\"intakeHelp\\\">Money Scout Etsy 앱 설정이 아직 필요합니다.</div>");
+      if(c.deal_ready&&!ok&&x.provider==="prodigi")controls="<div class=\\\"connectionControls\\\"><select data-account-mode=\\\"prodigi\\\"><option value=\\\"sandbox\\\">Sandbox</option><option value=\\\"live\\\">Live (읽기 검증)</option></select><input type=\\\"password\\\" data-account-key=\\\"prodigi\\\" placeholder=\\\"Prodigi API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"prodigi\\\">연결 확인</button></div>";
       return "<div class=\\\"connectionRow\\\" data-connection-provider=\\\""+esc(x.provider)+"\\\"><b>"+esc(x.label)+"</b><div class=\\\"connectionStatus "+(ok?"ok":"wait")+"\\\">"+(ok?"✅ 연결·검증 완료":"연결 필요")+(summary?" · "+esc(summary):"")+"</div>"+controls+"</div>";
     }).join("");
-    const connectionHtml=(c.connections||[]).length?("<div class=\\\"connectionGate\\\"><b>🔗 계정 연결</b><div class=\\\"intakeHelp\\\">OAuth/API 키는 고객 답변과 분리해 보안 저장하며 ZIP에 포함하지 않습니다.</div>"+connRows+"</div>"):"";
+    const connectionHtml=(c.connections||[]).length?("<div class=\\\"connectionGate\\\"><b>🔗 계정 연결</b><div class=\\\"intakeHelp\\\">"+(c.deal_ready?"OAuth/API 키는 고객 답변과 분리해 보안 저장하며 ZIP에 포함하지 않습니다.":"🔒 계약·결제 Gate 통과 후 계정 연결이 활성화됩니다.")+"</div>"+connRows+"</div>"):"";
     el.innerHTML="<div class=\\\"card\\\" style=\\\"margin-top:10px\\\"><b>👤 고객정보 / Account Connection Gate</b><div class=\\\"reason\\\" style=\\\"white-space:pre-wrap\\\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+discoveryHtml+"<div style=\\\"display:flex;gap:12px;flex-wrap:wrap;margin:10px 0\\\">"+answerStatus+connStatus+"</div>"+connectionHtml+"<div data-intake-form=\\\""+esc(id)+"\\\">"+basicHtml+advancedSection+"<button class=\\\"clientIntakeSaveBtn\\\" data-job-id=\\\""+esc(id)+"\\\">💾 고객 답변 저장</button></div></div>";
   }catch(err){el.innerHTML="<div class=\\\"empty error\\\">고객정보 조회 실패: "+esc(err.message)+"</div>";}
   finally{btn.disabled=false;btn.textContent=old;}
@@ -1340,7 +1475,7 @@ async function runProduction(btn){
   btn.disabled=true; const old=btn.textContent; btn.textContent='제작 시작 중…'; el.textContent='Factory Worker가 납품 패키지를 생성하고 있습니다.';
   try{
     const start=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production',{method:'POST'});
-    if(start.status==='sandbox_required'){el.innerHTML='<b>🧪 샌드박스 성공이 먼저 필요합니다.</b><br>같은 카드의 샌드박스 테스트를 성공시킨 뒤 다시 눌러주세요.';return;}
+    if(start.status==='contract_payment_required'){el.innerHTML='<b>💳 계약·결제 확보가 먼저 필요합니다.</b><br>같은 카드의 계약·결제 버튼에서 계약 완료와 결제 확보 상태를 저장해주세요.';return;}\n    if(start.status==='sandbox_required'){el.innerHTML='<b>🧪 샌드박스 성공이 먼저 필요합니다.</b><br>같은 카드의 샌드박스 테스트를 성공시킨 뒤 다시 눌러주세요.';return;}
     if(start.status!=='dispatched'){const missing=Array.isArray(start.missing_configuration)&&start.missing_configuration.length?' · 누락: '+start.missing_configuration.join(', '):'';el.textContent='제작 상태: '+esc(start.status||'unknown')+esc(missing);return;}
     el.textContent='제작 실행됨 · '+esc(start.run_id)+' · Factory Worker/QC 결과 확인 중…';
     for(let i=0;i<40;i++){
@@ -1399,8 +1534,7 @@ async function showManagerPlan(btn){
  finally{btn.disabled=false;btn.textContent=old;}
 }
 
-document.addEventListener('click',async e=>{
- const connectBtn=e.target.closest('.accountConnectBtn'); if(connectBtn){await connectAccount(connectBtn);return;}
+document.addEventListener('click',async e=>{\n const dealSave=e.target.closest('.dealGateSaveBtn'); if(dealSave){await saveDealGate(dealSave);return;}\n const dealBtn=e.target.closest('.dealGateBtn'); if(dealBtn){await showDealGate(dealBtn);return;}\n const connectBtn=e.target.closest('.accountConnectBtn'); if(connectBtn){await connectAccount(connectBtn);return;}
  const intakeSave=e.target.closest('.clientIntakeSaveBtn'); if(intakeSave){await saveClientIntakeUi(intakeSave);return;}
  const intakeBtn=e.target.closest('.clientIntakeBtn'); if(intakeBtn){await showClientIntake(intakeBtn);return;}
  const downloadBtn=e.target.closest('.productionDownloadBtn'); if(downloadBtn){await downloadProduction(downloadBtn);return;}
@@ -1450,18 +1584,30 @@ export default {
 
       if(path==="/oauth/etsy/callback"&&request.method==="GET")return finishEtsyOAuth(request,env);
 
+      const dealMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/deal$/);
+      if(dealMatch&&(request.method==="GET"||request.method==="POST")){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(dealMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+        if(!bd.actionable_paid_job||!bd.factory_fulfillable)return json({ok:false,error:"Factory-ready paid job only"},400);
+        if(request.method==="GET")return json(await getContractPaymentGate(env,row));
+        const body=await request.json().catch(()=>({})); return json(await saveContractPaymentGate(env,row,body));
+      }
       const connectionsMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections$/);
       if(connectionsMatch&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(connectionsMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
         if(!row)return json({ok:false,error:"Paid job not found"},404);
-        return json({ok:true,...await getAccountConnections(env,row)});
+        const deal=await getContractPaymentGate(env,row);
+        return json({ok:true,...await getAccountConnections(env,row),deal_ready:deal.ready,deal:{contract_status:deal.gate.contract_status,payment_status:deal.gate.payment_status,platform:deal.gate.platform}});
       }
       const connectionActionMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections\/(squarespace|prodigi)$/);
       if(connectionActionMatch&&request.method==="POST"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(connectionActionMatch[1]), provider=connectionActionMatch[2], row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
         if(!row)return json({ok:false,error:"Paid job not found"},404);
+        const deal=await requireContractPaymentGate(env,row); if(deal)return json({ok:false,error:"계약 및 결제 확보가 먼저 필요합니다.",deal},409);
         const body=await request.json().catch(()=>({}));
         const out=provider==="squarespace"?await connectSquarespace(env,row,body.api_key):await connectProdigi(env,row,body.api_key,body.mode||"sandbox");
         return json(out,out.ok?200:400);
@@ -1471,6 +1617,7 @@ export default {
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(etsyStartMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
         if(!row)return json({ok:false,error:"Paid job not found"},404);
+        const deal=await requireContractPaymentGate(env,row); if(deal)return json({ok:false,error:"계약 및 결제 확보가 먼저 필요합니다.",deal},409);
         const out=await startEtsyOAuth(request,env,row); return json(out,out.ok?200:400);
       }
       const intakeMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/intake$/);
@@ -1535,7 +1682,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.5"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);

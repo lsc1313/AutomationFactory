@@ -1,4 +1,4 @@
--- Automation Factory · Money Scout v0.18.5
+-- Automation Factory · Money Scout v0.19.0
 -- v0.1의 jobs 테이블은 삭제하지 않습니다. v0.2는 새 opportunities 테이블을 사용합니다.
 
 CREATE TABLE IF NOT EXISTS opportunities (
@@ -120,3 +120,29 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 
 CREATE INDEX IF NOT EXISTS idx_oauth_states_expiry
 ON oauth_states(expires_at);
+
+
+-- v0.19.0 Contract & Payment Gate
+CREATE TABLE IF NOT EXISTS contract_payment_gates (
+  opportunity_id TEXT PRIMARY KEY,
+  platform TEXT NOT NULL DEFAULT '',
+  application_status TEXT NOT NULL DEFAULT 'not_applied',
+  contract_status TEXT NOT NULL DEFAULT 'not_agreed',
+  payment_status TEXT NOT NULL DEFAULT 'unsecured',
+  payment_protection TEXT NOT NULL DEFAULT 'unknown',
+  gross_amount REAL,
+  currency TEXT NOT NULL DEFAULT '',
+  fee_estimate REAL,
+  net_estimate REAL,
+  payout_route TEXT NOT NULL DEFAULT '',
+  payout_destination TEXT NOT NULL DEFAULT '',
+  external_reference TEXT NOT NULL DEFAULT '',
+  evidence_url TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  verified_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_contract_payment_status
+ON contract_payment_gates(contract_status, payment_status, updated_at DESC);

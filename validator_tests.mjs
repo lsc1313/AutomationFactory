@@ -644,15 +644,15 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.18.5"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.19.0"'));
 
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.18.5"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.19.0"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
-assert.ok(productionV017.includes("production-pipeline-v3"));
-assert.ok(productionV017.includes("job-production-bundle-v3"));
+assert.ok(productionV017.includes("production-pipeline-v4"));
+assert.ok(productionV017.includes("job-production-bundle-v4"));
 assert.ok(productionV017.includes("dispatchProduction"));
 assert.ok(productionV017.includes("productionRunBtn"));
 assert.ok(productionV017.includes("🏭 실제 제작"));
@@ -726,8 +726,8 @@ assert.ok(renderedHtml.includes("clientIntakeBtn"));
 
 // v0.18.2 Smart Intake v2 contract
 const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.18.5"'));
-assert.ok(smartIntakeV0182.includes("Account Connection Gate v1"));
+assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.19.0"'));
+assert.ok(smartIntakeV0182.includes("Account Connection Gate"));
 assert.ok(smartIntakeV0182.includes("discovery_plan"));
 assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
 assert.ok(smartIntakeV0182.includes("SKU mapping override"));
@@ -741,7 +741,7 @@ assert.ok(smartIntakeV0182.includes("config/client.json"));
 
 // v0.18.3 Account Connection Gate v1 contract
 const connectionV0183 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(connectionV0183.includes('const APP_VERSION = "0.18.5"'));
+assert.ok(connectionV0183.includes('const APP_VERSION = "0.19.0"'));
 assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS account_connections"));
 assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS oauth_states"));
 assert.ok(connectionV0183.includes("accountProviderSpec"));
@@ -755,7 +755,7 @@ assert.ok(connectionV0183.includes('code_challenge_method","S256"'));
 assert.ok(connectionV0183.includes("https://api.squarespace.com/1.0/authorization/website"));
 assert.ok(connectionV0183.includes("https://api.sandbox.prodigi.com"));
 assert.ok(connectionV0183.includes("account_connection_required"));
-assert.ok(connectionV0183.includes("Account Connection Gate v1"));
+assert.ok(connectionV0183.includes("Account Connection Gate"));
 assert.ok(connectionV0183.includes("accountConnectBtn"));
 assert.ok(connectionV0183.includes("Etsy에서 연결 승인"));
 assert.ok(connectionV0183.includes("고객 답변"));
@@ -768,7 +768,7 @@ assert.ok(!connectionV0183.includes('intakeField("prodigi_api_key"'));
 
 // v0.18.4 connection cleanup
 const connectionV0184 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(connectionV0184.includes('const APP_VERSION = "0.18.5"'));
+assert.ok(connectionV0184.includes('const APP_VERSION = "0.19.0"'));
 assert.ok(!connectionV0184.includes('intakeField("prodigi_mode"'));
 assert.ok(!connectionV0184.includes('Whether to validate through Prodigi Sandbox first'));
 assert.ok(connectionV0184.includes('prodigiConn?.metadata?.mode||"sandbox"'));
@@ -778,7 +778,7 @@ assert.ok(connectionV0184.includes("ETSY_SHARED_SECRET"));
 
 // v0.18.5 Etsy auth header + verified OAuth
 const etsyV0185 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(etsyV0185.includes('const APP_VERSION = "0.18.5"'));
+assert.ok(etsyV0185.includes('const APP_VERSION = "0.19.0"'));
 assert.ok(etsyV0185.includes("ETSY_KEYSTRING"));
 assert.ok(etsyV0185.includes("ETSY_SHARED_SECRET"));
 assert.ok(etsyV0185.includes('"x-api-key":keystring+":"+sharedSecret'));
@@ -786,3 +786,30 @@ assert.ok(etsyV0185.includes("https://api.etsy.com/v3/application/users/me"));
 assert.ok(etsyV0185.includes("Etsy API 검증에 실패"));
 assert.ok(etsyV0185.includes("ETSY_KEYSTRING="));
 assert.ok(etsyV0185.includes("ETSY_SHARED_SECRET="));
+
+
+// v0.19.0 Contract & Payment Gate v1 contract
+const dealV0190 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(dealV0190.includes('const APP_VERSION = "0.19.0"'));
+assert.ok(dealV0190.includes("CREATE TABLE IF NOT EXISTS contract_payment_gates"));
+assert.ok(dealV0190.includes("contractPaymentProfile"));
+assert.ok(dealV0190.includes("contractPaymentReady"));
+assert.ok(dealV0190.includes("getContractPaymentGate"));
+assert.ok(dealV0190.includes("saveContractPaymentGate"));
+assert.ok(dealV0190.includes("/deal"));
+assert.ok(dealV0190.includes("dealGateBtn"));
+assert.ok(dealV0190.includes("dealGateSaveBtn"));
+assert.ok(dealV0190.includes("💳 계약·결제"));
+assert.ok(dealV0190.includes("contract_payment_required"));
+assert.ok(dealV0190.includes("계약 및 결제 확보가 먼저 필요합니다."));
+assert.ok(dealV0190.includes("contract_status"));
+assert.ok(dealV0190.includes("payment_status"));
+assert.ok(dealV0190.includes("payment_protection"));
+assert.ok(dealV0190.includes("net_estimate"));
+assert.ok(dealV0190.includes("payout_destination"));
+assert.ok(dealV0190.includes("계좌번호·카드번호·비밀번호·시드문구·개인키는 입력하지 마세요."));
+assert.ok(dealV0190.includes("production-pipeline-v4"));
+assert.ok(dealV0190.includes("job-production-bundle-v4"));
+assert.ok(dealV0190.includes("Contract & Payment Gate v1"));
+
+assert.ok(dealV0190.includes("계약·결제 Gate가 더 이상 준비 상태가 아닙니다."));
