@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.19.1";
+const APP_VERSION = "0.20.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -153,6 +153,17 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_contract_payment_status ON contract_payment_gates(contract_status, payment_status, updated_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS manager_job_states (
+      opportunity_id TEXT PRIMARY KEY,
+      stage TEXT NOT NULL DEFAULT 'new',
+      status_label TEXT NOT NULL DEFAULT '',
+      next_action TEXT NOT NULL DEFAULT '',
+      autopilot TEXT NOT NULL DEFAULT 'on',
+      last_action TEXT NOT NULL DEFAULT '',
+      last_error TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_manager_job_stage ON manager_job_states(stage, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
       opportunity_id TEXT NOT NULL,
       evidence_key TEXT NOT NULL,
@@ -714,7 +725,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.19.1",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.20.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -1099,7 +1110,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1145,6 +1156,8 @@ async function dispatchProduction(request, env, opportunityId) {
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
   const intake=await getClientIntake(env,row,plan), accountConnections=await getAccountConnections(env,row);
+  if(intake.status!=="ready_for_build") return json({ok:true,status:"client_intake_required",completion:intake.completion,request_message:intake.request_message},202);
+  if(!accountConnections.progress.ready) return json({ok:true,status:"account_connection_required",connections:accountConnections.connections,progress:accountConnections.progress},202);
   plan.client_intake={status:intake.status,answers:intake.answers,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
   plan.account_connections=accountConnections;
   plan.contract_payment={ready:deal.ready,gate:deal.gate,profile:deal.profile};
@@ -1159,10 +1172,90 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
+}
+
+
+async function managerSaveState(env,opportunityId,state) {
+  const ts=nowIso();
+  await env.DB.prepare("INSERT INTO manager_job_states(opportunity_id,stage,status_label,next_action,autopilot,last_action,last_error,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET stage=excluded.stage,status_label=excluded.status_label,next_action=excluded.next_action,autopilot=excluded.autopilot,last_action=excluded.last_action,last_error=excluded.last_error,updated_at=excluded.updated_at")
+    .bind(opportunityId,String(state.stage||"unknown"),String(state.status_label||""),String(state.next_action||""),"on",String(state.last_action||""),String(state.last_error||""),ts).run();
+  return {...state,autopilot:"on",updated_at:ts};
+}
+
+async function managerResponseData(response) {
+  try{return await response.clone().json()}catch{return {ok:false,status:"invalid_response",error:"Manager could not parse worker response"}}
+}
+
+function managerDealNext(deal) {
+  const g=deal?.gate||{};
+  if(g.application_status==="not_applied")return "지원/제안 전송 대기";
+  if(g.application_status==="applied")return "고객 응답·낙찰 대기";
+  if(g.application_status==="client_replied")return "계약 조건 협의 대기";
+  if(g.contract_status!=="accepted")return "계약/작업 합의 확인 대기";
+  if(!(g.payment_status==="secured"||g.payment_status==="prepaid"||g.payment_status==="paid"))return "에스크로·마일스톤·선결제 확보 대기";
+  if(!(Number(g.gross_amount)>0&&String(g.currency||"").trim()))return "실제 합의금액 확인 대기";
+  return "계약·결제 확인";
+}
+
+async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudget=null}={}) {
+  const id=row.opportunity_id;
+  const consume=()=>{if(!actionBudget)return true;if(actionBudget.remaining<=0)return false;actionBudget.remaining--;return true;};
+  try{
+    const latestSandbox=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,updated_at FROM sandbox_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(id).first();
+    if(!latestSandbox){
+      if(autoActions&&consume()){
+        const out=await managerResponseData(await dispatchSandbox(request,env,id));
+        if(out.status==="dispatched")return managerSaveState(env,id,{stage:"sandbox_running",status_label:"🧪 자동 샌드박스 실행 중",next_action:"Manager가 결과를 기다리는 중",last_action:"sandbox_dispatched"});
+        if(out.status==="config_required")return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 공장 설정 필요",next_action:"누락 설정: "+(out.missing_configuration||[]).join(", "),last_action:"sandbox_config_required"});
+        return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 샌드박스 시작 실패",next_action:out.error||out.status||"수동 확인 필요",last_error:out.error||""});
+      }
+      return managerSaveState(env,id,{stage:"sandbox_queued",status_label:"🧪 샌드박스 자동검증 대기",next_action:"Manager가 자동 실행 예정"});
+    }
+    if(latestSandbox.status==="created"||latestSandbox.status==="dispatched")return managerSaveState(env,id,{stage:"sandbox_running",status_label:"🧪 자동 샌드박스 실행 중",next_action:"결과 확인 중",last_action:"sandbox_running"});
+    if(latestSandbox.status==="dispatch_failed"||(latestSandbox.status==="completed"&&latestSandbox.conclusion!=="success"))return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 샌드박스 예외",next_action:"자동 재시도하지 않음 · 상세에서 오류 확인",last_error:latestSandbox.log_summary||"sandbox failed"});
+    if(!(latestSandbox.status==="completed"&&latestSandbox.conclusion==="success"))return managerSaveState(env,id,{stage:"sandbox_wait",status_label:"🧪 샌드박스 상태 확인 중",next_action:"Manager가 다음 주기에 재확인"});
+
+    const deal=await getContractPaymentGate(env,row);
+    if(!deal.ready)return managerSaveState(env,id,{stage:"waiting_contract_payment",status_label:"💳 "+managerDealNext(deal),next_action:(deal.profile?.platform||deal.gate?.platform||"플랫폼")+" 계약·결제 상태를 자동/외부 확인 대기"});
+
+    const plan=paidJobPlan(row), intake=await getClientIntake(env,row,plan);
+    if(intake.status!=="ready_for_build")return managerSaveState(env,id,{stage:"waiting_client_answers",status_label:"👤 고객 답변 대기",next_action:"필수 "+(intake.completion?.complete||0)+"/"+(intake.completion?.required||0)+" · 필요한 질문만 고객에게 수집"});
+
+    const connections=await getAccountConnections(env,row);
+    if(!connections.progress.ready)return managerSaveState(env,id,{stage:"waiting_account_connections",status_label:"🔗 고객 계정 승인 대기",next_action:"연결 "+connections.progress.connected+"/"+connections.progress.required+" · 필요한 서비스만 승인 대기"});
+
+    const latestProduction=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,updated_at FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(id).first();
+    if(latestProduction){
+      if(latestProduction.status==="created"||latestProduction.status==="dispatched")return managerSaveState(env,id,{stage:"production_running",status_label:"🏭 자동 제작·QC 진행 중",next_action:"Factory Worker 결과 확인 중",last_action:"production_running"});
+      if(latestProduction.status==="completed"&&latestProduction.conclusion==="success")return managerSaveState(env,id,{stage:"delivery_ready",status_label:"✅ 납품 패키지 준비 완료",next_action:"납품/플랫폼 전송 어댑터 대기",last_action:"production_complete"});
+      if(latestProduction.status==="dispatch_failed"||(latestProduction.status==="completed"&&latestProduction.conclusion!=="success"))return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 제작·QC 예외",next_action:"자동 재시도하지 않음 · 상세에서 오류 확인",last_error:latestProduction.log_summary||"production failed"});
+    }
+
+    if(autoActions&&consume()){
+      const out=await managerResponseData(await dispatchProduction(request,env,id));
+      if(out.status==="dispatched")return managerSaveState(env,id,{stage:"production_running",status_label:"🏭 자동 제작·QC 시작",next_action:"Factory Worker 결과 확인 중",last_action:"production_dispatched"});
+      if(out.status==="client_intake_required")return managerSaveState(env,id,{stage:"waiting_client_answers",status_label:"👤 고객 답변 대기",next_action:"필수 고객정보 수집"});
+      if(out.status==="account_connection_required")return managerSaveState(env,id,{stage:"waiting_account_connections",status_label:"🔗 고객 계정 승인 대기",next_action:"필수 서비스 연결"});
+      return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 자동 제작 시작 보류",next_action:out.error||out.status||"상세 확인",last_error:out.error||""});
+    }
+    return managerSaveState(env,id,{stage:"production_queued",status_label:"🏭 자동 제작 대기",next_action:"Manager가 자동 제작 예정"});
+  }catch(error){
+    return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ Manager 예외",next_action:"상세에서 오류 확인",last_error:error?.message||String(error)});
+  }
+}
+
+async function runManagerOrchestrator(env,{request=null,maxActions=3,limit=40}={}) {
+  const base=String(env.PUBLIC_BASE_URL||"https://automation-factory-money-scout.lsc1313.workers.dev").replace(/\/$/,"");
+  const req=request||new Request(base+"/internal/manager-orchestrator");
+  const rows=(await env.DB.prepare("SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.factory_fulfillable')=1 AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT ?").bind(Math.max(1,Math.min(100,Number(limit)||40))).all()).results||[];
+  const budget={remaining:Math.max(0,Math.min(10,Number(maxActions)||0))}, states=[];
+  for(const row of rows)states.push(await managerEvaluateJob(req,env,row,{autoActions:true,actionBudget:budget}));
+  const counts={};for(const x of states)counts[x.stage]=(counts[x.stage]||0)+1;
+  return {ok:true,orchestrator_version:"manager-orchestrator-v1",jobs:states.length,actions_started:Math.max(0,(Number(maxActions)||0)-budget.remaining),counts,updated_at:nowIso()};
 }
 
 function qcPlan(plan) {
@@ -1195,7 +1288,7 @@ function appHtml() {
 <title>Automation Factory · Money Scout</title>
 <style>
 :root{color-scheme:dark;--bg:#070d18;--panel:#111a2a;--panel2:#0c1524;--line:#27344b;--text:#f3f7fc;--muted:#99a8bd;--hot:#53e49d;--watch:#ffd269;--cold:#93a0b4;--accent:#7eb0ff;--danger:#ff8f9b}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#070d18,#0b1321);font-family:system-ui,-apple-system,sans-serif;color:var(--text)}button,input,select,textarea{font:inherit}.wrap{max-width:1120px;margin:auto;padding:18px 14px 44px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.brand{font-size:25px;font-weight:900}.sub{color:var(--muted);font-size:12px;line-height:1.5}.badge{border:1px solid var(--line);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:12px}.notice{margin:12px 0;padding:10px 12px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;color:var(--muted);font-size:12px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px}.stat b{display:block;font-size:22px;margin-top:4px}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.toolbar button,.action{background:#17243a;color:white;border:1px solid #34435c;border-radius:10px;padding:9px 11px;font-weight:800}.toolbar button.active{background:#264e82;border-color:#6da7ff}.scan{background:#173d2c!important}.token{display:flex;gap:7px;margin:10px 0}.token input{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:10px}.intakeField{margin:9px 0}.intakeField label{display:block;font-size:11px;font-weight:800;margin-bottom:5px;color:#cbd6e5}.intakeField input,.intakeField select,.intakeField textarea{width:100%;background:#0d1624;color:white;border:1px solid var(--line);border-radius:9px;padding:9px}.intakeField textarea{min-height:78px;resize:vertical}.intakeHelp{font-size:10px;color:var(--muted);margin-top:4px}.intakeReady{color:#6bf0aa;font-weight:850}.intakeMissing{color:#ffdc7f;font-weight:850}.connectionGate{margin:12px 0;padding:11px;border:1px solid var(--line);border-radius:11px;background:#0b1422}.connectionRow{padding:9px 0;border-bottom:1px solid #1e2a3d}.connectionRow:last-child{border-bottom:0}.connectionStatus{font-size:11px;color:var(--muted);margin:4px 0}.connectionStatus.ok{color:#6bf0aa}.connectionStatus.wait{color:#ffdc7f}.connectionControls{display:flex;gap:6px;flex-wrap:wrap}.connectionControls input,.connectionControls select{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:8px;padding:8px}.connectionControls button{border:1px solid var(--line);background:#17243a;color:white;border-radius:8px;padding:8px 10px;font-weight:800}.token button{background:#17243a;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 11px}.filters{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.filters select{background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px;margin:10px 0}.head{display:flex;gap:10px;justify-content:space-between}.title{font-size:16px;font-weight:900;line-height:1.35}.score{min-width:54px;text-align:center;border-radius:12px;padding:8px 7px;font-size:20px;font-weight:950;background:#0b1422;border:1px solid var(--line)}.score small{display:block;font-size:9px;color:var(--muted);font-weight:700}.meta,.reason{color:var(--muted);font-size:12px;margin-top:7px;line-height:1.5}.metrics{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.metric{font-size:11px;padding:5px 7px;border-radius:8px;background:#0b1422;border:1px solid var(--line);color:#cbd6e5}.desc{font-size:13px;line-height:1.55;margin-top:9px;color:#d9e1ed;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.pill{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.hot{background:#123d2a;color:#6bf0aa}.watch{background:#493914;color:#ffdc7f}.cold{background:#252d3a;color:#b0bbca}.paycheck{background:#273657;color:#aecdff}.decisions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.decisions button{border:1px solid var(--line);background:#0e1828;color:white;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:850}.decisions button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}.link{color:#9fc5ff;text-decoration:none}.empty{text-align:center;color:var(--muted);padding:42px 5px}.runinfo{color:var(--muted);font-size:11px;margin:10px 0}.runerrors{display:none;margin:8px 0 12px;padding:10px 12px;border:1px solid #633845;background:#24131a;border-radius:10px;color:#ffb4bd;font-size:11px;line-height:1.55;white-space:pre-wrap}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:28px}.error{color:#ffabb3}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#070d18,#0b1321);font-family:system-ui,-apple-system,sans-serif;color:var(--text)}button,input,select,textarea{font:inherit}.wrap{max-width:1120px;margin:auto;padding:18px 14px 44px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.brand{font-size:25px;font-weight:900}.sub{color:var(--muted);font-size:12px;line-height:1.5}.badge{border:1px solid var(--line);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:12px}.notice{margin:12px 0;padding:10px 12px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;color:var(--muted);font-size:12px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px}.stat b{display:block;font-size:22px;margin-top:4px}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.toolbar button,.action{background:#17243a;color:white;border:1px solid #34435c;border-radius:10px;padding:9px 11px;font-weight:800}.toolbar button.active{background:#264e82;border-color:#6da7ff}.scan{background:#173d2c!important}.token{display:flex;gap:7px;margin:10px 0}.token input{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:10px}.intakeField{margin:9px 0}.intakeField label{display:block;font-size:11px;font-weight:800;margin-bottom:5px;color:#cbd6e5}.intakeField input,.intakeField select,.intakeField textarea{width:100%;background:#0d1624;color:white;border:1px solid var(--line);border-radius:9px;padding:9px}.intakeField textarea{min-height:78px;resize:vertical}.intakeHelp{font-size:10px;color:var(--muted);margin-top:4px}.intakeReady{color:#6bf0aa;font-weight:850}.intakeMissing{color:#ffdc7f;font-weight:850}.connectionGate{margin:12px 0;padding:11px;border:1px solid var(--line);border-radius:11px;background:#0b1422}.connectionRow{padding:9px 0;border-bottom:1px solid #1e2a3d}.connectionRow:last-child{border-bottom:0}.connectionStatus{font-size:11px;color:var(--muted);margin:4px 0}.connectionStatus.ok{color:#6bf0aa}.connectionStatus.wait{color:#ffdc7f}.connectionControls{display:flex;gap:6px;flex-wrap:wrap}.connectionControls input,.connectionControls select{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:8px;padding:8px}.connectionControls button{border:1px solid var(--line);background:#17243a;color:white;border-radius:8px;padding:8px 10px;font-weight:800}.factoryState{margin:10px 0;padding:10px 11px;border:1px solid var(--line);background:#0b1422;border-radius:11px}.factoryState b{display:block;font-size:13px}.factoryNext{color:var(--muted);font-size:11px;line-height:1.5;margin-top:4px}.autoOn{color:#6bf0aa;font-size:10px;font-weight:900}.jobDetails>summary{cursor:pointer;display:inline-block;margin-top:9px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#101b2d;font-weight:850;font-size:12px}.manualBox{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.token button{background:#17243a;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 11px}.filters{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.filters select{background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px;margin:10px 0}.head{display:flex;gap:10px;justify-content:space-between}.title{font-size:16px;font-weight:900;line-height:1.35}.score{min-width:54px;text-align:center;border-radius:12px;padding:8px 7px;font-size:20px;font-weight:950;background:#0b1422;border:1px solid var(--line)}.score small{display:block;font-size:9px;color:var(--muted);font-weight:700}.meta,.reason{color:var(--muted);font-size:12px;margin-top:7px;line-height:1.5}.metrics{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.metric{font-size:11px;padding:5px 7px;border-radius:8px;background:#0b1422;border:1px solid var(--line);color:#cbd6e5}.desc{font-size:13px;line-height:1.55;margin-top:9px;color:#d9e1ed;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.pill{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.hot{background:#123d2a;color:#6bf0aa}.watch{background:#493914;color:#ffdc7f}.cold{background:#252d3a;color:#b0bbca}.paycheck{background:#273657;color:#aecdff}.decisions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.decisions button{border:1px solid var(--line);background:#0e1828;color:white;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:850}.decisions button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}.link{color:#9fc5ff;text-decoration:none}.empty{text-align:center;color:var(--muted);padding:42px 5px}.runinfo{color:var(--muted);font-size:11px;margin:10px 0}.runerrors{display:none;margin:8px 0 12px;padding:10px 12px;border:1px solid #633845;background:#24131a;border-radius:10px;color:#ffb4bd;font-size:11px;line-height:1.55;white-space:pre-wrap}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:28px}.error{color:#ffabb3}
 @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}.stats .stat:first-child{grid-column:span 2}.head{align-items:flex-start}.brand{font-size:22px}.card{padding:13px}.wrap{padding:14px 10px 36px}.toolbar button{flex:1 0 auto}}
 </style>
 </head>
@@ -1242,7 +1335,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v${APP_VERSION} · Contract & Payment Gate v1 · 계약/결제→고객답변→계정연결→제작→납품/정산</div>
+  <div class="footer">v${APP_VERSION} · Manager Orchestrator v1 · 자동검증→외부대기→자동제작/QC→납품준비</div>
 </div>
 <script>
 let grade='all';
@@ -1335,10 +1428,33 @@ async function loadMarketCandidates(){
  });
 }
 async function loadPaidJobs(){
+ await api('/api/orchestrator/tick',{method:'POST',body:JSON.stringify({max_actions:2,limit:40})}).catch(()=>null);
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="dealGateBtn" data-job-id="'+esc(j.opportunity_id)+'">💳 계약·결제</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="deal-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
+ const autoCount=rows.filter(j=>['sandbox_running','sandbox_queued','production_running','production_queued'].includes(j.manager_stage)).length;
+ const waitingCount=rows.filter(j=>['waiting_contract_payment','waiting_client_answers','waiting_account_connections'].includes(j.manager_stage)).length;
+ const readyCount=rows.filter(j=>j.manager_stage==='delivery_ready').length;
+ const exceptionCount=rows.filter(j=>j.manager_stage==='needs_attention').length;
+ const summary='<div class="notice"><b>🏭 자동공장 ON</b> · 자동처리 '+autoCount+' · 외부대기 '+waitingCount+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">샌드박스와 내부 제작/QC는 Manager가 자동 처리합니다. 계약·고객응답·계정승인처럼 외부에서 필요한 일만 대기 상태로 남습니다.</span></div>';
+ el.innerHTML=summary+'<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>{
+   const state=j.manager_status_label||'🤖 Manager 분석 대기';
+   const next=j.manager_next_action||'자동공장이 다음 단계를 판단합니다.';
+   const auto=j.manager_autopilot==='on'?'자동공장 ON':'자동공장 상태 확인 중';
+   return '<div class="card">'+
+     '<div class="title">'+esc(j.title)+'</div>'+
+     '<div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div>'+
+     '<div class="factoryState"><span class="autoOn">🤖 '+esc(auto)+'</span><b>'+esc(state)+'</b><div class="factoryNext">다음: '+esc(next)+'</div></div>'+
+     '<details class="jobDetails"><summary>상세보기</summary>'+
+       '<div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div>'+
+       '<div class="meta">'+(j.manager_last_error?('⚠ '+esc(j.manager_last_error)+'<br>'):'')+'Manager 갱신 '+esc(when(j.manager_updated_at)||'대기')+'</div>'+
+       '<div class="manualBox"><details><summary class="sub">⚙️ 고급/수동 제어</summary>'+
+         '<div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스</button><button class="dealGateBtn" data-job-id="'+esc(j.opportunity_id)+'">💳 계약·결제</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div>'+
+         '<div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="deal-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div>'+
+       '</details></div>'+
+     '</details>'+
+   '</div>';
+ }).join('');
 }
 async function runSandbox(btn){
   const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
@@ -1584,6 +1700,12 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      if(path==="/api/orchestrator/tick"&&request.method==="POST"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        let body={};try{body=await request.json()}catch{}
+        return json(await runManagerOrchestrator(env,{request,maxActions:Number(body.max_actions??2),limit:Number(body.limit??40)}));
+      }
+
       if(path==="/oauth/etsy/callback"&&request.method==="GET")return finishEtsyOAuth(request,env);
 
       const dealMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/deal$/);
@@ -1684,7 +1806,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.1"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
@@ -1728,7 +1850,10 @@ export default {
           else await refresh;
         }
 
-        const rows = await env.DB.prepare(`SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(score_breakdown,'$.factory_fulfillable')=1 AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT 50`).all();
+        const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at
+          FROM opportunities o LEFT JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
+          WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
+          ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all();
         return json(rows.results || []);
       }
       if (path === "/api/market-candidates") {
@@ -1794,6 +1919,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runMoneyPipeline(env));
+    if(controller.cron==="47 * * * *") ctx.waitUntil(runManagerOrchestrator(env,{maxActions:3,limit:40}));
+    else ctx.waitUntil(Promise.all([runMoneyPipeline(env),runManagerOrchestrator(env,{maxActions:3,limit:40})]));
   }
 };

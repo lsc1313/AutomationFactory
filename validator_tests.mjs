@@ -414,7 +414,7 @@ assert.match(candidateViewWorker, /commercialization_candidate/);
 
 const autopilotWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(autopilotWorker, /async function runMoneyPipeline/);
-assert.match(autopilotWorker, /ctx\.waitUntil\(runMoneyPipeline\(env\)\)/);
+assert.ok(autopilotWorker.includes("runMoneyPipeline(env)")); assert.ok(autopilotWorker.includes("runManagerOrchestrator(env"));
 assert.match(autopilotWorker, /\/api\/pipeline\/run/);
 assert.match(autopilotWorker, /💵 지금 지원 가능한 유료 일감/);
 assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
@@ -503,7 +503,7 @@ assert.ok(managerWorker.includes('path.endsWith("/plan")'));
 // v0.8.2 Paid Job Manager mobile UI
 const managerUi = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(managerUi.includes("managerPlanBtn"));
-assert.ok(managerUi.includes("작업계획 보기"));
+assert.ok(managerUi.includes("작업계획"));
 assert.ok(managerUi.includes("showManagerPlan"));
 assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음"));
 
@@ -644,18 +644,18 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.19.1"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.20.0"'));
 
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v4"));
 assert.ok(productionV017.includes("job-production-bundle-v4"));
 assert.ok(productionV017.includes("dispatchProduction"));
 assert.ok(productionV017.includes("productionRunBtn"));
-assert.ok(productionV017.includes("🏭 실제 제작"));
+assert.ok(productionV017.includes("🏭 제작"));
 assert.ok(productionV017.includes("제작 패키지 생성·QC 테스트 통과"));
 assert.ok(productionV017.includes("runnable_job_specific_package"));
 assert.ok(productionV017.includes("normalizeSquarespaceExport"));
@@ -726,7 +726,7 @@ assert.ok(renderedHtml.includes("clientIntakeBtn"));
 
 // v0.18.2 Smart Intake v2 contract
 const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(smartIntakeV0182.includes("Account Connection Gate"));
 assert.ok(smartIntakeV0182.includes("discovery_plan"));
 assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
@@ -741,7 +741,7 @@ assert.ok(smartIntakeV0182.includes("config/client.json"));
 
 // v0.18.3 Account Connection Gate v1 contract
 const connectionV0183 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(connectionV0183.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(connectionV0183.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS account_connections"));
 assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS oauth_states"));
 assert.ok(connectionV0183.includes("accountProviderSpec"));
@@ -768,7 +768,7 @@ assert.ok(!connectionV0183.includes('intakeField("prodigi_api_key"'));
 
 // v0.18.4 connection cleanup
 const connectionV0184 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(connectionV0184.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(connectionV0184.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(!connectionV0184.includes('intakeField("prodigi_mode"'));
 assert.ok(!connectionV0184.includes('Whether to validate through Prodigi Sandbox first'));
 assert.ok(connectionV0184.includes('prodigiConn?.metadata?.mode||"sandbox"'));
@@ -778,7 +778,7 @@ assert.ok(connectionV0184.includes("ETSY_SHARED_SECRET"));
 
 // v0.18.5 Etsy auth header + verified OAuth
 const etsyV0185 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(etsyV0185.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(etsyV0185.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(etsyV0185.includes("ETSY_KEYSTRING"));
 assert.ok(etsyV0185.includes("ETSY_SHARED_SECRET"));
 assert.ok(etsyV0185.includes('"x-api-key":keystring+":"+sharedSecret'));
@@ -790,7 +790,7 @@ assert.ok(etsyV0185.includes("ETSY_SHARED_SECRET="));
 
 // v0.19.0 Contract & Payment Gate v1 contract
 const dealV0190 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(dealV0190.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(dealV0190.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(dealV0190.includes("CREATE TABLE IF NOT EXISTS contract_payment_gates"));
 assert.ok(dealV0190.includes("contractPaymentProfile"));
 assert.ok(dealV0190.includes("contractPaymentReady"));
@@ -810,14 +810,14 @@ assert.ok(dealV0190.includes("payout_destination"));
 assert.ok(dealV0190.includes("계좌번호·카드번호·비밀번호·시드문구·개인키는 입력하지 마세요."));
 assert.ok(dealV0190.includes("production-pipeline-v4"));
 assert.ok(dealV0190.includes("job-production-bundle-v4"));
-assert.ok(dealV0190.includes("Contract & Payment Gate v1"));
+assert.ok(dealV0190.includes("Contract / Payment Gate"));
 
 assert.ok(dealV0190.includes("계약·결제 Gate가 더 이상 준비 상태가 아닙니다."));
 
 
 // v0.19.1 deal amount semantics
 const dealV0191 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(dealV0191.includes('const APP_VERSION = "0.19.1"'));
+assert.ok(dealV0191.includes('const APP_VERSION = "0.20.0"'));
 assert.ok(dealV0191.includes("advertised_budget"));
 assert.ok(dealV0191.includes("원문에 표시된 예산"));
 assert.ok(dealV0191.includes("실제 합의 금액 / 통화 *"));
@@ -825,3 +825,27 @@ assert.ok(dealV0191.includes("이 값은 고객과 확정한 계약 금액이 �
 assert.ok(dealV0191.includes("gross=saved?.gross_amount ?? null"));
 assert.ok(dealV0191.includes('default_protection:"unknown"'));
 assert.ok(dealV0191.includes("Number(gate?.gross_amount)>0"));
+
+
+// v0.20.0 Manager Orchestrator v1
+const managerV0200 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+const wranglerV0200 = fs.readFileSync(new URL("./wrangler.jsonc", import.meta.url), "utf8");
+assert.ok(managerV0200.includes('const APP_VERSION = "0.20.0"'));
+assert.ok(managerV0200.includes("CREATE TABLE IF NOT EXISTS manager_job_states"));
+assert.ok(managerV0200.includes("managerEvaluateJob"));
+assert.ok(managerV0200.includes("runManagerOrchestrator"));
+assert.ok(managerV0200.includes("manager-orchestrator-v1"));
+assert.ok(managerV0200.includes("/api/orchestrator/tick"));
+assert.ok(managerV0200.includes("sandbox_queued"));
+assert.ok(managerV0200.includes("waiting_contract_payment"));
+assert.ok(managerV0200.includes("waiting_client_answers"));
+assert.ok(managerV0200.includes("waiting_account_connections"));
+assert.ok(managerV0200.includes("production_queued"));
+assert.ok(managerV0200.includes("delivery_ready"));
+assert.ok(managerV0200.includes("🏭 자동공장 ON"));
+assert.ok(managerV0200.includes("⚙️ 고급/수동 제어"));
+assert.ok(managerV0200.includes("상세보기"));
+assert.ok(managerV0200.includes("client_intake_required"));
+assert.ok(managerV0200.includes("account_connection_required"));
+assert.ok(managerV0200.includes("Manager Orchestrator v1"));
+assert.ok(wranglerV0200.includes('"47 * * * *"'));
