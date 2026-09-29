@@ -631,7 +631,7 @@ async function getClientIntake(env,row,plan=null) {
   let publicAnswers={}, secrets={};
   if(saved){try{publicAnswers=JSON.parse(saved.public_answers_json||"{}")}catch{} try{secrets=await decryptClientSecrets(env,saved.secret_answers_enc||"")}catch{}}
   const completion=intakeCompletion(spec,publicAnswers,secrets), secretPresent={}; for(const f of spec.fields||[])if(f.secret)secretPresent[f.id]=Boolean(secrets[f.id]);
-  return {ok:true,spec,answers:publicAnswers,secret_present:secretPresent,status:saved?.status||completion.status,completion,request_message:clientRequestMessage(row,spec),updated_at:saved?.updated_at||null};
+  return {ok:true,spec,answers:publicAnswers,secret_present:secretPresent,status:completion.status,completion,request_message:clientRequestMessage(row,spec),updated_at:saved?.updated_at||null};
 }
 async function saveClientIntake(env,row,plan,body) {
   const spec=clientIntakeSpec(row,plan), allowed=new Map(spec.fields.map(f=>[f.id,f]));
