@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.16.4";
+const APP_VERSION = "0.16.5";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -739,7 +739,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.16.4 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.16.5 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -747,7 +747,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const tokenEl=document.getElementById('token');
 tokenEl.value=localStorage.getItem('af_admin_token')||'';
 function headers(){const h={'content-type':'application/json'};const t=localStorage.getItem('af_admin_token')||'';if(t)h['x-admin-token']=t;return h;}
-async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json().catch(()=>({error:'응답 해석 실패'}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json().catch(()=>({error:'응답 해석 실패'}));if(!r.ok){const detail=j.detail?(' · '+String(j.detail).slice(0,300)):'';throw new Error((j.error||('HTTP '+r.status))+detail);}return j;}
 function money(a,b,c){if(a==null&&b==null)return '';const f=n=>Number(n||0).toLocaleString();return (a===b||!b?f(a):f(a)+' ~ '+f(b))+(c?' '+c:'');}
 function when(s){if(!s)return '';const d=new Date(s);return isNaN(d)?'':d.toLocaleString();}
 function stateLabel(s){return s==='proceed'?'진행':s==='hold'?'보류':s==='reject'?'제외':'미검토';}
