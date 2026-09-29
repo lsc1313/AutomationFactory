@@ -543,6 +543,110 @@ async function setDecision(env, opportunityId, state) {
   `).bind(state, nowIso(), opportunityId).run();
 }
 
+function intakeField(id,label,type="text",required=false,secret=false,help="",options=[]) {
+  return {id,label,type,required,secret,help,options};
+}
+
+function clientIntakeSpec(row, plan=null) {
+  const raw=(String(row?.title||"")+" "+String(row?.description||"")+" "+String(row?.skills||"")).toLowerCase();
+  const korean=((String(row?.title||"")+" "+String(row?.description||"")).match(/[가-힣]/g)||[]).length>20;
+  const fields=[], seen=new Set();
+  const add=(f)=>{if(!seen.has(f.id)){seen.add(f.id);fields.push(f)}};
+  const yesNo=[{value:"yes",label:korean?"예":"Yes"},{value:"no",label:korean?"아니오":"No"}];
+  if(/squarespace/.test(raw)){
+    add(intakeField("squarespace_access_confirmed",korean?"Squarespace 접근 권한 준비 여부":"Squarespace access available","select",true,false,"",yesNo));
+    add(intakeField("squarespace_token",korean?"Squarespace API 토큰":"Squarespace API token","password",true,true,korean?"암호화 저장되며 화면/API에 다시 표시하지 않습니다.":"Encrypted at rest and never returned by the UI/API."));
+    add(intakeField("product_scope",korean?"이전할 상품 범위":"Product scope to migrate","textarea",true,false,korean?"전체 상품 또는 상품명/ID/SKU 범위를 적어주세요.":"Specify all products or the product IDs/SKUs to migrate."));
+  }
+  if(/etsy/.test(raw)){
+    add(intakeField("etsy_shop_status",korean?"Etsy 상점 상태":"Etsy shop status","select",true,false,"",[{value:"existing",label:korean?"이미 생성됨":"Already created"},{value:"needs_setup",label:korean?"생성/초기설정 필요":"Needs setup"}]));
+    add(intakeField("etsy_shop_id",korean?"Etsy Shop ID":"Etsy Shop ID","text",true,false));
+    add(intakeField("etsy_oauth_token",korean?"Etsy OAuth 토큰":"Etsy OAuth token","password",true,true,korean?"암호화 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest; never included in the output ZIP."));
+    add(intakeField("etsy_api_key",korean?"Etsy API Key":"Etsy API key","password",true,true,korean?"암호화 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest; never included in the output ZIP."));
+    add(intakeField("etsy_taxonomy_id",korean?"Etsy Taxonomy ID":"Etsy taxonomy ID","text",true,false));
+    add(intakeField("etsy_shipping_profile_id",korean?"Etsy Shipping Profile ID":"Etsy shipping profile ID","text",true,false));
+    add(intakeField("etsy_readiness_state_id",korean?"Etsy Readiness State ID":"Etsy readiness state ID","text",true,false));
+    add(intakeField("etsy_section_id",korean?"Etsy Section ID (선택)":"Etsy section ID (optional)","text",false,false));
+  }
+  if(/prodigi/.test(raw)){
+    add(intakeField("prodigi_api_key",korean?"Prodigi API Key":"Prodigi API key","password",true,true,korean?"먼저 Sandbox 키를 권장합니다.":"A Sandbox key is recommended first."));
+    add(intakeField("prodigi_mode",korean?"Prodigi 검수 환경":"Prodigi validation mode","select",true,false,"",[{value:"sandbox",label:"Sandbox"},{value:"live_after_approval",label:korean?"Sandbox 통과 후 Live":"Live after Sandbox approval"}]));
+    add(intakeField("prodigi_sku_mapping",korean?"SKU → Prodigi 상품/템플릿 매핑":"SKU → Prodigi product/template mapping","textarea",true,false,korean?"예: SKU별 Prodigi product ID, print area, 옵션 매핑":"Provide Prodigi product ID, print area and options per SKU."));
+  }
+  if(/tax|shipping/.test(raw)||/etsy/.test(raw)){
+    add(intakeField("shipping_regions",korean?"판매/배송 대상 지역":"Target shipping regions","textarea",true,false,korean?"예: 미국 본토 전체, 제외 지역 등":"Example: continental US and excluded regions."));
+    add(intakeField("shipping_policy",korean?"배송 정책":"Shipping policy","textarea",true,false));
+    add(intakeField("tax_policy",korean?"세금 처리 기준":"Tax handling preference","textarea",true,false,korean?"플랫폼 자동 처리 여부 등":"State whether platform-managed tax rules should be used."));
+  }
+  if(/excel|spreadsheet|workbook|google sheets|sheet/.test(raw)){
+    add(intakeField("source_data",korean?"원본 데이터/파일 위치":"Source data/file location","textarea",true,false,korean?"파일명, Drive 링크 또는 데이터 구조 설명":"File name, Drive link, or data-structure description."));
+    add(intakeField("workbook_requirements",korean?"시트/수식/대시보드 요구사항":"Workbook/formula/dashboard requirements","textarea",true,false));
+    add(intakeField("output_format",korean?"최종 납품 형식":"Final delivery format","select",true,false,"",[{value:"xlsx",label:"Excel .xlsx"},{value:"google_sheets",label:"Google Sheets"},{value:"xlsx_and_pdf",label:"Excel + PDF"}]));
+    add(intakeField("sample_style",korean?"원하는 디자인/예시":"Preferred design/reference","textarea",false,false));
+  }
+  if(/api|integration|integrate|webhook/.test(raw) && !(/squarespace|etsy|prodigi/.test(raw))){
+    add(intakeField("api_docs_url",korean?"연동 API 문서 URL":"API documentation URL","text",true,false));
+    add(intakeField("sample_payload",korean?"샘플 입력/출력 또는 요청·응답":"Sample input/output or request/response","textarea",true,false));
+    add(intakeField("integration_credentials",korean?"연동 인증정보":"Integration credentials","password",true,true,korean?"암호화 저장되며 제작 ZIP에는 들어가지 않습니다.":"Encrypted at rest and excluded from the production ZIP."));
+  }
+  const questions=plan?.clarification_questions||[];
+  for(const [i,q] of questions.entries()){const id="clarification_"+(i+1);add(intakeField(id,String(q),"textarea",true,false));}
+  add(intakeField("delivery_date",korean?"희망 납기일":"Preferred delivery date","text",!String(row?.deadline||"").trim(),false));
+  add(intakeField("client_notes",korean?"추가 메모":"Additional client notes","textarea",false,false));
+  return {intake_version:"client-intake-v1",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields};
+}
+
+function clientRequestMessage(row,spec) {
+  const ko=spec.language==="ko", required=spec.fields.filter(f=>f.required);
+  const lines=required.map((f,i)=>(i+1)+". "+f.label+(f.secret?(ko?" (보안정보)":" (secure credential)"):""));
+  if(ko)return "작업 시작을 위해 아래 정보를 부탁드립니다.\n"+lines.join("\n")+"\n보안정보는 작업용 보안 입력란으로만 받고 결과 파일에는 포함하지 않습니다.";
+  return "To start the project, please provide the following:\n"+lines.join("\n")+"\nSecure credentials are stored only in the protected intake vault and are never included in delivery files.";
+}
+
+function bytesToBase64(bytes) { let s=""; for(const b of bytes)s+=String.fromCharCode(b); return btoa(s); }
+function base64ToBytes(s) { const raw=atob(s), out=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i); return out; }
+async function clientVaultKey(env) {
+  const material=String(env.SANDBOX_CALLBACK_TOKEN||""); if(!material)return null;
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("AutomationFactory-ClientVault-v1:"+material));
+  return crypto.subtle.importKey("raw",digest,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+async function encryptClientSecrets(env,obj) {
+  if(!obj||!Object.keys(obj).length)return ""; const key=await clientVaultKey(env); if(!key)throw new Error("Client vault key unavailable");
+  const iv=crypto.getRandomValues(new Uint8Array(12)), data=new TextEncoder().encode(JSON.stringify(obj));
+  const encrypted=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,data));
+  return "v1."+bytesToBase64(iv)+"."+bytesToBase64(encrypted);
+}
+async function decryptClientSecrets(env,cipher) {
+  if(!cipher)return {}; const parts=String(cipher).split("."); if(parts.length!==3||parts[0]!=="v1")return {};
+  const key=await clientVaultKey(env); if(!key)throw new Error("Client vault key unavailable");
+  const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:base64ToBytes(parts[1])},key,base64ToBytes(parts[2]));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+function intakeCompletion(spec,publicAnswers,secrets) {
+  const missing=[]; for(const f of spec.fields||[]){if(!f.required)continue;const v=f.secret?secrets?.[f.id]:publicAnswers?.[f.id];if(v==null||String(v).trim()==="")missing.push(f.id)}
+  const required=(spec.fields||[]).filter(f=>f.required).length; return {status:missing.length?"collecting":"ready_for_build",missing,required,complete:required-missing.length};
+}
+async function getClientIntake(env,row,plan=null) {
+  const spec=clientIntakeSpec(row,plan), saved=await env.DB.prepare("SELECT * FROM client_intakes WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  let publicAnswers={}, secrets={};
+  if(saved){try{publicAnswers=JSON.parse(saved.public_answers_json||"{}")}catch{} try{secrets=await decryptClientSecrets(env,saved.secret_answers_enc||"")}catch{}}
+  const completion=intakeCompletion(spec,publicAnswers,secrets), secretPresent={}; for(const f of spec.fields||[])if(f.secret)secretPresent[f.id]=Boolean(secrets[f.id]);
+  return {ok:true,spec,answers:publicAnswers,secret_present:secretPresent,status:saved?.status||completion.status,completion,request_message:clientRequestMessage(row,spec),updated_at:saved?.updated_at||null};
+}
+async function saveClientIntake(env,row,plan,body) {
+  const spec=clientIntakeSpec(row,plan), allowed=new Map(spec.fields.map(f=>[f.id,f]));
+  const existing=await env.DB.prepare("SELECT * FROM client_intakes WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  let publicAnswers={}, secrets={};
+  if(existing){try{publicAnswers=JSON.parse(existing.public_answers_json||"{}")}catch{} try{secrets=await decryptClientSecrets(env,existing.secret_answers_enc||"")}catch{}}
+  const incoming=body?.answers&&typeof body.answers==="object"?body.answers:{};
+  for(const [id,value] of Object.entries(incoming)){const fld=allowed.get(id);if(!fld)continue;const v=String(value??"").trim();if(fld.secret){if(v)secrets[id]=v}else publicAnswers[id]=v}
+  const completion=intakeCompletion(spec,publicAnswers,secrets), ts=nowIso(), encrypted=await encryptClientSecrets(env,secrets);
+  const sql="INSERT INTO client_intakes(opportunity_id,public_answers_json,secret_answers_enc,status,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET public_answers_json=excluded.public_answers_json,secret_answers_enc=excluded.secret_answers_enc,status=excluded.status,updated_at=excluded.updated_at";
+  await env.DB.prepare(sql).bind(row.opportunity_id,JSON.stringify(publicAnswers),encrypted,completion.status,existing?.created_at||ts,ts).run();
+  const secretPresent={}; for(const fld of spec.fields||[])if(fld.secret)secretPresent[fld.id]=Boolean(secrets[fld.id]);
+  return {ok:true,status:completion.status,completion,answers:publicAnswers,secret_present:secretPresent,request_message:clientRequestMessage(row,spec),updated_at:ts};
+}
+
 function paidJobPlan(row) {
   let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
   const raw=String(row.title||"")+" "+String(row.description||""), desc=String(row.description||"");
