@@ -772,6 +772,71 @@ async function finishEtsyOAuth(request,env) {
   return html("<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\"><body style=\"font-family:system-ui;background:#08101d;color:white;padding:28px\"><h2>✅ Etsy 연결 완료</h2><p>승인 토큰은 암호화 저장되며 납품 ZIP에는 포함되지 않습니다.</p><p><a style=\"color:#8db9ff\" href=\"/\">Money Scout로 돌아가기</a></p></body>");
 }
 
+function contractPaymentProfile(row) {
+  const source=String(row?.source||"");
+  if(source==="freelancer_projects") return {platform:"Freelancer.com",application_method:"Open the original project and submit/confirm the platform bid",protection_hint:"Before client-account work, confirm the project is awarded and the agreed payment is secured through the platform.",payout_route_hint:"Freelancer platform balance → your configured withdrawal method",default_protection:"platform_escrow"};
+  if(source==="agent_bounties") return {platform:"Agent Bounties",application_method:"Claim/accept the bounty according to the bounty page",protection_hint:"Confirm assignment/claim status and the bounty payout conditions before production.",payout_route_hint:"Bounty payout → configured wallet",default_protection:"onchain_or_bounty"};
+  if(source==="github_paid") return {platform:"GitHub bounty / issuer",application_method:"Follow the issue/bounty application instructions",protection_hint:"Verify the payer, amount, assignment and payout protection before production.",payout_route_hint:"Issuer-defined payout route",default_protection:"unknown"};
+  return {platform:source||"External platform",application_method:"Use the original application/support page",protection_hint:"Confirm the agreement and secure payment before production.",payout_route_hint:"Platform/customer-defined payout route",default_protection:"unknown"};
+}
+
+function contractPaymentReady(gate) {
+  return gate?.contract_status==="accepted" && (gate?.payment_status==="secured" || gate?.payment_status==="prepaid");
+}
+
+async function getContractPaymentGate(env,row) {
+  const profile=contractPaymentProfile(row);
+  const saved=await env.DB.prepare("SELECT * FROM contract_payment_gates WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  const gross=saved?.gross_amount ?? row.budget_max ?? row.budget_min ?? null;
+  const currency=String(saved?.currency||row.currency||"");
+  const fee=saved?.fee_estimate ?? null;
+  const net=saved?.net_estimate ?? ((gross!=null&&fee!=null)?Math.max(0,Number(gross)-Number(fee)):null);
+  const gate={
+    opportunity_id:row.opportunity_id,platform:saved?.platform||profile.platform,
+    application_status:saved?.application_status||"not_applied",contract_status:saved?.contract_status||"not_agreed",
+    payment_status:saved?.payment_status||"unsecured",payment_protection:saved?.payment_protection||profile.default_protection,
+    gross_amount:gross,currency,fee_estimate:fee,net_estimate:net,
+    payout_route:saved?.payout_route||profile.payout_route_hint,payout_destination:saved?.payout_destination||"",
+    external_reference:saved?.external_reference||"",evidence_url:saved?.evidence_url||"",note:saved?.note||"",
+    verified_at:saved?.verified_at||"",updated_at:saved?.updated_at||null
+  };
+  return {ok:true,gate,profile,ready:contractPaymentReady(gate),
+    next_action:contractPaymentReady(gate)?"client_intake_and_account_connection":"secure_contract_and_payment",
+    warning:"Do not store bank account numbers, card details, passwords, seed phrases, or wallet private keys here. Use only a payout-route label."};
+}
+
+async function saveContractPaymentGate(env,row,body) {
+  const current=await getContractPaymentGate(env,row), incoming=body&&typeof body==="object"?body:{};
+  const allowedApplication=new Set(["not_applied","applied","client_replied","assigned"]);
+  const allowedContract=new Set(["not_agreed","negotiating","accepted","cancelled"]);
+  const allowedPayment=new Set(["unsecured","secured","prepaid","paid","failed"]);
+  const allowedProtection=new Set(["unknown","platform_escrow","funded_milestone","onchain_or_bounty","direct_prepaid","other"]);
+  const application_status=allowedApplication.has(incoming.application_status)?incoming.application_status:current.gate.application_status;
+  const contract_status=allowedContract.has(incoming.contract_status)?incoming.contract_status:current.gate.contract_status;
+  const payment_status=allowedPayment.has(incoming.payment_status)?incoming.payment_status:current.gate.payment_status;
+  const payment_protection=allowedProtection.has(incoming.payment_protection)?incoming.payment_protection:current.gate.payment_protection;
+  const num=(v,fallback)=>{if(v===""||v==null)return fallback;const n=Number(v);return Number.isFinite(n)?n:fallback};
+  const gross_amount=num(incoming.gross_amount,current.gate.gross_amount), fee_estimate=num(incoming.fee_estimate,current.gate.fee_estimate);
+  const net_estimate=gross_amount!=null&&fee_estimate!=null?Math.max(0,gross_amount-fee_estimate):null;
+  const currency=String(incoming.currency??current.gate.currency??"").trim().slice(0,20);
+  const platform=String(current.gate.platform||contractPaymentProfile(row).platform).slice(0,120);
+  const payout_route=String(incoming.payout_route??current.gate.payout_route??"").trim().slice(0,300);
+  const payout_destination=String(incoming.payout_destination??current.gate.payout_destination??"").trim().slice(0,200);
+  const external_reference=String(incoming.external_reference??current.gate.external_reference??"").trim().slice(0,300);
+  const evidence_url=String(incoming.evidence_url??current.gate.evidence_url??"").trim().slice(0,800);
+  const note=String(incoming.note??current.gate.note??"").trim().slice(0,1500);
+  const ts=nowIso(), probe={contract_status,payment_status}, ready=contractPaymentReady(probe), verified_at=ready?(current.gate.verified_at||ts):"";
+  const existing=await env.DB.prepare("SELECT created_at FROM contract_payment_gates WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  const sql="INSERT INTO contract_payment_gates(opportunity_id,platform,application_status,contract_status,payment_status,payment_protection,gross_amount,currency,fee_estimate,net_estimate,payout_route,payout_destination,external_reference,evidence_url,note,verified_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET platform=excluded.platform,application_status=excluded.application_status,contract_status=excluded.contract_status,payment_status=excluded.payment_status,payment_protection=excluded.payment_protection,gross_amount=excluded.gross_amount,currency=excluded.currency,fee_estimate=excluded.fee_estimate,net_estimate=excluded.net_estimate,payout_route=excluded.payout_route,payout_destination=excluded.payout_destination,external_reference=excluded.external_reference,evidence_url=excluded.evidence_url,note=excluded.note,verified_at=excluded.verified_at,updated_at=excluded.updated_at";
+  await env.DB.prepare(sql).bind(row.opportunity_id,platform,application_status,contract_status,payment_status,payment_protection,gross_amount,currency,fee_estimate,net_estimate,payout_route,payout_destination,external_reference,evidence_url,note,verified_at,existing?.created_at||ts,ts).run();
+  return getContractPaymentGate(env,row);
+}
+
+async function requireContractPaymentGate(env,row) {
+  const deal=await getContractPaymentGate(env,row);
+  return deal.ready?null:deal;
+}
+
 function intakeCompletion(spec,publicAnswers,secrets) {
   const missing=[]; for(const f of spec.fields||[]){if(!f.required)continue;const v=f.secret?secrets?.[f.id]:publicAnswers?.[f.id];if(v==null||String(v).trim()==="")missing.push(f.id)}
   const required=(spec.fields||[]).filter(f=>f.required).length; return {status:missing.length?"collecting":"ready_for_build",missing,required,complete:required-missing.length};
