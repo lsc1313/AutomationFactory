@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.12.0";
+const APP_VERSION = "0.13.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -594,12 +594,26 @@ function buildRuntime(plan) {
   return {runtime_version:"build-runtime-v1",mode:"artifact_manifest_only",status:artifacts.length?"artifact_manifest_ready":"waiting_for_buildable_tasks",artifacts,artifact_count:artifacts.length,external_side_effects:false};
 }
 
+function artifactGenerator(plan) {
+  const rt=plan?.build_runtime||buildRuntime(plan), req=plan?.build_spec?.functional_requirements||[];
+  const generated=(rt.artifacts||[]).map(a=>{
+    let content="";
+    if(a.type==="json") content=JSON.stringify({artifact_id:a.artifact_id,purpose:a.name,source_requirements:req,status:"template_ready",external_side_effects:false},null,2);
+    else if(a.type==="md") content="# "+a.name+"\n\n## Source requirements\n"+req.map(x=>"- "+x).join("\n")+"\n\n## Safety\n- Internal draft only\n- External account actions require user approval\n\n## Acceptance\n"+(plan?.build_spec?.acceptance_criteria||[]).map(x=>"- "+x).join("\n");
+    else content=["Artifact: "+a.name,"Task: "+a.task_id,"Worker: "+a.worker,"","Requirements:",...req.map(x=>"- "+x),"","External actions: disabled"].join("\n");
+    return {...a,status:"generated_internal_draft",content,bytes:new TextEncoder().encode(content).length};
+  });
+  return {generator_version:"artifact-generator-v1",mode:"deterministic_internal_drafts",status:generated.length?"generated":"nothing_to_generate",artifacts:generated,generated_count:generated.length,total_bytes:generated.reduce((n,a)=>n+a.bytes,0),external_side_effects:false,note:"Generated artifacts are internal drafts derived from the Manager spec. They are not client-side changes or completed integrations."};
+}
+
+
 function qcPlan(plan) {
-  const rt=plan?.build_runtime||buildRuntime(plan), spec=plan?.build_spec||{};
+  const rt=plan?.build_runtime||buildRuntime(plan), gen=plan?.artifact_generator||artifactGenerator(plan), spec=plan?.build_spec||{};
   const checks=[
     {id:"QC01",name:"manager_requirements_present",pass:(spec.functional_requirements||[]).length>0},
     {id:"QC02",name:"internal_artifacts_declared",pass:rt.artifact_count>0},
-    {id:"QC03",name:"external_side_effects_blocked",pass:rt.external_side_effects===false},
+    {id:"QC03",name:"external_side_effects_blocked",pass:rt.external_side_effects===false&&gen.external_side_effects===false},
+    {id:"QC03A",name:"internal_artifacts_generated",pass:gen.generated_count>0},
     {id:"QC04",name:"acceptance_criteria_present",pass:(spec.acceptance_criteria||[]).length>0},
     {id:"QC05",name:"external_actions_require_user_approval",pass:plan?.worker_execution?.next_gate==="user_approval_before_any_external_action"}
   ];
@@ -669,7 +683,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.12.0 · Build Runtime + QC v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.13.0 · Artifact Generator v1 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -776,10 +790,10 @@ async function showManagerPlan(btn){
   const qs=(p.clarification_questions||[]).map((x,i)=>(i+1)+'. '+esc(x)).join('<br>');
   const fb=p.factory_builder||{}; const bt=(fb.tasks||[]).map(t=>'• '+esc(t.id)+' · '+esc(t.worker)+' · '+esc(t.title)+' ['+esc(t.status)+']'+(t.blocked_by?' — '+esc(t.blocked_by):'')).join('<br>');
   const wx=p.worker_execution||{}; const wj=(wx.jobs||[]).map(j=>'• '+esc(j.task_id)+' · '+esc(j.worker)+' ['+esc(j.state)+']').join('<br>');
-  const br=p.build_runtime||{}, qc=p.qc||{}; const arts=(br.artifacts||[]).map(a=>'• '+esc(a.artifact_id)+' · '+esc(a.path)).join('<br>');
+  const br=p.build_runtime||{}, ag=p.artifact_generator||{}, qc=p.qc||{}; const arts=(br.artifacts||[]).map(a=>'• '+esc(a.artifact_id)+' · '+esc(a.path)).join('<br>');
   const d=p.input_diagnostics||{};
   const diag='<details style="margin:10px 0"><summary>🔎 Manager 실제 입력 진단</summary><div class="meta" style="white-space:pre-wrap;margin-top:8px">TITLE: '+esc(d.title||'')+'\\nDESCRIPTION LENGTH: '+esc(d.description_length)+'\\nDESCRIPTION: '+esc(d.description||'')+'\\nSKILLS: '+esc(d.skills||'')+'\\nURL: '+esc(d.url||'')+'\\nANALYSIS LENGTH: '+esc(d.analysis_text_length)+'\\nANALYSIS PREVIEW: '+esc(d.analysis_preview||'')+'</div></details>';
-  el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc(p.build_spec?.spec_version||'no-build-spec')+'</div>'+diag+'<b>🧩 요구 기능</b><br>'+req+'<br><br><b>🏭 Factory Builder</b><br>'+esc(fb.builder_version||'')+' · 준비 '+esc(fb.ready_tasks||0)+' · 외부권한 대기 '+esc(fb.blocked_tasks||0)+'<br>'+bt+'<br><br><b>⚙️ Worker Execution</b><br>'+esc(wx.execution_version||'')+' · 내부 제작큐 '+esc(wx.queued_internal_builds||0)+' · 고객권한 대기 '+esc(wx.waiting_for_client_access||0)+'<br>'+wj+'<br><br><b>📦 Build Runtime</b><br>'+esc(br.runtime_version||'')+' · 산출물 '+esc(br.artifact_count||0)+'개<br>'+arts+'<br><br><b>🧪 QC</b><br>'+esc(qc.qc_version||'')+' · '+esc(qc.status||'')+' · '+esc(qc.passed||0)+'/'+esc(qc.total||0)+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
+  el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc(p.build_spec?.spec_version||'no-build-spec')+'</div>'+diag+'<b>🧩 요구 기능</b><br>'+req+'<br><br><b>🏭 Factory Builder</b><br>'+esc(fb.builder_version||'')+' · 준비 '+esc(fb.ready_tasks||0)+' · 외부권한 대기 '+esc(fb.blocked_tasks||0)+'<br>'+bt+'<br><br><b>⚙️ Worker Execution</b><br>'+esc(wx.execution_version||'')+' · 내부 제작큐 '+esc(wx.queued_internal_builds||0)+' · 고객권한 대기 '+esc(wx.waiting_for_client_access||0)+'<br>'+wj+'<br><br><b>📦 Build Runtime</b><br>'+esc(br.runtime_version||'')+' · 산출물 '+esc(br.artifact_count||0)+'개<br>'+arts+'<br><br><b>🛠 Artifact Generator</b><br>'+esc(ag.generator_version||'')+' · 실제 초안 '+esc(ag.generated_count||0)+'개 · '+esc(ag.total_bytes||0)+' bytes<br><br><b>🧪 QC</b><br>'+esc(qc.qc_version||'')+' · '+esc(qc.status||'')+' · '+esc(qc.passed||0)+'/'+esc(qc.total||0)+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
  }catch(err){el.innerHTML='<div class="empty error">작업계획 조회 실패: '+esc(err.message)+'</div>';}
  finally{btn.disabled=false;btn.textContent=old;}
 }
@@ -833,7 +847,7 @@ export default {
         if(!row) return json({ok:false,error:"Paid job not found"},404);
         let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
         if(!bd.actionable_paid_job||!bd.factory_fulfillable) return json({ok:false,error:"Factory-ready paid job only"},400);
-        const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.qc=qcPlan(plan); return json(plan);
+        const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.qc=qcPlan(plan); return json(plan);
       }
       if (path === "/api/paid-jobs") {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
