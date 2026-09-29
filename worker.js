@@ -574,86 +574,73 @@ function clientIntakeSpec(row, plan=null) {
   const korean=((String(row?.title||"")+" "+String(row?.description||"")).match(/[가-힣]/g)||[]).length>20;
   const fields=[], seen=new Set(), discovery=[];
   const add=(f)=>{if(!seen.has(f.id)){seen.add(f.id);fields.push(f)}};
-  const yesNo=[{value:"",label:korean?"선택":"Select"},{value:"yes",label:korean?"예":"Yes"},{value:"no",label:korean?"아니오":"No"}];
-
   if(/squarespace/.test(raw)){
-    add(intakeField("squarespace_token",korean?"Squarespace 접근 토큰":"Squarespace access token","password",true,true,korean?"고객이 제공한 작업용 토큰을 입력합니다. 암호화 저장되며 ZIP에는 포함되지 않습니다.":"Enter the authorized working token. It is encrypted at rest and excluded from delivery ZIP files."));
-    add(intakeField("product_scope",korean?"이전할 상품 범위":"Products to migrate","textarea",true,false,korean?"예: 전체 상품 / 특정 상품명 / SKU 범위. 정확한 ID 목록이 없어도 됩니다.":"Example: all products, named products, or a SKU range. Exact internal IDs are not required."));
-    discovery.push(korean?"Squarespace 상품·옵션·이미지·SKU 자동 수집":"Discover Squarespace products, variants, images and SKUs automatically");
+    add(intakeField("product_scope",korean?"이전할 상품 범위":"Products to migrate","textarea",true,false,korean?"예: 전체 상품 / 특정 상품명 / SKU 범위. 내부 ID는 몰라도 됩니다.":"Example: all products, named products, or a SKU range. Internal IDs are not required."));
+    discovery.push(korean?"Squarespace 계정 연결 후 상품·옵션·이미지·SKU 자동 수집":"After account connection, discover Squarespace products, variants, images and SKUs automatically");
   }
-
   if(/etsy/.test(raw)){
-    add(intakeField("etsy_shop_status",korean?"Etsy 상점 상태":"Etsy shop status","select",true,false,korean?"상점이 아직 없으면 고객이 Etsy에서 상점 개설 절차를 먼저 완료해야 할 수 있습니다.":"If the shop does not exist yet, the client may need to finish Etsy shop opening first.",[{value:"",label:korean?"선택":"Select"},{value:"existing",label:korean?"이미 생성됨":"Already created"},{value:"needs_setup",label:korean?"아직 없음 / 초기설정 필요":"Not created / needs setup"}]));
-    add(intakeField("etsy_oauth_token",korean?"Etsy OAuth 접근 토큰":"Etsy OAuth access token","password",true,true,korean?"보안 저장. 고객에게 받은 승인된 접근정보만 사용합니다.":"Stored securely. Use only client-authorized access."));
-    add(intakeField("etsy_api_key",korean?"Etsy API Key":"Etsy API key","password",true,true,korean?"보안 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest and excluded from the output ZIP."));
-    add(intakeField("etsy_category_hint",korean?"Etsy 카테고리 힌트 (선택)":"Etsy category hint (optional)","text",false,false,korean?"예: T-shirt, wall art. Taxonomy ID는 시스템이 후보를 찾습니다.":"Example: T-shirt or wall art. The system will resolve taxonomy candidates.",[],true));
+    add(intakeField("etsy_shop_status",korean?"Etsy 상점 상태":"Etsy shop status","select",true,false,korean?"상점이 아직 없으면 Etsy 상점 개설이 먼저 필요할 수 있습니다.":"If the shop does not exist yet, Etsy shop opening may be required first.",[{value:"",label:korean?"선택":"Select"},{value:"existing",label:korean?"이미 생성됨":"Already created"},{value:"needs_setup",label:korean?"아직 없음 / 초기설정 필요":"Not created / needs setup"}]));
+    add(intakeField("etsy_category_hint",korean?"상품 카테고리 힌트 (선택)":"Product category hint (optional)","text",false,false,korean?"예: 티셔츠, 월아트. 정확한 Taxonomy ID는 자동으로 찾습니다.":"Example: T-shirt or wall art. Exact taxonomy IDs are resolved automatically.",[],true));
     add(intakeField("etsy_shop_id_override",korean?"Etsy Shop ID 직접 지정 (고급/선택)":"Etsy Shop ID override (advanced/optional)","text",false,false,korean?"자동 발견이 실패할 때만 입력합니다.":"Only needed if automatic discovery fails.",[],true));
     add(intakeField("etsy_shipping_profile_id_override",korean?"Shipping Profile ID 직접 지정 (고급/선택)":"Shipping Profile ID override (advanced/optional)","text",false,false,korean?"자동 조회/설정이 실패할 때만 사용합니다.":"Only use if automatic lookup/configuration fails.",[],true));
     add(intakeField("etsy_readiness_state_id_override",korean?"Readiness State ID 직접 지정 (고급/선택)":"Readiness State ID override (advanced/optional)","text",false,false,korean?"자동 조회가 실패할 때만 입력합니다.":"Only needed if automatic discovery fails.",[],true));
     add(intakeField("etsy_section_id_override",korean?"Section ID 직접 지정 (고급/선택)":"Section ID override (advanced/optional)","text",false,false,"",[],true));
-    discovery.push(korean?"Etsy Shop ID·분류(Taxonomy)·배송프로필·Readiness 상태 자동 조회/후보화":"Auto-discover Etsy shop ID, taxonomy, shipping profiles and readiness states");
+    discovery.push(korean?"Etsy OAuth 연결 후 Shop ID·분류·배송프로필·Readiness 상태 자동 조회":"After Etsy OAuth approval, discover shop ID, taxonomy, shipping profiles and readiness states");
   }
-
   if(/prodigi/.test(raw)){
-    add(intakeField("prodigi_api_key",korean?"Prodigi API Key":"Prodigi API key","password",true,true,korean?"처음에는 Sandbox 키 사용을 권장합니다.":"A Sandbox key is recommended first."));
     add(intakeField("prodigi_mode",korean?"Prodigi 검수 환경":"Prodigi validation mode","select",true,false,"",[{value:"",label:korean?"선택":"Select"},{value:"sandbox",label:"Sandbox"},{value:"live_after_approval",label:korean?"Sandbox 통과 후 Live":"Live after Sandbox approval"}]));
-    add(intakeField("prodigi_product_notes",korean?"Prodigi 상품/템플릿 선호 (선택)":"Prodigi product/template preference (optional)","textarea",false,false,korean?"예: 티셔츠는 특정 제품군 사용. SKU 매핑표는 시스템이 후보를 생성합니다.":"Example: preferred blank/product family. The system will generate SKU mapping candidates."));
-    add(intakeField("prodigi_sku_mapping_override",korean?"SKU 매핑 직접 지정 (고급/선택)":"SKU mapping override (advanced/optional)","textarea",false,false,korean?"자동 매핑 후보가 틀릴 때만 JSON 또는 메모 형태로 입력합니다.":"Only use when automatic mapping candidates need correction.",[],true));
-    discovery.push(korean?"Squarespace SKU와 Prodigi 카탈로그를 비교해 SKU→제품/템플릿 매핑 후보 생성":"Generate SKU-to-Prodigi product/template mapping candidates");
+    add(intakeField("prodigi_product_notes",korean?"Prodigi 상품/템플릿 선호 (선택)":"Prodigi product/template preference (optional)","textarea",false,false,korean?"예: 티셔츠는 특정 제품군 사용. SKU 매핑은 시스템이 후보를 생성합니다.":"Example: preferred blank/product family. The system will generate SKU mapping candidates."));
+    add(intakeField("prodigi_sku_mapping_override",korean?"SKU 매핑 직접 지정 (고급/선택)":"SKU mapping override (advanced/optional)","textarea",false,false,korean?"자동 매핑 후보가 틀릴 때만 입력합니다.":"Only use when automatic mapping candidates need correction.",[],true));
+    discovery.push(korean?"Prodigi 연결 후 SKU→제품/템플릿 매핑 후보 생성":"After Prodigi connection, generate SKU-to-product/template mapping candidates");
   }
-
   if(/tax|shipping/.test(raw)||/etsy/.test(raw)){
     add(intakeField("commerce_settings_mode",korean?"배송·세금 설정 방식":"Shipping/tax setup","select",true,false,"",[{value:"",label:korean?"선택":"Select"},{value:"reuse_existing",label:korean?"기존 Etsy 설정 사용":"Reuse existing Etsy settings"},{value:"configure_new",label:korean?"새 설정 필요":"Configure new settings"}]));
     add(intakeField("shipping_regions",korean?"배송 대상 지역 (필요시)":"Target shipping regions (if needed)","textarea",false,false,korean?"새 배송설정이 필요한 경우만 작성합니다.":"Only needed when creating new shipping settings."));
     add(intakeField("shipping_policy",korean?"배송 정책 메모 (선택)":"Shipping policy notes (optional)","textarea",false,false,""));
     add(intakeField("tax_policy",korean?"세금 처리 메모 (선택)":"Tax handling notes (optional)","textarea",false,false,korean?"기존 플랫폼 자동처리를 사용할 경우 비워둘 수 있습니다.":"Leave blank when using existing platform-managed tax behavior."));
   }
-
   if(/excel|spreadsheet|workbook|google sheets|sheet/.test(raw)){
     add(intakeField("source_data",korean?"원본 데이터/파일 위치":"Source data/file location","textarea",true,false,korean?"파일명, Drive 링크 또는 데이터 구조 설명":"File name, Drive link, or data-structure description."));
     add(intakeField("workbook_requirements",korean?"시트/수식/대시보드 요구사항":"Workbook/formula/dashboard requirements","textarea",true,false));
     add(intakeField("output_format",korean?"최종 납품 형식":"Final delivery format","select",true,false,"",[{value:"",label:korean?"선택":"Select"},{value:"xlsx",label:"Excel .xlsx"},{value:"google_sheets",label:"Google Sheets"},{value:"xlsx_and_pdf",label:"Excel + PDF"}]));
     add(intakeField("sample_style",korean?"원하는 디자인/예시":"Preferred design/reference","textarea",false,false));
   }
-
   if(/api|integration|integrate|webhook/.test(raw) && !(/squarespace|etsy|prodigi/.test(raw))){
     add(intakeField("api_docs_url",korean?"연동 API 문서 URL":"API documentation URL","text",true,false));
     add(intakeField("sample_payload",korean?"샘플 입력/출력 또는 요청·응답":"Sample input/output or request/response","textarea",true,false));
-    add(intakeField("integration_credentials",korean?"연동 인증정보":"Integration credentials","password",true,true,korean?"암호화 저장되며 제작 ZIP에는 들어가지 않습니다.":"Encrypted at rest and excluded from the production ZIP."));
+    discovery.push(korean?"인증정보는 고객답변과 분리된 계정 연결 단계에서 처리":"Credentials are handled separately in the account-connection gate");
   }
-
   const questions=plan?.clarification_questions||[];
   for(const [i,q] of questions.entries()){
     const qt=String(q).toLowerCase();
-    if(/squarespace/.test(qt)&&fields.some(f=>f.id==="squarespace_token"))continue;
-    if(/etsy/.test(qt)&&fields.some(f=>f.id==="etsy_shop_status"))continue;
-    if(/prodigi/.test(qt)&&fields.some(f=>f.id==="prodigi_api_key"))continue;
+    if(/squarespace/.test(qt)&&/access|token|credential|권한|접근/.test(qt))continue;
+    if(/etsy/.test(qt)&&/access|token|api key|credential|권한|접근/.test(qt))continue;
+    if(/prodigi/.test(qt)&&/access|key|credential|권한|접근/.test(qt))continue;
     if(/tax|shipping/.test(qt)&&fields.some(f=>f.id==="commerce_settings_mode"))continue;
     if(/delivery|deadline|납기|마감/.test(qt))continue;
     add(intakeField("clarification_"+(i+1),String(q),"textarea",true,false));
   }
   add(intakeField("delivery_date",korean?"희망 납기일":"Preferred delivery date","text",!String(row?.deadline||"").trim(),false));
   add(intakeField("client_notes",korean?"추가 메모":"Additional client notes","textarea",false,false));
-  return {intake_version:"client-intake-v2",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields,discovery_plan:discovery};
+  return {intake_version:"client-intake-v3",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields,discovery_plan:discovery};
 }
 
 function clientRequestMessage(row,spec) {
-  const ko=spec.language==="ko";
-  const labels=[];
+  const ko=spec.language==="ko", labels=[];
   const has=id=>(spec.fields||[]).some(f=>f.id===id);
-  if(has("squarespace_token"))labels.push(ko?"Squarespace 작업 접근정보":"Authorized Squarespace access");
   if(has("product_scope"))labels.push(ko?"이전할 상품 범위":"Which products should be migrated");
   if(has("etsy_shop_status"))labels.push(ko?"Etsy 상점 생성 여부":"Whether the Etsy shop already exists");
-  if(has("etsy_oauth_token"))labels.push(ko?"Etsy 작업 접근정보":"Authorized Etsy access");
-  if(has("prodigi_api_key"))labels.push(ko?"Prodigi Sandbox/API 접근정보":"Prodigi Sandbox/API access");
-  if(has("commerce_settings_mode"))labels.push(ko?"기존 배송·세금 설정 사용 여부":"Whether to reuse existing shipping/tax settings");
+  if(has("prodigi_mode"))labels.push(ko?"Prodigi는 우선 Sandbox로 검수할지":"Whether to validate through Prodigi Sandbox first");
+  if(has("commerce_settings_mode"))labels.push(ko?"기존 배송·세금 설정 재사용 여부":"Whether to reuse existing shipping/tax settings");
   if(has("source_data"))labels.push(ko?"원본 데이터/파일":"Source data/file");
   if(has("workbook_requirements"))labels.push(ko?"원하는 시트·수식·대시보드 구성":"Workbook/formula/dashboard requirements");
+  if(has("api_docs_url"))labels.push(ko?"연동 API 문서":"API documentation");
+  if(has("sample_payload"))labels.push(ko?"샘플 요청/응답":"Sample request/response");
   if(has("delivery_date"))labels.push(ko?"희망 납기일":"Preferred delivery date");
-  for(const f of spec.fields||[]){if(f.required&&!f.secret&&f.id.startsWith("clarification_"))labels.push(f.label)}
+  for(const f of spec.fields||[]){if(f.required&&f.id.startsWith("clarification_"))labels.push(f.label)}
   const lines=[...new Set(labels)].map((x,i)=>(i+1)+". "+x);
-  if(ko)return "작업 시작을 위해 아래 정보만 부탁드립니다. 내부 ID나 SKU 매핑표처럼 기술적인 값은 가능한 한 시스템에서 자동 확인하겠습니다.\n"+lines.join("\n")+"\n보안정보는 별도 보안 입력으로만 저장되며 납품 ZIP에는 포함되지 않습니다.";
-  return "To start, please provide only the items below. Technical IDs and SKU mapping details will be discovered automatically where possible.\n"+lines.join("\n")+"\nCredentials are kept only in the secure intake vault and are never included in delivery ZIP files.";
+  if(ko)return "작업 조건은 아래 내용만 확인하면 됩니다. 계정 비밀번호나 OAuth 토큰은 메시지로 받지 않고 별도의 계정 연결 단계에서 처리합니다.\n"+lines.join("\n");
+  return "Only the project details below are needed here. Passwords and OAuth tokens are not collected by message; account authorization is handled separately in the connection gate.\n"+lines.join("\n");
 }
 
 function bytesToBase64(bytes) { let s=""; for(const b of bytes)s+=String.fromCharCode(b); return btoa(s); }
