@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.31.0";
+const APP_VERSION = "0.32.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -131,7 +131,7 @@ async function ensureSchema(env) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`),
-    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_platform_connections_status ON platform_connections(api_status, updated_at DESC)`),,
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_platform_connections_status ON platform_connections(api_status, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS platform_actions (
       action_key TEXT PRIMARY KEY,
       provider TEXT NOT NULL,
@@ -146,6 +146,18 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_platform_actions_lookup ON platform_actions(provider,opportunity_id,action_type,status,updated_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS platform_messages (
+      provider TEXT NOT NULL,
+      opportunity_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL DEFAULT '',
+      direction TEXT NOT NULL DEFAULT 'inbound',
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(provider,message_id)
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_platform_messages_thread ON platform_messages(provider,opportunity_id,thread_id,created_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS oauth_states (
       state TEXT PRIMARY KEY,
       opportunity_id TEXT NOT NULL,
@@ -749,7 +761,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.31.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.32.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -1032,7 +1044,7 @@ async function verifyFreelancerConnection(env) {
   let response,payload={};
   try {
     response=await fetch("https://www.freelancer.com/api/users/0.1/self/",{
-      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.31.0"}
+      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.32.0"}
     });
     payload=await response.json().catch(()=>({}));
   } catch { return {ok:false,connected:false}; }
@@ -1050,10 +1062,91 @@ async function freelancerApiRead(env,path) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.31.0"}});
+    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.32.0"}});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
+}
+
+async function freelancerApiForm(env,path,fields) {
+  const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
+  if(!credential)return {ok:false,status:0,error:"credential_missing"};
+  try{
+    const form=new FormData();
+    for(const [key,value] of Object.entries(fields||{})){
+      if(Array.isArray(value))for(const item of value)form.append(key+"[]",String(item));
+      else if(value!==undefined&&value!==null)form.append(key,String(value));
+    }
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.32.0"},body:form});
+    const payload=await response.json().catch(()=>({}));
+    return {ok:response.ok,status:response.status,payload};
+  }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
+}
+
+async function syncFreelancerMessaging(env,row) {
+  const projectId=String(row?.source_item_id||"").trim();
+  if(!/^\d+$/.test(projectId))return {ok:false,reason:"project_id_missing"};
+  const bidAction=await env.DB.prepare("SELECT * FROM platform_actions WHERE provider='freelancer' AND opportunity_id=? AND action_type='bid' ORDER BY updated_at DESC LIMIT 1").bind(row.opportunity_id).first();
+  let bidMeta={};try{bidMeta=JSON.parse(bidAction?.response_metadata_json||"{}")}catch{}
+  let ownerId=String(bidMeta.project_owner_id||"").trim();
+  if(!/^\d+$/.test(ownerId)&&/^\d+$/.test(String(bidAction?.external_action_id||""))){
+    const b=await freelancerApiRead(env,"/api/projects/0.1/bids/"+bidAction.external_action_id+"/?project_details=true&compact=true");
+    const obj=b.payload?.result||b.payload?.bid||b.payload||{};
+    ownerId=String(obj.project?.owner_id??obj.project?.owner?.id??obj.project_owner_id??"").trim();
+  }
+  if(!/^\d+$/.test(ownerId))return {ok:false,reason:"project_owner_missing"};
+
+  let threadAction=await env.DB.prepare("SELECT * FROM platform_actions WHERE provider='freelancer' AND opportunity_id=? AND action_type='thread' AND status='confirmed' ORDER BY updated_at DESC LIMIT 1").bind(row.opportunity_id).first();
+  let threadId=String(threadAction?.external_action_id||"").trim();
+  if(!/^\d+$/.test(threadId)){
+    const made=await freelancerApiForm(env,"/api/messages/0.1/threads/",{"members":[ownerId],context_type:"project",context:projectId});
+    if(!made.ok)return {ok:false,reason:"thread_create_failed",status:made.status};
+    const obj=made.payload?.result||made.payload?.thread||made.payload||{};
+    threadId=String(obj.id??obj.thread_id??"").trim();
+    if(!/^\d+$/.test(threadId))return {ok:false,reason:"thread_id_missing"};
+    const ts=nowIso(),key="freelancer:thread:"+row.opportunity_id+":"+projectId;
+    await env.DB.prepare(`INSERT INTO platform_actions(action_key,provider,opportunity_id,external_object_id,action_type,status,request_hash,external_action_id,response_metadata_json,created_at,updated_at)
+      VALUES(?,'freelancer',?,?,'thread','confirmed','',?,?,?,?) ON CONFLICT(action_key) DO UPDATE SET status='confirmed',external_action_id=excluded.external_action_id,response_metadata_json=excluded.response_metadata_json,updated_at=excluded.updated_at`)
+      .bind(key,row.opportunity_id,projectId,threadId,JSON.stringify({owner_id:ownerId}),ts,ts).run();
+  }
+
+  const plan=paidJobPlan(row), intake=await getClientIntake(env,row,plan);
+  const askKey="freelancer:intake:"+row.opportunity_id+":"+threadId;
+  const asked=await env.DB.prepare("SELECT action_key FROM platform_actions WHERE action_key=? AND status='confirmed'").bind(askKey).first();
+  if(!asked&&intake.status!=="ready_for_build"){
+    const sent=await freelancerApiForm(env,"/api/messages/0.1/threads/"+threadId+"/messages/",{message:intake.request_message});
+    if(sent.ok){
+      const obj=sent.payload?.result||sent.payload?.message||sent.payload||{},ts=nowIso(),mid=String(obj.id??obj.message_id??"");
+      await env.DB.prepare(`INSERT INTO platform_actions(action_key,provider,opportunity_id,external_object_id,action_type,status,request_hash,external_action_id,response_metadata_json,created_at,updated_at)
+        VALUES(?,'freelancer',?,?,'intake_message','confirmed','',?,?,?,?) ON CONFLICT(action_key) DO NOTHING`)
+        .bind(askKey,row.opportunity_id,threadId,mid,JSON.stringify({thread_id:threadId}),ts,ts).run();
+    }
+  }
+
+  const got=await freelancerApiRead(env,"/api/messages/0.1/messages/?threads[]="+encodeURIComponent(threadId));
+  if(!got.ok)return {ok:false,reason:"message_read_failed",status:got.status,thread_id:threadId};
+  const raw=got.payload?.result?.messages??got.payload?.messages??[], messages=Array.isArray(raw)?raw:[];
+  const pc=await getPlatformConnection(env,"freelancer"), selfId=String(pc.metadata?.user_id||"");
+  let inbound=0;
+  for(const m of messages){
+    const mid=String(m.id??m.message_id??"").trim(); if(!mid)continue;
+    const sender=String(m.sender_id??m.from_user_id??m.user_id??"");
+    const body=String(m.message??m.body??m.text??"").slice(0,8000);
+    const direction=sender&&sender===selfId?"outbound":"inbound";
+    await env.DB.prepare("INSERT OR IGNORE INTO platform_messages(provider,opportunity_id,thread_id,message_id,sender_id,body,direction,created_at) VALUES('freelancer',?,?,?,?,?,?,?)")
+      .bind(row.opportunity_id,threadId,mid,sender,body,direction,new Date(Number(m.time_created||0)*1000||Date.now()).toISOString()).run();
+    if(direction==="inbound"&&body.trim())inbound++;
+  }
+  if(inbound){
+    const latest=messages.filter(m=>String(m.sender_id??m.from_user_id??m.user_id??"")!==selfId).map(m=>String(m.message??m.body??m.text??"").trim()).filter(Boolean).slice(-5).join("\n\n").slice(0,12000);
+    const existing=await env.DB.prepare("SELECT * FROM client_intakes WHERE opportunity_id=?").bind(row.opportunity_id).first(),ts=nowIso(); let answers={};
+    try{answers=JSON.parse(existing?.public_answers_json||"{}")}catch{}
+    answers.client_notes=[String(answers.client_notes||"").trim(),latest].filter(Boolean).join("\n\n").slice(0,16000);
+    await env.DB.prepare("INSERT INTO client_intakes(opportunity_id,public_answers_json,secret_answers_enc,status,created_at,updated_at) VALUES(?,?,?,'collecting',?,?) ON CONFLICT(opportunity_id) DO UPDATE SET public_answers_json=excluded.public_answers_json,status='collecting',updated_at=excluded.updated_at")
+      .bind(row.opportunity_id,JSON.stringify(answers),existing?.secret_answers_enc||"",existing?.created_at||ts,ts).run();
+    await env.DB.prepare("UPDATE contract_payment_gates SET application_status='client_replied',updated_at=? WHERE opportunity_id=?").bind(ts,row.opportunity_id).run();
+  }
+  return {ok:true,thread_id:threadId,inbound_messages:inbound};
 }
 
 async function syncFreelancerBidStatus(env,row) {
@@ -1066,7 +1159,7 @@ async function syncFreelancerBidStatus(env,row) {
   const award=String(bid.award_status||bid.status||"").toLowerCase(), ts=nowIso();
   const accepted=["awarded","accepted"].includes(award), rejected=["rejected","revoked","withdrawn","cancelled"].includes(award);
   await env.DB.prepare("UPDATE platform_actions SET status=?,response_metadata_json=?,updated_at=? WHERE action_key=?")
-    .bind(accepted?"confirmed":rejected?"closed":"submitted",JSON.stringify({bid_id:bidId,award_status:award||"unknown",time_submitted:bid.time_submitted??null}).slice(0,4000),ts,action.action_key).run();
+    .bind(accepted?"confirmed":rejected?"closed":"submitted",JSON.stringify({bid_id:bidId,award_status:award||"unknown",time_submitted:bid.time_submitted??null,project_owner_id:bid.project?.owner_id??bid.project?.owner?.id??bid.project_owner_id??null}).slice(0,4000),ts,action.action_key).run();
   if(accepted){
     const amount=Number(bid.amount||0), currency=String(bid.currency?.code||bid.project?.currency?.code||row.currency||"");
     await env.DB.prepare(`UPDATE contract_payment_gates SET application_status='assigned',contract_status='accepted',gross_amount=CASE WHEN ?>0 THEN ? ELSE gross_amount END,currency=CASE WHEN ?!='' THEN ? ELSE currency END,verified_at=?,updated_at=? WHERE opportunity_id=?`)
@@ -1132,7 +1225,7 @@ async function freelancerApiWrite(env,path,body) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.31.0"},body:JSON.stringify(body)});
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.32.0"},body:JSON.stringify(body)});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1393,7 +1486,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.31.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.32.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1455,7 +1548,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.31.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.32.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1507,6 +1600,10 @@ async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudge
       const tracked=await syncFreelancerBidStatus(env,row);
       if(tracked.ok&&tracked.accepted)deal=await getContractPaymentGate(env,row);
       else if(tracked.ok&&tracked.rejected)return managerSaveState(env,id,{stage:"closed",status_label:"⛔ 입찰 종료",next_action:"다른 수익 기회 탐색",last_action:"freelancer_bid_closed"});
+    }
+    if(String(row.source||"")==="freelancer_projects"&&String(deal.gate?.contract_status||"")==="accepted"){
+      await syncFreelancerMessaging(env,row);
+      deal=await getContractPaymentGate(env,row);
     }
     if(String(row.source||"")==="freelancer_projects"&&String(deal.gate?.contract_status||"")==="accepted"&&String(deal.gate?.payment_status||"")!=="secured"){
       const milestone=await syncFreelancerMilestoneStatus(env,row);
@@ -2173,7 +2270,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.31.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.32.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
