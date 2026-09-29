@@ -1178,6 +1178,86 @@ async function dispatchProduction(request, env, opportunityId) {
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
 }
 
+
+async function managerSaveState(env,opportunityId,state) {
+  const ts=nowIso();
+  await env.DB.prepare("INSERT INTO manager_job_states(opportunity_id,stage,status_label,next_action,autopilot,last_action,last_error,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET stage=excluded.stage,status_label=excluded.status_label,next_action=excluded.next_action,autopilot=excluded.autopilot,last_action=excluded.last_action,last_error=excluded.last_error,updated_at=excluded.updated_at")
+    .bind(opportunityId,String(state.stage||"unknown"),String(state.status_label||""),String(state.next_action||""),"on",String(state.last_action||""),String(state.last_error||""),ts).run();
+  return {...state,autopilot:"on",updated_at:ts};
+}
+
+async function managerResponseData(response) {
+  try{return await response.clone().json()}catch{return {ok:false,status:"invalid_response",error:"Manager could not parse worker response"}}
+}
+
+function managerDealNext(deal) {
+  const g=deal?.gate||{};
+  if(g.application_status==="not_applied")return "지원/제안 전송 대기";
+  if(g.application_status==="applied")return "고객 응답·낙찰 대기";
+  if(g.application_status==="client_replied")return "계약 조건 협의 대기";
+  if(g.contract_status!=="accepted")return "계약/작업 합의 확인 대기";
+  if(!(g.payment_status==="secured"||g.payment_status==="prepaid"||g.payment_status==="paid"))return "에스크로·마일스톤·선결제 확보 대기";
+  if(!(Number(g.gross_amount)>0&&String(g.currency||"").trim()))return "실제 합의금액 확인 대기";
+  return "계약·결제 확인";
+}
+
+async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudget=null}={}) {
+  const id=row.opportunity_id;
+  const consume=()=>{if(!actionBudget)return true;if(actionBudget.remaining<=0)return false;actionBudget.remaining--;return true;};
+  try{
+    const latestSandbox=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,updated_at FROM sandbox_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(id).first();
+    if(!latestSandbox){
+      if(autoActions&&consume()){
+        const out=await managerResponseData(await dispatchSandbox(request,env,id));
+        if(out.status==="dispatched")return managerSaveState(env,id,{stage:"sandbox_running",status_label:"🧪 자동 샌드박스 실행 중",next_action:"Manager가 결과를 기다리는 중",last_action:"sandbox_dispatched"});
+        if(out.status==="config_required")return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 공장 설정 필요",next_action:"누락 설정: "+(out.missing_configuration||[]).join(", "),last_action:"sandbox_config_required"});
+        return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 샌드박스 시작 실패",next_action:out.error||out.status||"수동 확인 필요",last_error:out.error||""});
+      }
+      return managerSaveState(env,id,{stage:"sandbox_queued",status_label:"🧪 샌드박스 자동검증 대기",next_action:"Manager가 자동 실행 예정"});
+    }
+    if(latestSandbox.status==="created"||latestSandbox.status==="dispatched")return managerSaveState(env,id,{stage:"sandbox_running",status_label:"🧪 자동 샌드박스 실행 중",next_action:"결과 확인 중",last_action:"sandbox_running"});
+    if(latestSandbox.status==="dispatch_failed"||(latestSandbox.status==="completed"&&latestSandbox.conclusion!=="success"))return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 샌드박스 예외",next_action:"자동 재시도하지 않음 · 상세에서 오류 확인",last_error:latestSandbox.log_summary||"sandbox failed"});
+    if(!(latestSandbox.status==="completed"&&latestSandbox.conclusion==="success"))return managerSaveState(env,id,{stage:"sandbox_wait",status_label:"🧪 샌드박스 상태 확인 중",next_action:"Manager가 다음 주기에 재확인"});
+
+    const deal=await getContractPaymentGate(env,row);
+    if(!deal.ready)return managerSaveState(env,id,{stage:"waiting_contract_payment",status_label:"💳 "+managerDealNext(deal),next_action:(deal.profile?.platform||deal.gate?.platform||"플랫폼")+" 계약·결제 상태를 자동/외부 확인 대기"});
+
+    const plan=paidJobPlan(row), intake=await getClientIntake(env,row,plan);
+    if(intake.status!=="ready_for_build")return managerSaveState(env,id,{stage:"waiting_client_answers",status_label:"👤 고객 답변 대기",next_action:"필수 "+(intake.completion?.complete||0)+"/"+(intake.completion?.required||0)+" · 필요한 질문만 고객에게 수집"});
+
+    const connections=await getAccountConnections(env,row);
+    if(!connections.progress.ready)return managerSaveState(env,id,{stage:"waiting_account_connections",status_label:"🔗 고객 계정 승인 대기",next_action:"연결 "+connections.progress.connected+"/"+connections.progress.required+" · 필요한 서비스만 승인 대기"});
+
+    const latestProduction=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,updated_at FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(id).first();
+    if(latestProduction){
+      if(latestProduction.status==="created"||latestProduction.status==="dispatched")return managerSaveState(env,id,{stage:"production_running",status_label:"🏭 자동 제작·QC 진행 중",next_action:"Factory Worker 결과 확인 중",last_action:"production_running"});
+      if(latestProduction.status==="completed"&&latestProduction.conclusion==="success")return managerSaveState(env,id,{stage:"delivery_ready",status_label:"✅ 납품 패키지 준비 완료",next_action:"납품/플랫폼 전송 어댑터 대기",last_action:"production_complete"});
+      if(latestProduction.status==="dispatch_failed"||(latestProduction.status==="completed"&&latestProduction.conclusion!=="success"))return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 제작·QC 예외",next_action:"자동 재시도하지 않음 · 상세에서 오류 확인",last_error:latestProduction.log_summary||"production failed"});
+    }
+
+    if(autoActions&&consume()){
+      const out=await managerResponseData(await dispatchProduction(request,env,id));
+      if(out.status==="dispatched")return managerSaveState(env,id,{stage:"production_running",status_label:"🏭 자동 제작·QC 시작",next_action:"Factory Worker 결과 확인 중",last_action:"production_dispatched"});
+      if(out.status==="client_intake_required")return managerSaveState(env,id,{stage:"waiting_client_answers",status_label:"👤 고객 답변 대기",next_action:"필수 고객정보 수집"});
+      if(out.status==="account_connection_required")return managerSaveState(env,id,{stage:"waiting_account_connections",status_label:"🔗 고객 계정 승인 대기",next_action:"필수 서비스 연결"});
+      return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 자동 제작 시작 보류",next_action:out.error||out.status||"상세 확인",last_error:out.error||""});
+    }
+    return managerSaveState(env,id,{stage:"production_queued",status_label:"🏭 자동 제작 대기",next_action:"Manager가 자동 제작 예정"});
+  }catch(error){
+    return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ Manager 예외",next_action:"상세에서 오류 확인",last_error:error?.message||String(error)});
+  }
+}
+
+async function runManagerOrchestrator(env,{request=null,maxActions=3,limit=40}={}) {
+  const base=String(env.PUBLIC_BASE_URL||"https://automation-factory-money-scout.lsc1313.workers.dev").replace(/\/$/,"");
+  const req=request||new Request(base+"/internal/manager-orchestrator");
+  const rows=(await env.DB.prepare("SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.factory_fulfillable')=1 AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT ?").bind(Math.max(1,Math.min(100,Number(limit)||40))).all()).results||[];
+  const budget={remaining:Math.max(0,Math.min(10,Number(maxActions)||0))}, states=[];
+  for(const row of rows)states.push(await managerEvaluateJob(req,env,row,{autoActions:true,actionBudget:budget}));
+  const counts={};for(const x of states)counts[x.stage]=(counts[x.stage]||0)+1;
+  return {ok:true,orchestrator_version:"manager-orchestrator-v1",jobs:states.length,actions_started:Math.max(0,(Number(maxActions)||0)-budget.remaining),counts,updated_at:nowIso()};
+}
+
 function qcPlan(plan) {
   const rt=plan?.build_runtime||buildRuntime(plan), gen=plan?.artifact_generator||artifactGenerator(plan), cw=plan?.code_worker||codeWorker(plan), spec=plan?.build_spec||{};
   const checks=[
