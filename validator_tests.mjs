@@ -69,13 +69,24 @@ assert.equal(realClaim.assignment, "application");
 
 const demandContext = issueDemandContext({
   title: "Feature: Expenses CSV export",
-  body: "## Today\nNo CSV export exists.\n\n## Proposal\nAdd CSV export.\n\n" + "unrelated ".repeat(300)
+  body: "## Today
+No CSV export exists.
+
+## Proposal
+Add CSV export.
+
+" + "unrelated ".repeat(300)
 });
 assert.match(demandContext, /CSV export/i);
 
 const positionPaperContext = issueDemandContext({
   title: "The Political Economy of Structural Computation",
-  body: "Draft v1.0 — position paper\n\n## Abstract\nThis paper addresses governance.\n\n" + "spreadsheet automation ".repeat(200)
+  body: "Draft v1.0 — position paper
+
+## Abstract
+This paper addresses governance.
+
+" + "spreadsheet automation ".repeat(200)
 });
 assert.equal(isDemandDocumentNoise(positionPaperContext), true);
 
@@ -316,8 +327,10 @@ console.log("validator tests: OK");
 
 // Generated HTML script regression: nested template output must not contain raw newlines inside quoted JS strings.
 const workerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.match(workerSource, /\\\\n/);
-const suspicious = workerSource.match(/re\.textContent='[^']*\n[^']*'/);
+assert.match(workerSource, /\\\
+/);
+const suspicious = workerSource.match(/re\.textContent='[^']*
+[^']*'/);
 assert.equal(suspicious, null);
 
 
@@ -548,8 +561,10 @@ assert.ok(inputDiag.includes("Manager 실제 입력 진단"));
 
 // v0.8.8 browser script regression: diagnostic lines must be escaped inside generated HTML
 const browserHotfix = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(browserHotfix.includes("\\\\nDESCRIPTION LENGTH:"));
-assert.ok(browserHotfix.includes("\\\\nANALYSIS PREVIEW:"));
+assert.ok(browserHotfix.includes("\\\
+DESCRIPTION LENGTH:"));
+assert.ok(browserHotfix.includes("\\\
+ANALYSIS PREVIEW:"));
 
 // v0.8.9 diagnostics render + cost evidence
 const diagRender = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
@@ -615,6 +630,7 @@ assert.ok(codeWorkerV1.includes("source_generated"));
 assert.ok(codeWorkerV1.includes("project/package.json"));
 assert.ok(codeWorkerV1.includes("project/src/index.js"));
 assert.ok(codeWorkerV1.includes("project/test/spec.test.js"));
-assert.ok(codeWorkerV1.includes("sandbox_runner_available"));\nassert.ok(codeWorkerV1.includes("github-actions:sandbox-runner-v1"));
+assert.ok(codeWorkerV1.includes("sandbox_runner_available"));
+assert.ok(codeWorkerV1.includes("github-actions:sandbox-runner-v1"));
 assert.ok(codeWorkerV1.includes("tests have not been executed inside Cloudflare Worker"));
 assert.ok(codeWorkerV1.includes("💻 Code Worker"));
