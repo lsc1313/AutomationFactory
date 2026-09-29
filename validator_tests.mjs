@@ -1067,3 +1067,11 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(workerSource.includes('synchronous_handover_required'), "synchronous handover gate missing");
  assert.ok(workerSource.includes('prebid_safety_hold'), "pre-bid safety recheck missing");
 }
+
+// v0.47.1 regression: existing client sites and platform eligibility restrictions block auto-bid.
+{
+ const workerSource=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
+ assert.ok(workerSource.includes("existing_client_site_change"));
+ assert.ok(workerSource.includes("preferred_freelancer_required"));
+ assert.ok(workerSource.includes("selected_freelancer_restriction"));
+}
