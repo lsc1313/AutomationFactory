@@ -902,7 +902,7 @@ assert.ok(v0221.includes("자동보류"));
 assert.ok(!v0221.includes('id="paidJobsBtn"'));
 
 // v0.22.2 focus dashboard
-const v0222 = await readFile(new URL("./worker.js", import.meta.url), "utf8");
+const v0222 = worker;
 assert.ok(v0222.includes('const APP_VERSION = "0.22.2"'));
 assert.ok(v0222.includes("📦 전체 유료 일감 '+rows.length+'개 보기"));
 assert.ok(v0222.includes("평소에는 열어볼 필요 없습니다."));
