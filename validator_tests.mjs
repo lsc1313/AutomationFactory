@@ -634,7 +634,7 @@ assert.ok(dynamicWorkflow.includes('Authorization: Bearer $BUNDLE_TOKEN'));
 assert.ok(dynamicSandbox.includes('const missingConfig=[]'));
 assert.ok(dynamicSandbox.includes('if(!env.GITHUB_ACTIONS_TOKEN)missingConfig.push("GITHUB_ACTIONS_TOKEN")'));
 assert.ok(dynamicSandbox.includes('if(!env.SANDBOX_CALLBACK_TOKEN)missingConfig.push("SANDBOX_CALLBACK_TOKEN")'));
-assert.ok(dynamicSandbox.includes('if(!env.PUBLIC_BASE_URL)missingConfig.push("PUBLIC_BASE_URL")'));
+assert.ok(dynamicSandbox.includes('const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin)'));
 assert.ok(dynamicSandbox.includes('request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('sandboxRunBtn'));
 assert.ok(dynamicSandbox.includes("method:'POST'"));
