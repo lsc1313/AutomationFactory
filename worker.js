@@ -1043,6 +1043,7 @@ function applicationPriority(row,draft) {
   if(/(?:benchmark|before and after|performance metrics?|response time|load time).{0,120}(?:traffic|production|live|improv|reduce|cut|faster)|(?:cut|reduce|improve).{0,100}(?:response time|load time|processing time).{0,80}(?:half|%|percent)/i.test(text))environmentDependencySignals.push("live_performance_acceptance");
   if(/(?:my|our|the client(?:\'s)?)\s+(?:hosting|server|domain)|(?:hosting|server|domain).{0,100}(?:my|our|client)|(?:deploy|migrat|transfer|move|upload|install|set\s*up).{0,120}(?:hosting|server|domain)|(?:point|connect|configure|change).{0,100}(?:domain|dns|nameserver)/i.test(text))environmentDependencySignals.push("client_hosting_or_domain");
   if(/(?:screen\s*share|screenshare|video\s*call|zoom\s*call|handover\s*call|hand[- ]?over.{0,60}call|walk\s+me\s+through|walkthrough\s+call)/i.test(text))environmentDependencySignals.push("synchronous_handover_required");
+  if(/(?:modify|update|change|edit|add|install|implement|post|publish).{0,120}(?:my|our|existing|current)\s+(?:site|website|web\s*site)|(?:my|our|existing|current)\s+(?:site|website|web\s*site).{0,120}(?:modify|update|change|edit|add|install|implement|post|publish)/i.test(text))environmentDependencySignals.push("existing_client_site_change");
   const independentDeliveryHardHold=externalWorkspaceSignals.length>0||environmentDependencySignals.length>0;
   const scopeSignals=[];
   if(/production.?ready|end.?to.?end|full.?stack|complete (?:system|platform|website|application)|natural.?language processing|live agent|documentation|training material/i.test(text))scopeSignals.push("multi_component_scope");
@@ -1277,6 +1278,14 @@ async function freelancerBidPreflight(env,row) {
   if(!project.ok)return {ok:false,eligible:false,reason:"project_read_failed",status:project.status};
   const p=project.payload?.result||project.payload?.project||project.payload||{};
   const status=String(p.status||"").toLowerCase();
+  const projectText=JSON.stringify(p).toLowerCase();
+  const restrictedPreferred=/(?:preferred freelancer|preferred_freelancer|preferred-only|preferred only)/i.test(projectText);
+  const restrictedSelected=/(?:selected freelancer|selected_freelancer|invite[-_ ]only|invited freelancer)/i.test(projectText);
+  const account=await freelancerApiRead(env,"/api/users/0.1/self/");
+  const accountText=JSON.stringify(account.payload||{}).toLowerCase();
+  const accountPreferred=/(?:preferred freelancer|preferred_freelancer)[^,}\]]{0,80}(?:true|1|yes)/i.test(accountText);
+  if(restrictedPreferred&&!accountPreferred)return {ok:true,eligible:false,project_id:projectId,status:status||"unknown",reason:"preferred_freelancer_required",write_executed:false};
+  if(restrictedSelected)return {ok:true,eligible:false,project_id:projectId,status:status||"unknown",reason:"selected_freelancer_restriction",write_executed:false};
   const draft=applicationDraft(row), priority=applicationPriority(row,draft);
   const budget=p.budget||{}, minimum=Number(budget.minimum??row.budget_min??0), maximum=Number(budget.maximum??row.budget_max??0);
   const amount=Number(draft.bid_amount||0);
