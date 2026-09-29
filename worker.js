@@ -1371,19 +1371,20 @@ async function showDealGate(btn){
   try{
     const d=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/deal'), g=d.gate||{}, p=d.profile||{};
     const sel=(name,value,options)=>'<select data-deal-field="'+name+'">'+options.map(o=>'<option value="'+esc(o[0])+'" '+(String(value)===String(o[0])?'selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
-    const status=d.ready?'<div class="intakeReady">✅ 계약·결제 확보 완료 — 고객정보/계정연결/실제 제작 진행 가능</div>':'<div class="intakeMissing">🟡 실제 제작 전 계약 수락 + 결제 확보가 필요합니다.</div>';
+    const status=d.ready?'<div class="intakeReady">✅ 계약·결제 확보 완료 — 고객정보/계정연결/실제 제작 진행 가능</div>':'<div class="intakeMissing">🟡 실제 제작 전 계약 수락 + 결제 확보 + 실제 합의금액 확인이 필요합니다.</div>';
     const app=sel('application_status',g.application_status,[['not_applied','미지원'],['applied','지원함'],['client_replied','고객 응답'],['assigned','배정/낙찰']]);
     const contract=sel('contract_status',g.contract_status,[['not_agreed','계약 전'],['negotiating','협의 중'],['accepted','계약/작업 합의 완료'],['cancelled','취소']]);
     const pay=sel('payment_status',g.payment_status,[['unsecured','결제 미확보'],['secured','결제 확보/에스크로·마일스톤 확인'],['prepaid','선결제 확인'],['paid','입금 완료'],['failed','결제 실패']]);
     const protect=sel('payment_protection',g.payment_protection,[['unknown','확인 필요'],['platform_escrow','플랫폼 에스크로'],['funded_milestone','펀딩된 마일스톤'],['onchain_or_bounty','온체인/바운티'],['direct_prepaid','직접 선결제'],['other','기타']]);
     const input=(name,value,placeholder,type='text')=>'<input data-deal-field="'+name+'" type="'+type+'" value="'+esc(value??'')+'" placeholder="'+esc(placeholder)+'">';
     const net=g.net_estimate==null?'미확정':Number(g.net_estimate).toLocaleString()+' '+esc(g.currency||'');
+    const ab=g.advertised_budget||{}, advertised=(ab.min==null&&ab.max==null)?'원문 예산 정보 없음':((ab.currency||'')+' '+(ab.min==null?'?':Number(ab.min).toLocaleString())+(ab.max!=null&&ab.max!==ab.min?' ~ '+Number(ab.max).toLocaleString():''));
     el.innerHTML='<div class="card" style="margin-top:10px"><b>💳 Contract / Payment Gate</b><div class="reason">'+esc(p.platform||g.platform||'')+' · '+esc(p.application_method||'')+'<br>'+esc(p.protection_hint||'')+'</div>'+status+
       '<div class="intakeField"><label>지원 상태</label>'+app+'</div>'+
       '<div class="intakeField"><label>계약 상태 *</label>'+contract+'</div>'+
       '<div class="intakeField"><label>결제 상태 *</label>'+pay+'</div>'+
       '<div class="intakeField"><label>결제 보호 방식</label>'+protect+'</div>'+
-      '<div class="intakeField"><label>합의 금액 / 통화</label><div class="connectionControls">'+input('gross_amount',g.gross_amount,'합의 총액','number')+input('currency',g.currency,'USD')+'</div></div>'+
+      '<div class="intakeField"><label>원문에 표시된 예산</label><div class="reason" style="margin-top:0">'+esc(advertised)+'</div><div class="intakeHelp">이 값은 고객과 확정한 계약 금액이 아닙니다.</div></div>'+\n      '<div class="intakeField"><label>실제 합의 금액 / 통화 *</label><div class="connectionControls">'+input('gross_amount',g.gross_amount,'계약 후 확정된 금액','number')+input('currency',g.currency,'USD')+'</div><div class="intakeHelp">낙찰/계약 후 실제로 합의된 금액만 입력합니다.</div></div>'+
       '<div class="intakeField"><label>플랫폼 수수료 예상액 (선택)</label>'+input('fee_estimate',g.fee_estimate,'예: 50','number')+'<div class="intakeHelp">예상 실수령액: '+net+'</div></div>'+
       '<div class="intakeField"><label>정산 경로</label>'+input('payout_route',g.payout_route,p.payout_route_hint||'플랫폼 → 출금수단')+'</div>'+
       '<div class="intakeField"><label>내 수령처 표시명</label>'+input('payout_destination',g.payout_destination,'예: Payoneer / 은행계좌 / Base wallet')+'<div class="intakeHelp">계좌번호·카드번호·비밀번호·시드문구·개인키는 입력하지 마세요.</div></div>'+
