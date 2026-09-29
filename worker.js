@@ -1435,10 +1435,14 @@ async function loadPaidJobs(){
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
  const autoCount=rows.filter(j=>['sandbox_running','sandbox_queued','production_running','production_queued'].includes(j.manager_stage)).length;
- const waitingCount=rows.filter(j=>['waiting_contract_payment','waiting_client_answers','waiting_account_connections'].includes(j.manager_stage)).length;
+ const waitingRows=rows.filter(j=>['waiting_contract_payment','waiting_client_answers','waiting_account_connections'].includes(j.manager_stage));
+ const waitingCount=waitingRows.length;
  const readyCount=rows.filter(j=>j.manager_stage==='delivery_ready').length;
  const exceptionCount=rows.filter(j=>j.manager_stage==='needs_attention').length;
- const summary='<div class="notice"><b>🏭 자동공장 ON</b> · 자동처리 '+autoCount+' · 외부대기 '+waitingCount+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">샌드박스와 내부 제작/QC는 Manager가 자동 처리합니다. 계약·고객응답·계정승인처럼 외부에서 필요한 일만 대기 상태로 남습니다.</span></div>';
+ const humanRows=waitingRows.filter(j=>(j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied')||j.manager_stage==='waiting_account_connections');
+ const passiveRows=waitingRows.filter(j=>!humanRows.includes(j));
+ const humanInbox=humanRows.length?'<div class="notice"><b>👆 지금 사람이 할 일 '+humanRows.length+'건</b><br><span class="sub">아래 항목만 확인하면 됩니다. 나머지 카드는 열 필요 없습니다.</span><div class="decisions">'+humanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다. 카드별 버튼을 확인할 필요가 없습니다.</span></div>';
+ const summary='<div class="notice"><b>🏭 자동공장 ON</b> · 자동처리 '+autoCount+' · 사람확인 '+humanRows.length+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">사람확인에 잡힌 항목만 개입하세요. 외부응답대기는 고객/플랫폼 상태가 바뀔 때까지 대기하는 항목입니다.</span></div>'+humanInbox;
  el.innerHTML=summary+'<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>{
    const state=j.manager_status_label||'🤖 Manager 분석 대기';
    const next=j.manager_next_action||'자동공장이 다음 단계를 판단합니다.';
@@ -1852,8 +1856,10 @@ export default {
           else await refresh;
         }
 
-        const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at
+        const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at,
+          g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
           FROM opportunities o LEFT JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
+          LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
           WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
           ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all();
         return json(rows.results || []);
