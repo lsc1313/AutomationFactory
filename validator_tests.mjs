@@ -576,3 +576,13 @@ assert.ok(factoryBuilderV1.includes("data-migration-worker"));
 assert.ok(factoryBuilderV1.includes("commerce-integration-worker"));
 assert.ok(factoryBuilderV1.includes("integration-test-worker"));
 assert.ok(factoryBuilderV1.includes("🏭 Factory Builder"));
+
+// v0.11.0 Worker Execution v1 safety contract
+const workerExecutionV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(workerExecutionV1.includes("worker-execution-v1"));
+assert.ok(workerExecutionV1.includes("safe_internal_only"));
+assert.ok(workerExecutionV1.includes("queued_internal_build"));
+assert.ok(workerExecutionV1.includes("waiting_for_client_access"));
+assert.ok(workerExecutionV1.includes("external_action_allowed:false"));
+assert.ok(workerExecutionV1.includes("user_approval_before_any_external_action"));
+assert.ok(workerExecutionV1.includes("⚙️ Worker Execution"));
