@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.20.0";
+const APP_VERSION = "0.20.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -725,7 +725,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.20.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.20.1",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -978,7 +978,8 @@ function artifactGenerator(plan) {
 function codeWorker(plan) {
   const req=plan?.build_spec?.functional_requirements||[], text=req.join(" ").toLowerCase();
   const isAutomation=/api|integration|automat|monitor|scrap|webhook|migration|import|export/.test(text);
-  if(!isAutomation) return {code_worker_version:"code-worker-v2.1",status:"not_applicable",files:[],test_execution:"not_requested"};
+  // Every Judge-approved factory job needs an executable dry-run package.
+  // Non-code deliverables still receive a deterministic acceptance harness instead of failing the sandbox.
   const safeReq=req.map(x=>String(x));
   const isCommerceMigration=/squarespace/.test(text)&&/etsy/.test(text);
   const files=[
@@ -1081,12 +1082,13 @@ function codeWorker(plan) {
     );
   } else {
     files.push(
-      {path:"project/src/index.js",language:"javascript",content:"import { requirements, externalActionsAllowed } from './spec.js';\nexport function buildPlan(){ return { requirements, externalActionsAllowed, status:'internal-build-ready' }; }\n"},
-      {path:"project/test/spec.test.js",language:"javascript",content:"import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { buildPlan } from '../src/index.js';\ntest('external actions stay disabled',()=>{ const p=buildPlan(); assert.equal(p.externalActionsAllowed,false); assert.ok(p.requirements.length>0); });\n"},
-      {path:"project/README.md",language:"markdown",content:"# Automation Factory generated project\n\nInternal build package generated from the Manager specification. External client/account actions remain disabled until explicit approval and authorized credentials are available.\n"}
+      {path:"project/src/index.js",language:"javascript",content:"import { requirements, externalActionsAllowed } from './spec.js';\nexport function buildPlan(){ return { requirements, externalActionsAllowed, status:'internal-build-ready', acceptanceHarness:true }; }\n"},
+      {path:"project/test/spec.test.js",language:"javascript",content:"import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { buildPlan } from '../src/index.js';\ntest('factory acceptance harness is safe and concrete',()=>{ const p=buildPlan(); assert.equal(p.externalActionsAllowed,false); assert.equal(p.acceptanceHarness,true); assert.ok(p.requirements.length>0); assert.ok(p.requirements.every(x=>String(x).trim().length>0)); });\n"},
+      {path:"project/ACCEPTANCE.md",language:"markdown",content:"# Factory acceptance harness\n\nThis dry-run package validates that the Judge/Manager produced concrete requirements and that no external side effects are enabled before contract, client-input and account gates are complete.\n\nA passing sandbox is a preflight result, not a claim that the final client deliverable has already been produced.\n"},
+      {path:"project/README.md",language:"markdown",content:"# Automation Factory generated project\n\nInternal preflight package generated from the Manager specification. It is intentionally side-effect-free. After contract/payment and required client inputs are secured, the production worker builds the job-specific deliverables and QC package.\n"}
     );
   }
-  return {code_worker_version:"code-worker-v2",status:"source_generated",implementation_level:isCommerceMigration?"runnable_job_specific_package":"runnable_generic_scaffold",project_kind:"node-esm",files,file_count:files.length,test_execution:"sandbox_runner_available",test_runner:"github-actions:sandbox-runner-v1",test_command:"npm test",external_side_effects:false,note:"Source and tests are generated in Cloudflare Worker; execution is delegated to the isolated GitHub Actions runner. Production packages remain side-effect-free until explicit user approval and authorized client access."};
+  return {code_worker_version:"code-worker-v2.2",status:"source_generated",implementation_level:isCommerceMigration?"runnable_job_specific_package":(isAutomation?"runnable_generic_scaffold":"acceptance_harness"),project_kind:"node-esm",files,file_count:files.length,test_execution:"sandbox_runner_available",test_runner:"github-actions:sandbox-runner-v1",test_command:"npm test",external_side_effects:false,note:"Every Judge-approved factory job receives an executable, side-effect-free sandbox package. For non-code work the sandbox is an acceptance preflight only; production remains gated on contract/payment and required client inputs."};
 }
 
 function sandboxBundle(opportunityId, plan) {
@@ -1110,7 +1112,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1172,7 +1174,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1806,7 +1808,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.1"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
