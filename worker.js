@@ -630,7 +630,8 @@ function qcPlan(plan) {
     {id:"QC02",name:"internal_artifacts_declared",pass:rt.artifact_count>0},
     {id:"QC03",name:"external_side_effects_blocked",pass:rt.external_side_effects===false&&gen.external_side_effects===false},
     {id:"QC03A",name:"internal_artifacts_generated",pass:gen.generated_count>0},
-    {id:"QC04",name:"acceptance_criteria_present",pass:(spec.acceptance_criteria||[]).length>0},\n    {id:"QC04A",name:"generated_code_keeps_external_actions_disabled",pass:cw.status==="not_applicable"||cw.external_side_effects===false},
+    {id:"QC04",name:"acceptance_criteria_present",pass:(spec.acceptance_criteria||[]).length>0},
+    {id:"QC04A",name:"generated_code_keeps_external_actions_disabled",pass:cw.status==="not_applicable"||cw.external_side_effects===false},
     {id:"QC05",name:"external_actions_require_user_approval",pass:plan?.worker_execution?.next_gate==="user_approval_before_any_external_action"}
   ];
   return {qc_version:"qc-v1",status:checks.every(x=>x.pass)?"preflight_pass":"preflight_blocked",checks,passed:checks.filter(x=>x.pass).length,total:checks.length,note:"QC v1 validates the internal build manifest and safety gates. It does not claim client-side acceptance before authorized external integration tests."};
