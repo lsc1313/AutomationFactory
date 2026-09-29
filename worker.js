@@ -756,6 +756,9 @@ async function finishEtsyOAuth(request,env) {
   const st=await env.DB.prepare("SELECT * FROM oauth_states WHERE state=? AND provider=\"etsy\"").bind(state).first();
   if(!st)return html("<h2>Etsy 연결 실패</h2><p>만료되었거나 알 수 없는 연결 요청입니다.</p>",400);
   if(Date.parse(st.expires_at)<Date.now()){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 실패</h2><p>연결 요청이 만료되었습니다. Money Scout에서 다시 연결해주세요.</p>",400)}
+  const opportunity=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(st.opportunity_id).first();
+  if(!opportunity){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 실패</h2><p>일감 정보를 찾을 수 없습니다.</p>",404)}
+  const deal=await getContractPaymentGate(env,opportunity); if(!deal.ready){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 중단</h2><p>계약·결제 Gate가 더 이상 준비 상태가 아닙니다. Money Scout에서 계약/결제 상태를 다시 확인해주세요.</p>",409)}
   if(oauthError||!code){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();const msg=String(url.searchParams.get("error_description")||oauthError||"Authorization was not completed.").replace(/[<>&\"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));return html("<h2>Etsy 연결 취소</h2><p>"+msg+"</p>",400)}
   const verifierObj=await decryptClientSecrets(env,st.verifier_enc||""), verifier=verifierObj.code_verifier;
   const keystring=String(env.ETSY_KEYSTRING||env.ETSY_CLIENT_ID||"").trim(), sharedSecret=String(env.ETSY_SHARED_SECRET||"").trim();
