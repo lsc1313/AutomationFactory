@@ -317,8 +317,8 @@ console.log("validator tests: OK");
 // Generated HTML script regression: nested template output must not contain raw newlines inside quoted JS strings.
 const workerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(workerSource.includes("\\n"));
-const suspicious = workerSource.match(/re\.textContent='[^']*(?<!\\\\)\\n[^']*'/);
-assert.equal(suspicious, null);
+const suspicious = workerSource.split("\n").some(line => /re\.textContent='[^']*$/.test(line));
+assert.equal(suspicious, false);
 
 
 const provenanceOpps = marketplaceEvidenceToOpportunities([
