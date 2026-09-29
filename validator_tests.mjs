@@ -69,24 +69,13 @@ assert.equal(realClaim.assignment, "application");
 
 const demandContext = issueDemandContext({
   title: "Feature: Expenses CSV export",
-  body: "## Today
-No CSV export exists.
-
-## Proposal
-Add CSV export.
-
-" + "unrelated ".repeat(300)
+  body: `## Today\nNo CSV export exists.\n\n## Proposal\nAdd CSV export.\n\n` + "unrelated ".repeat(300)
 });
 assert.match(demandContext, /CSV export/i);
 
 const positionPaperContext = issueDemandContext({
   title: "The Political Economy of Structural Computation",
-  body: "Draft v1.0 — position paper
-
-## Abstract
-This paper addresses governance.
-
-" + "spreadsheet automation ".repeat(200)
+  body: `Draft v1.0 — position paper\n\n## Abstract\nThis paper addresses governance.\n\n` + "spreadsheet automation ".repeat(200)
 });
 assert.equal(isDemandDocumentNoise(positionPaperContext), true);
 
