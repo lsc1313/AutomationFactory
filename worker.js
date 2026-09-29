@@ -1041,6 +1041,8 @@ function applicationPriority(row,draft) {
   if(/(?:wordpress|cms|server|hosting|database|mysql|production environment|live environment|backend).{0,120}(?:access|credentials|login|admin|ssh|ftp|database|modify|optimi[sz]|tune|debug|profile|audit)/i.test(text)||/(?:access|credentials|login|admin|ssh|ftp).{0,120}(?:wordpress|cms|server|hosting|database|mysql|backend)/i.test(text))environmentDependencySignals.push("client_runtime_access");
   if(/(?:slow quer(?:y|ies)|query monitor|new relic|indexes?|wp_options|autoload|plugin performance|theme code|server response|backend processing)/i.test(text))environmentDependencySignals.push("live_runtime_diagnostics");
   if(/(?:benchmark|before and after|performance metrics?|response time|load time).{0,120}(?:traffic|production|live|improv|reduce|cut|faster)|(?:cut|reduce|improve).{0,100}(?:response time|load time|processing time).{0,80}(?:half|%|percent)/i.test(text))environmentDependencySignals.push("live_performance_acceptance");
+  if(/(?:my|our|the client(?:\'s)?)\s+(?:hosting|server|domain)|(?:hosting|server|domain).{0,100}(?:my|our|client)|(?:deploy|migrat|transfer|move|upload|install|set\s*up).{0,120}(?:hosting|server|domain)|(?:point|connect|configure|change).{0,100}(?:domain|dns|nameserver)/i.test(text))environmentDependencySignals.push("client_hosting_or_domain");
+  if(/(?:screen\s*share|screenshare|video\s*call|zoom\s*call|handover\s*call|hand[- ]?over.{0,60}call|walk\s+me\s+through|walkthrough\s+call)/i.test(text))environmentDependencySignals.push("synchronous_handover_required");
   const independentDeliveryHardHold=externalWorkspaceSignals.length>0||environmentDependencySignals.length>0;
   const scopeSignals=[];
   if(/production.?ready|end.?to.?end|full.?stack|complete (?:system|platform|website|application)|natural.?language processing|live agent|documentation|training material/i.test(text))scopeSignals.push("multi_component_scope");
@@ -1788,6 +1790,8 @@ async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudge
     if(!deal.ready){
       const canAutoBid=String(row.source||"")==="freelancer_projects"&&String(deal.gate?.application_status||"not_applied")==="not_applied";
       if(canAutoBid&&autoActions&&consume()){
+        const preBidDraft=applicationDraft(row), preBidPriority=applicationPriority(row,preBidDraft);
+        if(preBidPriority.hard_hold)return managerSaveState(env,id,{stage:"auto_held",status_label:"⏸️ 자동보류 · 입찰 직전 안전 게이트",next_action:"최신 원문/조건 기준으로 자동입찰 차단",last_action:"prebid_safety_hold"});
         const center=await applicationCenterRows(env);
         const selected=(center.selected||[]).some(x=>String(x.row?.opportunity_id||"")===String(id));
         if(selected){
