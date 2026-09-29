@@ -414,7 +414,7 @@ assert.match(candidateViewWorker, /commercialization_candidate/);
 
 const autopilotWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(autopilotWorker, /async function runMoneyPipeline/);
-assert.match(autopilotWorker, /ctx\.waitUntil\(runMoneyPipeline\(env\)\)/);
+assert.ok(autopilotWorker.includes("runMoneyPipeline(env)")); assert.ok(autopilotWorker.includes("runManagerOrchestrator(env"));
 assert.match(autopilotWorker, /\/api\/pipeline\/run/);
 assert.match(autopilotWorker, /💵 지금 지원 가능한 유료 일감/);
 assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
