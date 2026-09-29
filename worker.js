@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.24.0";
+const APP_VERSION = "0.25.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -735,7 +735,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.24.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.25.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -1011,8 +1011,27 @@ async function savePlatformAccountReady(env, provider, ready=true) {
   return getPlatformConnection(env,provider);
 }
 
+async function verifyFreelancerPat(env) {
+  const token=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
+  if(!token)return {ok:false,connected:false,error:"FREELANCER_ACCESS_TOKEN secret missing"};
+  const url="https://www.freelancer.com/api/users/0.1/self/";
+  try{
+    const res=await fetch(url,{headers:{"freelancer-oauth-v1":token,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.25.0"}});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)return {ok:false,connected:false,status:res.status,error:String(data?.message||data?.error||("Freelancer API HTTP "+res.status))};
+    const ts=nowIso(),current=await getPlatformConnection(env,"freelancer");
+    const metadata={...(current.metadata||{}),verified_at:ts,token_expires_hint:"Freelancer PAT is time-limited; renew before expiry."};
+    await env.DB.prepare(`INSERT INTO platform_connections(provider,account_status,api_status,auth_method,metadata_json,created_at,updated_at)
+      VALUES('freelancer','ready','connected','personal_access_token',?,?,?)
+      ON CONFLICT(provider) DO UPDATE SET account_status='ready',api_status='connected',auth_method='personal_access_token',metadata_json=excluded.metadata_json,updated_at=excluded.updated_at`)
+      .bind(JSON.stringify(metadata),ts,ts).run();
+    return {ok:true,connected:true,provider:"freelancer",auth_method:"personal_access_token",verified_at:ts};
+  }catch(err){return {ok:false,connected:false,error:String(err?.message||err)};}
+}
+
 async function platformConnectionCenter(env) {
-  const freelancer=await getPlatformConnection(env,"freelancer");
+  let freelancer=await getPlatformConnection(env,"freelancer");
+  if(env.FREELANCER_ACCESS_TOKEN && freelancer.api_status!=="connected"){const check=await verifyFreelancerPat(env);if(check.connected)freelancer=await getPlatformConnection(env,"freelancer");}
   return {ok:true,providers:[{
     provider:"freelancer",label:"Freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status,
     connected:freelancer.api_status==="connected",auth_method:freelancer.auth_method||"",
@@ -1234,7 +1253,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.24.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.25.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1296,7 +1315,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.24.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.25.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1864,6 +1883,10 @@ export default {
         const denied=requireAdmin(request,env);if(denied)return denied;
         return json(await platformConnectionCenter(env));
       }
+      if(path==="/api/platform-connections/freelancer/verify"&&request.method==="POST"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        return json(await verifyFreelancerPat(env));
+      }
       if(path==="/api/platform-connections/freelancer/account-ready"&&request.method==="POST"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const body=await request.json().catch(()=>({}));
@@ -1987,7 +2010,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.24.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.25.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
