@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.19.0";
+const APP_VERSION = "0.19.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -714,7 +714,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.19.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.19.1",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -777,28 +777,29 @@ async function finishEtsyOAuth(request,env) {
 
 function contractPaymentProfile(row) {
   const source=String(row?.source||"");
-  if(source==="freelancer_projects") return {application_url:row?.url||"",platform:"Freelancer.com",application_method:"Open the original project and submit/confirm the platform bid",protection_hint:"Before client-account work, confirm the project is awarded and the agreed payment is secured through the platform.",payout_route_hint:"Freelancer platform balance → your configured withdrawal method",default_protection:"platform_escrow"};
+  if(source==="freelancer_projects") return {application_url:row?.url||"",platform:"Freelancer.com",application_method:"Open the original project and submit/confirm the platform bid",protection_hint:"Before client-account work, confirm the project is awarded and the agreed payment is secured through the platform.",payout_route_hint:"Freelancer.com → your configured withdrawal method",default_protection:"unknown"};
   if(source==="agent_bounties") return {application_url:row?.url||"",platform:"Agent Bounties",application_method:"Claim/accept the bounty according to the bounty page",protection_hint:"Confirm assignment/claim status and the bounty payout conditions before production.",payout_route_hint:"Bounty payout → configured wallet",default_protection:"onchain_or_bounty"};
   if(source==="github_paid") return {application_url:row?.url||"",platform:"GitHub bounty / issuer",application_method:"Follow the issue/bounty application instructions",protection_hint:"Verify the payer, amount, assignment and payout protection before production.",payout_route_hint:"Issuer-defined payout route",default_protection:"unknown"};
   return {application_url:row?.url||"",platform:source||"External platform",application_method:"Use the original application/support page",protection_hint:"Confirm the agreement and secure payment before production.",payout_route_hint:"Platform/customer-defined payout route",default_protection:"unknown"};
 }
 
 function contractPaymentReady(gate) {
-  return gate?.contract_status==="accepted" && (gate?.payment_status==="secured" || gate?.payment_status==="prepaid" || gate?.payment_status==="paid");
+  return gate?.contract_status==="accepted" && (gate?.payment_status==="secured" || gate?.payment_status==="prepaid" || gate?.payment_status==="paid") && Number(gate?.gross_amount)>0 && Boolean(String(gate?.currency||"").trim());
 }
 
 async function getContractPaymentGate(env,row) {
   const profile=contractPaymentProfile(row);
   const saved=await env.DB.prepare("SELECT * FROM contract_payment_gates WHERE opportunity_id=?").bind(row.opportunity_id).first();
-  const gross=saved?.gross_amount ?? row.budget_max ?? row.budget_min ?? null;
+  const gross=saved?.gross_amount ?? null;
   const currency=String(saved?.currency||row.currency||"");
+  const advertised_budget={min:row.budget_min??null,max:row.budget_max??null,currency:String(row.currency||"")};
   const fee=saved?.fee_estimate ?? null;
   const net=saved?.net_estimate ?? ((gross!=null&&fee!=null)?Math.max(0,Number(gross)-Number(fee)):null);
   const gate={
     opportunity_id:row.opportunity_id,platform:saved?.platform||profile.platform,
     application_status:saved?.application_status||"not_applied",contract_status:saved?.contract_status||"not_agreed",
     payment_status:saved?.payment_status||"unsecured",payment_protection:saved?.payment_protection||profile.default_protection,
-    gross_amount:gross,currency,fee_estimate:fee,net_estimate:net,
+    gross_amount:gross,currency,fee_estimate:fee,net_estimate:net,advertised_budget,
     payout_route:saved?.payout_route||profile.payout_route_hint,payout_destination:saved?.payout_destination||"",
     external_reference:saved?.external_reference||"",evidence_url:saved?.evidence_url||"",note:saved?.note||"",
     verified_at:saved?.verified_at||"",updated_at:saved?.updated_at||null
@@ -1098,7 +1099,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1158,7 +1159,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1682,7 +1683,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.19.1"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
