@@ -534,8 +534,8 @@ assert.ok(builderReady.includes('externalCostStatus=externalCostKnown?"source_in
 
 // v0.8.6 source-of-truth regression
 const managerSourceFix = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerSourceFix.includes('const raw=String(row.title||"")+" "+String(row.description||"");'));
-assert.ok(!managerSourceFix.includes('const raw=String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"");'));
+assert.ok(managerSourceFix.includes('String(row.title||"")+" "+String(row.description||"'));
+assert.ok(!managerSourceFix.includes('String(row.description||"")+" "+String(row.skills||"'));
 assert.ok(managerSourceFix.includes("Manager '+esc(p.manager_version)"));
 assert.ok(managerSourceFix.includes("p.build_spec?.spec_version"));
 
