@@ -943,14 +943,14 @@ function applicationDraft(row) {
 }
 
 async function applicationCenterRows(env) {
-  const rows=(await env.DB.prepare(\`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,
+  const rows=(await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,
     g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
     FROM opportunities o
     JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
     LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
     WHERE o.user_state!='reject' AND m.stage='waiting_contract_payment' AND COALESCE(g.application_status,'not_applied')='not_applied'
     AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
-    ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50\`).all()).results||[];
+    ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all()).results||[];
   return rows.map(row=>({row,draft:applicationDraft(row)}));
 }
 
