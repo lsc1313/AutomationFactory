@@ -416,7 +416,7 @@ const autopilotWorker = fs.readFileSync(new URL("./worker.js", import.meta.url),
 assert.match(autopilotWorker, /async function runMoneyPipeline/);
 assert.ok(autopilotWorker.includes("runMoneyPipeline(env)")); assert.ok(autopilotWorker.includes("runManagerOrchestrator(env"));
 assert.match(autopilotWorker, /\/api\/pipeline\/run/);
-assert.match(autopilotWorker, /💵 지금 지원 가능한 유료 일감/);
+assert.match(autopilotWorker, /💰 수익 실행 대시보드/);
 assert.doesNotMatch(autopilotWorker, /<button class="scan" id="scanBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="rejudgeBtn">/);
 assert.doesNotMatch(autopilotWorker, /<button id="validateBtn">/);
@@ -439,7 +439,7 @@ assert.match(verifiedMoneyWorker, /verifiedMissing\.push\("independent_demand"\)
 const paidWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 const paidJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8");
 assert.match(paidWorker, /\/api\/paid-jobs/);
-assert.match(paidWorker, /지금 지원 가능한 유료 일감/);
+assert.match(paidWorker, /💰 수익 실행 대시보드/);
 assert.match(paidJudge, /actionable_paid_job/);
 assert.match(paidJudge, /work-spec-gate-v0\.7\.8/);
 
