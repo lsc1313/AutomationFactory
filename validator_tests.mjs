@@ -607,3 +607,14 @@ assert.ok(artifactGeneratorV1.includes("generated_internal_draft"));
 assert.ok(artifactGeneratorV1.includes("internal_artifacts_generated"));
 assert.ok(artifactGeneratorV1.includes("External account actions require user approval"));
 assert.ok(artifactGeneratorV1.includes("🛠 Artifact Generator"));
+
+// v0.14.0 Code Worker v1 contract
+const codeWorkerV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(codeWorkerV1.includes("code-worker-v1"));
+assert.ok(codeWorkerV1.includes("source_generated"));
+assert.ok(codeWorkerV1.includes("project/package.json"));
+assert.ok(codeWorkerV1.includes("project/src/index.js"));
+assert.ok(codeWorkerV1.includes("project/test/spec.test.js"));
+assert.ok(codeWorkerV1.includes("sandbox_required"));
+assert.ok(codeWorkerV1.includes("tests have not been executed inside Cloudflare Worker"));
+assert.ok(codeWorkerV1.includes("💻 Code Worker"));
