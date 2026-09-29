@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.10.0";
+const APP_VERSION = "0.11.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -567,6 +567,19 @@ function factoryBuilder(plan) {
   return {builder_version:"factory-builder-v1",source_spec_version:plan?.build_spec?.spec_version||null,status:"blueprint_ready",execution_policy:"user_approval_required_before_external_actions",tasks,workers:[...new Set(tasks.map(x=>x.worker))],ready_tasks:tasks.filter(x=>x.status==="ready_for_build").length,blocked_tasks:tasks.filter(x=>x.status==="blocked_by_client_access").length,qc:{required:true,checks:["All Manager acceptance criteria mapped to deliverables","No external action performed without required authorization","End-to-end acceptance evidence captured before delivery"]}};
 }
 
+function workerExecutionPlan(plan) {
+  const fb=plan?.factory_builder||factoryBuilder(plan), jobs=(fb.tasks||[]).map(t=>{
+    const safe=t.status==="ready_for_build";
+    const recipes={
+      "content-transform-worker":["Define deterministic image/title/tag transformation rules","Prepare reusable transformation templates","Create fixture-based validation cases"],
+      "documentation-worker":["Generate hand-over document outline from Manager requirements","Map each requirement to operation/update instructions","Prepare acceptance checklist"],
+      "implementation-worker":["Create project skeleton","Implement requirements as isolated modules","Add automated tests and run instructions"]
+    };
+    return {task_id:t.id,worker:t.worker,title:t.title,state:safe?"queued_internal_build":"waiting_for_client_access",external_action_allowed:false,recipe:safe?(recipes[t.worker]||["Prepare implementation design and fixtures","Build locally without external side effects","Produce testable artifact for QC"]):[],expected_outputs:t.outputs||[],blocked_by:t.blocked_by||null};
+  });
+  return {execution_version:"worker-execution-v1",mode:"safe_internal_only",status:"execution_plan_ready",jobs,queued_internal_builds:jobs.filter(x=>x.state==="queued_internal_build").length,waiting_for_client_access:jobs.filter(x=>x.state==="waiting_for_client_access").length,next_gate:"user_approval_before_any_external_action",note:"This stage prepares internal build artifacts only; it does not contact clients, log into client accounts, publish listings, or submit work."};
+}
+
 async function listRuns(env) {
   return (await env.DB.prepare(`
     SELECT * FROM scout_runs ORDER BY started_at DESC LIMIT 20
@@ -630,7 +643,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.10.0 · Factory Builder v1 · 작업그래프 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.11.0 · Worker Execution v1 · 안전 내부제작큐 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -736,9 +749,10 @@ async function showManagerPlan(btn){
   const req=(p.deliverables||p.requested_functions||[]).map(x=>'• '+esc(x)).join('<br>')||'• 명세 확인 필요';
   const qs=(p.clarification_questions||[]).map((x,i)=>(i+1)+'. '+esc(x)).join('<br>');
   const fb=p.factory_builder||{}; const bt=(fb.tasks||[]).map(t=>'• '+esc(t.id)+' · '+esc(t.worker)+' · '+esc(t.title)+' ['+esc(t.status)+']'+(t.blocked_by?' — '+esc(t.blocked_by):'')).join('<br>');
+  const wx=p.worker_execution||{}; const wj=(wx.jobs||[]).map(j=>'• '+esc(j.task_id)+' · '+esc(j.worker)+' ['+esc(j.state)+']').join('<br>');
   const d=p.input_diagnostics||{};
   const diag='<details style="margin:10px 0"><summary>🔎 Manager 실제 입력 진단</summary><div class="meta" style="white-space:pre-wrap;margin-top:8px">TITLE: '+esc(d.title||'')+'\\nDESCRIPTION LENGTH: '+esc(d.description_length)+'\\nDESCRIPTION: '+esc(d.description||'')+'\\nSKILLS: '+esc(d.skills||'')+'\\nURL: '+esc(d.url||'')+'\\nANALYSIS LENGTH: '+esc(d.analysis_text_length)+'\\nANALYSIS PREVIEW: '+esc(d.analysis_preview||'')+'</div></details>';
-  el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc(p.build_spec?.spec_version||'no-build-spec')+'</div>'+diag+'<b>🧩 요구 기능</b><br>'+req+'<br><br><b>🏭 Factory Builder</b><br>'+esc(fb.builder_version||'')+' · 준비 '+esc(fb.ready_tasks||0)+' · 외부권한 대기 '+esc(fb.blocked_tasks||0)+'<br>'+bt+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
+  el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc(p.build_spec?.spec_version||'no-build-spec')+'</div>'+diag+'<b>🧩 요구 기능</b><br>'+req+'<br><br><b>🏭 Factory Builder</b><br>'+esc(fb.builder_version||'')+' · 준비 '+esc(fb.ready_tasks||0)+' · 외부권한 대기 '+esc(fb.blocked_tasks||0)+'<br>'+bt+'<br><br><b>⚙️ Worker Execution</b><br>'+esc(wx.execution_version||'')+' · 내부 제작큐 '+esc(wx.queued_internal_builds||0)+' · 고객권한 대기 '+esc(wx.waiting_for_client_access||0)+'<br>'+wj+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
  }catch(err){el.innerHTML='<div class="empty error">작업계획 조회 실패: '+esc(err.message)+'</div>';}
  finally{btn.disabled=false;btn.textContent=old;}
 }
@@ -792,7 +806,7 @@ export default {
         if(!row) return json({ok:false,error:"Paid job not found"},404);
         let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
         if(!bd.actionable_paid_job||!bd.factory_fulfillable) return json({ok:false,error:"Factory-ready paid job only"},400);
-        const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); return json(plan);
+        const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); return json(plan);
       }
       if (path === "/api/paid-jobs") {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
