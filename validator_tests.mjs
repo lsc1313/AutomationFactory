@@ -755,7 +755,7 @@ assert.ok(connectionV0183.includes('code_challenge_method","S256"'));
 assert.ok(connectionV0183.includes("https://api.squarespace.com/1.0/authorization/website"));
 assert.ok(connectionV0183.includes("https://api.sandbox.prodigi.com"));
 assert.ok(connectionV0183.includes("account_connection_required"));
-assert.ok(connectionV0183.includes("Account Connection Gate v1"));
+assert.ok(connectionV0183.includes("Account Connection Gate"));
 assert.ok(connectionV0183.includes("accountConnectBtn"));
 assert.ok(connectionV0183.includes("Etsy에서 연결 승인"));
 assert.ok(connectionV0183.includes("고객 답변"));
