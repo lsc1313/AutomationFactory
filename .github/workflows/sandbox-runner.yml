@@ -1,6 +1,19 @@
 name: Sandbox Runner v1
 on:
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: Dynamic sandbox run id
+        required: false
+        type: string
+      bundle_url:
+        description: Public bundle endpoint
+        required: false
+        type: string
+      callback_url:
+        description: Result callback endpoint
+        required: false
+        type: string
   pull_request:
     branches: [main]
     paths:
@@ -12,15 +25,50 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: sandbox/generated
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Materialize dynamic bundle
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_url != '' }}
+        env:
+          BUNDLE_URL: ${{ inputs.bundle_url }}
+        run: |
+          mkdir -p /tmp/job-sandbox
+          curl --fail --silent --show-error "$BUNDLE_URL" -o /tmp/bundle.json
+          node - <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const b=JSON.parse(fs.readFileSync('/tmp/bundle.json','utf8'));
+          if(b.external_actions_allowed!==false) throw new Error('external actions must be disabled');
+          if(!Array.isArray(b.files)||!b.files.length) throw new Error('empty bundle');
+          for(const f of b.files){
+            const rel=String(f.path||'');
+            if(!rel||rel.startsWith('/')||rel.includes('..')) throw new Error('unsafe path');
+            const out=path.join('/tmp/job-sandbox',rel);
+            fs.mkdirSync(path.dirname(out),{recursive:true});
+            fs.writeFileSync(out,String(f.content||''));
+          }
+          NODE
+      - name: Use fixture for pull request validation
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.bundle_url == '' }}
+        run: cp -R sandbox/generated/. /tmp/job-sandbox/
       - name: Verify sandbox package has no dependencies
+        working-directory: /tmp/job-sandbox
         run: node -e "const p=require('./package.json'); if(Object.keys(p.dependencies||{}).length||Object.keys(p.devDependencies||{}).length) process.exit(1)"
       - name: Execute generated project tests
+        id: tests
+        working-directory: /tmp/job-sandbox
         run: npm test
+      - name: Report result
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.callback_url != '' }}
+        env:
+          CALLBACK_URL: ${{ inputs.callback_url }}
+          CALLBACK_TOKEN: ${{ secrets.SANDBOX_CALLBACK_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          test -n "$CALLBACK_TOKEN" || exit 1
+          node -e "require('fs').writeFileSync('/tmp/result.json',JSON.stringify({run_id:process.env.RUN_ID,conclusion:process.env.TEST_OUTCOME==='success'?'success':'failure',github_run_id:process.env.GH_RUN_ID,log_summary:'npm test '+process.env.TEST_OUTCOME}))"
+          curl --fail --silent --show-error -X POST "$CALLBACK_URL" -H "Authorization: Bearer $CALLBACK_TOKEN" -H "Content-Type: application/json" --data-binary @/tmp/result.json
