@@ -1386,7 +1386,7 @@ async function showDealGate(btn){
       '<div class="intakeField"><label>계약/마일스톤/바운티 참조번호 (선택)</label>'+input('external_reference',g.external_reference,'프로젝트/마일스톤/Claim ID')+'</div>'+
       '<div class="intakeField"><label>결제 확보 근거 URL (선택)</label>'+input('evidence_url',g.evidence_url,'플랫폼 계약/마일스톤 URL')+'</div>'+
       '<div class="intakeField"><label>메모 (선택)</label><textarea data-deal-field="note">'+esc(g.note||'')+'</textarea></div>'+
-      '<button class="dealGateSaveBtn" data-job-id="'+esc(id)+'">💾 계약·결제 상태 저장</button> <a class="link" target="_blank" rel="noopener" href="'+esc(p.application_url||'')+'"></a>'+
+      '<button class="dealGateSaveBtn" data-job-id="'+esc(id)+'">💾 계약·결제 상태 저장</button>'+(p.application_url?' <a class="link" target="_blank" rel="noopener" href="'+esc(p.application_url)+'">지원/계약 페이지 열기</a>':'')+
       '<div class="intakeHelp">이 Gate는 자동 입금을 받는 기능이 아니라, 실제 제작 전에 계약과 결제 확보를 확인하는 안전장치입니다.</div></div>';
   }catch(err){el.innerHTML='<div class="empty error">계약·결제 조회 실패: '+esc(err.message)+'</div>';}
   finally{btn.disabled=false;btn.textContent=old;}
