@@ -526,7 +526,7 @@ assert.ok(managerV3.includes("p.external_cost_status===\'needs_validation\'||p.e
 
 // v0.8.5 Builder-ready spec
 const builderReady = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(builderReady.includes("factory-build-spec-v1"));
+assert.ok(builderReady.includes("factory-build-spec-v2"));
 assert.ok(builderReady.includes("functional_requirements"));
 assert.ok(builderReady.includes("acceptance_criteria"));
 assert.ok(builderReady.includes("corePriority"));
