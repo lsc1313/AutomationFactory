@@ -964,7 +964,8 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
 {
  const workerSource=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
  assert.ok(workerSource.includes('["released","paid"].includes'));
- assert.ok(workerSource.includes("payment_status='paid'"));
+ assert.ok(workerSource.includes("UPDATE contract_payment_gates SET payment_status="));
+ assert.ok(workerSource.includes("released.length"));
  assert.ok(workerSource.includes("INSERT INTO opportunity_outcomes"));
  assert.ok(workerSource.includes("Verified Freelancer milestone release"));
  assert.ok(workerSource.includes('stage:"paid_complete"'));
