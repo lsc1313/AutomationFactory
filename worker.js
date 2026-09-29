@@ -1539,18 +1539,30 @@ export default {
 
       if(path==="/oauth/etsy/callback"&&request.method==="GET")return finishEtsyOAuth(request,env);
 
+      const dealMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/deal$/);
+      if(dealMatch&&(request.method==="GET"||request.method==="POST")){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(dealMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+        if(!bd.actionable_paid_job||!bd.factory_fulfillable)return json({ok:false,error:"Factory-ready paid job only"},400);
+        if(request.method==="GET")return json(await getContractPaymentGate(env,row));
+        const body=await request.json().catch(()=>({})); return json(await saveContractPaymentGate(env,row,body));
+      }
       const connectionsMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections$/);
       if(connectionsMatch&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(connectionsMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
         if(!row)return json({ok:false,error:"Paid job not found"},404);
-        return json({ok:true,...await getAccountConnections(env,row)});
+        const deal=await getContractPaymentGate(env,row);
+        return json({ok:true,...await getAccountConnections(env,row),deal_ready:deal.ready,deal:{contract_status:deal.gate.contract_status,payment_status:deal.gate.payment_status,platform:deal.gate.platform}});
       }
       const connectionActionMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections\/(squarespace|prodigi)$/);
       if(connectionActionMatch&&request.method==="POST"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(connectionActionMatch[1]), provider=connectionActionMatch[2], row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
         if(!row)return json({ok:false,error:"Paid job not found"},404);
+        const deal=await requireContractPaymentGate(env,row); if(deal)return json({ok:false,error:"계약 및 결제 확보가 먼저 필요합니다.",deal},409);
         const body=await request.json().catch(()=>({}));
         const out=provider==="squarespace"?await connectSquarespace(env,row,body.api_key):await connectProdigi(env,row,body.api_key,body.mode||"sandbox");
         return json(out,out.ok?200:400);
@@ -1560,6 +1572,7 @@ export default {
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(etsyStartMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
         if(!row)return json({ok:false,error:"Paid job not found"},404);
+        const deal=await requireContractPaymentGate(env,row); if(deal)return json({ok:false,error:"계약 및 결제 확보가 먼저 필요합니다.",deal},409);
         const out=await startEtsyOAuth(request,env,row); return json(out,out.ok?200:400);
       }
       const intakeMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/intake$/);
