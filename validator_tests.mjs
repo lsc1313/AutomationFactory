@@ -644,15 +644,15 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.17.1"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.18.0"'));
 
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.17.1"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.18.0"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
-assert.ok(productionV017.includes("production-pipeline-v1"));
-assert.ok(productionV017.includes("job-production-bundle-v1"));
+assert.ok(productionV017.includes("production-pipeline-v2"));
+assert.ok(productionV017.includes("job-production-bundle-v2"));
 assert.ok(productionV017.includes("dispatchProduction"));
 assert.ok(productionV017.includes("productionRunBtn"));
 assert.ok(productionV017.includes("🏭 실제 제작"));
@@ -681,3 +681,25 @@ assert.ok(deliveryV0171.includes("job-package-"));
 assert.ok(workflowV0171.includes("actions/upload-artifact@v4"));
 assert.ok(workflowV0171.includes("npm run build --if-present"));
 assert.ok(workflowV0171.includes("job-package-${{ inputs.run_id }}"));
+
+
+// v0.18.0 Client Intake v1 contract
+const intakeV018 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(intakeV018.includes("CREATE TABLE IF NOT EXISTS client_intakes"));
+assert.ok(intakeV018.includes("client-intake-v1"));
+assert.ok(intakeV018.includes("clientIntakeSpec"));
+assert.ok(intakeV018.includes("encryptClientSecrets"));
+assert.ok(intakeV018.includes("AES-GCM"));
+assert.ok(intakeV018.includes("AutomationFactory-ClientVault-v1"));
+assert.ok(intakeV018.includes("secret_present"));
+assert.ok(intakeV018.includes("Secret values are intentionally excluded from this package."));
+assert.ok(intakeV018.includes("clientIntakeBtn"));
+assert.ok(intakeV018.includes("clientIntakeSaveBtn"));
+assert.ok(intakeV018.includes("👤 고객정보"));
+assert.ok(intakeV018.includes("/intake"));
+assert.ok(intakeV018.includes("client_intake_required"));
+assert.ok(intakeV018.includes("secure_execution_approval"));
+assert.ok(intakeV018.includes("client/CLIENT_INPUT.json"));
+assert.ok(intakeV018.includes("client/ACCESS_STATUS.md"));
+assert.ok(intakeV018.includes("config/client.json"));
+assert.ok(intakeV018.includes("Secret values are not exported to GitHub Actions artifacts or delivery ZIP files."));
