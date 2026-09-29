@@ -2534,8 +2534,7 @@ export default {
       }
       if (path === "/api/market-candidates") {
         const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'verified_money' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
-        const paidRows=rows.results||[];
-        return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
+        return json(rows.results || []);
       }
       const marketCandidateMatch = path.match(/^\/api\/market-candidates\/([^/]+)$/);
       if (marketCandidateMatch) {
