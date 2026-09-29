@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.28.0";
+const APP_VERSION = "0.29.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -749,7 +749,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.28.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.29.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -1032,7 +1032,7 @@ async function verifyFreelancerConnection(env) {
   let response,payload={};
   try {
     response=await fetch("https://www.freelancer.com/api/users/0.1/self/",{
-      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.28.0"}
+      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.29.0"}
     });
     payload=await response.json().catch(()=>({}));
   } catch { return {ok:false,connected:false}; }
@@ -1050,7 +1050,7 @@ async function freelancerApiRead(env,path) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.28.0"}});
+    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.29.0"}});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1093,7 +1093,7 @@ async function freelancerApiWrite(env,path,body) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.28.0"},body:JSON.stringify(body)});
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.29.0"},body:JSON.stringify(body)});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1137,7 +1137,7 @@ async function platformConnectionCenter(env) {
     provider:"freelancer",label:"Freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status,
     connected:freelancer.api_status==="connected",auth_method:freelancer.auth_method||"",
     next_action:freelancer.api_status==="connected"?"연결 완료":freelancer.account_status==="ready"?"Personal Access Token 연결 확인 필요":"Freelancer 계정 준비 확인",
-    capabilities:freelancer.metadata?.capabilities||{},write_actions_enabled:false,automation_policy:"공식 API/승인된 연동만 사용. 비밀번호 저장·브라우저 자동입찰·CAPTCHA 우회 금지. 입찰·메시지·마일스톤 쓰기는 개별 검증 전 비활성."
+    capabilities:freelancer.metadata?.capabilities||{},write_actions_enabled:true,automation_policy:"공식 API/승인된 연동만 사용. Manager 선별·Preflight·중복방지 게이트를 통과한 Freelancer 입찰만 자동 제출. 메시지·마일스톤 쓰기는 별도 검증 전 비활성."
   }]};
 }
 
@@ -1354,7 +1354,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.28.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.29.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1416,7 +1416,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.28.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.29.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1463,8 +1463,21 @@ async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudge
     if(latestSandbox.status==="dispatch_failed"||(latestSandbox.status==="completed"&&latestSandbox.conclusion!=="success"))return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 샌드박스 예외",next_action:"자동 재시도하지 않음 · 상세에서 오류 확인",last_error:latestSandbox.log_summary||"sandbox failed"});
     if(!(latestSandbox.status==="completed"&&latestSandbox.conclusion==="success"))return managerSaveState(env,id,{stage:"sandbox_wait",status_label:"🧪 샌드박스 상태 확인 중",next_action:"Manager가 다음 주기에 재확인"});
 
-    const deal=await getContractPaymentGate(env,row);
-    if(!deal.ready)return managerSaveState(env,id,{stage:"waiting_contract_payment",status_label:"💳 "+managerDealNext(deal),next_action:(deal.profile?.platform||deal.gate?.platform||"플랫폼")+" 계약·결제 상태를 자동/외부 확인 대기"});
+    let deal=await getContractPaymentGate(env,row);
+    if(!deal.ready){
+      const canAutoBid=String(row.source||"")==="freelancer_projects"&&String(deal.gate?.application_status||"not_applied")==="not_applied";
+      if(canAutoBid&&autoActions&&consume()){
+        const center=await applicationCenterRows(env);
+        const selected=(center.selected||[]).some(x=>String(x.row?.opportunity_id||"")===String(id));
+        if(selected){
+          const bid=await submitFreelancerBid(env,row);
+          if(bid.ok&&bid.submitted)return managerSaveState(env,id,{stage:"waiting_contract_payment",status_label:"📨 자동입찰 완료 · 고객 응답 대기",next_action:"Freelancer 낙찰·Milestone 확인 대기",last_action:"freelancer_bid_submitted"});
+          if(bid.duplicate)return managerSaveState(env,id,{stage:"waiting_contract_payment",status_label:"📨 기존 입찰 확인 · 고객 응답 대기",next_action:"Freelancer 낙찰·Milestone 확인 대기",last_action:"freelancer_bid_already_submitted"});
+          return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 자동입찰 실패",next_action:"입찰 응답 확인 필요",last_error:bid.reason||("HTTP "+String(bid.status||""))});
+        }
+      }
+      return managerSaveState(env,id,{stage:"waiting_contract_payment",status_label:"💳 "+managerDealNext(deal),next_action:(deal.profile?.platform||deal.gate?.platform||"플랫폼")+" 계약·결제 상태를 자동/외부 확인 대기"});
+    }
 
     const plan=paidJobPlan(row), intake=await getClientIntake(env,row,plan);
     if(intake.status!=="ready_for_build")return managerSaveState(env,id,{stage:"waiting_client_answers",status_label:"👤 고객 답변 대기",next_action:"필수 "+(intake.completion?.complete||0)+"/"+(intake.completion?.required||0)+" · 필요한 질문만 고객에게 수집"});
@@ -2112,7 +2125,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.28.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.29.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
