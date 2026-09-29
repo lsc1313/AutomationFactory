@@ -636,3 +636,7 @@ assert.ok(dynamicSandbox.includes('request.headers.get("authorization")!=="Beare
 assert.ok(dynamicSandbox.includes('sandboxRunBtn'));
 assert.ok(dynamicSandbox.includes("method:'POST'"));
 assert.ok(dynamicSandbox.includes('샌드박스 테스트 성공'));
+assert.ok(dynamicSandbox.includes('missing_configuration'));
+assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
+assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
+assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
