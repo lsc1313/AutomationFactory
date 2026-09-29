@@ -1306,7 +1306,7 @@ async function connectAccount(btn){
   try{
     if(provider==="etsy"){
       const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/connections/etsy/start",{method:"POST"});
-      if(d.status==="config_required"){alert("Money Scout Etsy 앱 설정 필요: "+(d.missing_configuration||[]).join(", ")+"\n고객이 입력할 값이 아니라 Automation Factory 운영 설정입니다.");return;}
+      if(d.status==="config_required"){alert("Money Scout Etsy 앱 설정 필요: "+(d.missing_configuration||[]).join(", ")+"\\n고객이 입력할 값이 아니라 Automation Factory 운영 설정입니다.");return;}
       if(!d.authorization_url)throw new Error(d.error||"Etsy authorization URL missing");
       location.href=d.authorization_url; return;
     }
