@@ -2318,7 +2318,7 @@ export default {
           security_mode: env.ADMIN_TOKEN ? "관리키 보호" : "OPEN(테스트용)"
         });
       }
-      const evidenceMatch = path.match(/^return json(rows.results || []);/api\/opportunities\/([^/]+)\/evidence$/);
+      const evidenceMatch = path.match(/^\/api\/opportunities\/([^/]+)\/evidence$/);
       if (evidenceMatch && request.method === "GET") {
         const id = decodeURIComponent(evidenceMatch[1]);
         const rows = await env.DB.prepare(`SELECT evidence_key AS evidence_id,source,app_id,app_name,evidence_kind,evidence_quality,complaint_bearing,rating,text,url,posted_at FROM opportunity_evidence WHERE opportunity_id=? ORDER BY complaint_bearing DESC, rating ASC LIMIT 20`).bind(id).all();
