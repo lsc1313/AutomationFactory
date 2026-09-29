@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.33.0";
+const APP_VERSION = "0.34.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -101,6 +101,16 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_production_runs_opportunity ON production_runs(opportunity_id, created_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS delivery_approvals (
+      opportunity_id TEXT PRIMARY KEY,
+      production_run_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      delivery_message TEXT NOT NULL DEFAULT '',
+      approved_at TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_delivery_approvals_status ON delivery_approvals(status, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_intakes (
       opportunity_id TEXT PRIMARY KEY,
       public_answers_json TEXT NOT NULL DEFAULT '{}',
@@ -769,7 +779,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.33.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.34.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -1052,7 +1062,7 @@ async function verifyFreelancerConnection(env) {
   let response,payload={};
   try {
     response=await fetch("https://www.freelancer.com/api/users/0.1/self/",{
-      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.33.0"}
+      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.34.0"}
     });
     payload=await response.json().catch(()=>({}));
   } catch { return {ok:false,connected:false}; }
@@ -1070,7 +1080,7 @@ async function freelancerApiRead(env,path) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.33.0"}});
+    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.34.0"}});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1085,7 +1095,7 @@ async function freelancerApiForm(env,path,fields) {
       if(Array.isArray(value))for(const item of value)form.append(key+"[]",String(item));
       else if(value!==undefined&&value!==null)form.append(key,String(value));
     }
-    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.33.0"},body:form});
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.34.0"},body:form});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1236,7 +1246,7 @@ async function freelancerApiWrite(env,path,body) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.33.0"},body:JSON.stringify(body)});
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.34.0"},body:JSON.stringify(body)});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1497,7 +1507,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.33.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.34.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1559,10 +1569,50 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.33.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.34.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
+}
+
+
+function defaultDeliveryMessage(row, production) {
+  const title=String(row?.title||"project").trim();
+  return [
+    "Hi,",
+    "",
+    "The agreed work for “"+title+"” has been completed and passed the Automation Factory production checks.",
+    "I have prepared the delivery package for your review.",
+    "",
+    "Please review the files and let me know if you need any adjustments within the agreed scope.",
+    "",
+    "Thank you."
+  ].join("\n");
+}
+
+async function getDeliveryApproval(env,row) {
+  const production=await env.DB.prepare("SELECT run_id,status,conclusion,bundle_json,package_summary_json,updated_at FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(row.opportunity_id).first();
+  if(!production||production.status!=="completed"||production.conclusion!=="success")return {ok:true,status:"production_not_ready",approved:false};
+  let bundle={};try{bundle=JSON.parse(production.bundle_json||"{}")}catch{}
+  const files=(bundle.files||[]).map(f=>({path:String(f.path||""),bytes:new TextEncoder().encode(String(f.content||"")).length}));
+  let saved=await env.DB.prepare("SELECT * FROM delivery_approvals WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  if(!saved||saved.production_run_id!==production.run_id){
+    const ts=nowIso(),message=defaultDeliveryMessage(row,production);
+    await env.DB.prepare("INSERT INTO delivery_approvals(opportunity_id,production_run_id,status,delivery_message,approved_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET production_run_id=excluded.production_run_id,status='pending',delivery_message=excluded.delivery_message,approved_at='',updated_at=excluded.updated_at")
+      .bind(row.opportunity_id,production.run_id,"pending",message,"",saved?.created_at||ts,ts).run();
+    saved=await env.DB.prepare("SELECT * FROM delivery_approvals WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  }
+  return {ok:true,status:saved.status,approved:saved.status==="approved",production_run_id:production.run_id,delivery_message:saved.delivery_message,files,external_actions_allowed:false,updated_at:saved.updated_at};
+}
+
+async function approveDelivery(env,row,body={}) {
+  const current=await getDeliveryApproval(env,row);
+  if(current.status==="production_not_ready")return {ok:false,status:"production_not_ready",error:"Successful production is required before delivery approval."};
+  const approved=body.approved===true, status=approved?"approved":"pending", ts=nowIso();
+  const message=String(body.delivery_message??current.delivery_message??"").trim().slice(0,8000)||defaultDeliveryMessage(row);
+  await env.DB.prepare("UPDATE delivery_approvals SET status=?,delivery_message=?,approved_at=?,updated_at=? WHERE opportunity_id=?")
+    .bind(status,message,approved?ts:"",ts,row.opportunity_id).run();
+  return {...await getDeliveryApproval(env,row),note:approved?"Approved for a later platform-delivery action. Nothing was sent externally.":"Delivery approval is pending; nothing was sent externally."};
 }
 
 
@@ -1644,7 +1694,7 @@ async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudge
     const latestProduction=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,updated_at FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(id).first();
     if(latestProduction){
       if(latestProduction.status==="created"||latestProduction.status==="dispatched")return managerSaveState(env,id,{stage:"production_running",status_label:"🏭 자동 제작·QC 진행 중",next_action:"Factory Worker 결과 확인 중",last_action:"production_running"});
-      if(latestProduction.status==="completed"&&latestProduction.conclusion==="success")return managerSaveState(env,id,{stage:"delivery_ready",status_label:"✅ 납품 패키지 준비 완료",next_action:"납품/플랫폼 전송 어댑터 대기",last_action:"production_complete"});
+      if(latestProduction.status==="completed"&&latestProduction.conclusion==="success"){const delivery=await getDeliveryApproval(env,row);return managerSaveState(env,id,{stage:delivery.approved?"delivery_approved":"awaiting_delivery_approval",status_label:delivery.approved?"✅ 납품 승인 완료":"👀 납품 검토·승인 대기",next_action:delivery.approved?"플랫폼 납품 전송 어댑터 대기":"납품 패키지와 메시지를 확인 후 승인",last_action:delivery.approved?"delivery_approved":"production_complete"});}
       if(latestProduction.status==="dispatch_failed"||(latestProduction.status==="completed"&&latestProduction.conclusion!=="success"))return managerSaveState(env,id,{stage:"needs_attention",status_label:"⚠️ 제작·QC 예외",next_action:"자동 재시도하지 않음 · 상세에서 오류 확인",last_error:latestProduction.log_summary||"production failed"});
     }
 
@@ -2281,7 +2331,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.33.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.34.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
@@ -2300,6 +2350,17 @@ export default {
         const bundle=JSON.parse(r.bundle_json||"{}");
         const files=(bundle.files||[]).map(f=>({path:f.path,bytes:new TextEncoder().encode(String(f.content||"")).length}));
         return json({ok:true,status:r.status,conclusion:r.conclusion,bundle_version:bundle.bundle_version,files});
+      }
+
+      const deliveryMatch=path.match(/^\\/api\\/paid-jobs\\/([^/]+)\\/delivery$/);
+      if(deliveryMatch&&(request.method==="GET"||request.method==="POST")){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(deliveryMatch[1]),row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        if(request.method==="GET")return json(await getDeliveryApproval(env,row));
+        const body=await request.json().catch(()=>({}));
+        const out=await approveDelivery(env,row,body);
+        return json(out,out.ok===false?409:200);
       }
 
       const paidPlanMatch = path.startsWith("/api/paid-jobs/") && path.endsWith("/plan") ? { 1: path.slice("/api/paid-jobs/".length, -"/plan".length) } : null;
