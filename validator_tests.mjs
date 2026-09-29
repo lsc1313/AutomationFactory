@@ -644,12 +644,12 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.18.0"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.18.1"'));
 
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.18.0"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.18.1"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v2"));
 assert.ok(productionV017.includes("job-production-bundle-v2"));
@@ -703,3 +703,22 @@ assert.ok(intakeV018.includes("client/CLIENT_INPUT.json"));
 assert.ok(intakeV018.includes("client/ACCESS_STATUS.md"));
 assert.ok(intakeV018.includes("config/client.json"));
 assert.ok(intakeV018.includes("Secret values are not exported to GitHub Actions artifacts or delivery ZIP files."));
+
+
+// v0.18.1 browser-script syntax regression
+const uiSyntaxSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+const appStart = uiSyntaxSource.indexOf("function appHtml() {");
+assert.ok(appStart >= 0);
+const templateStartMarker = "return `";
+const templateStart = uiSyntaxSource.indexOf(templateStartMarker, appStart) + templateStartMarker.length;
+const appEnd = uiSyntaxSource.indexOf("\n}\n\nexport default", templateStart);
+assert.ok(appEnd > templateStart);
+const templateEnd = uiSyntaxSource.lastIndexOf("`;", appEnd);
+assert.ok(templateEnd > templateStart);
+const appTemplate = uiSyntaxSource.slice(templateStart, templateEnd);
+const renderedHtml = new Function("APP_VERSION", "return `" + appTemplate + "`;")("test");
+const browserScriptStart = renderedHtml.indexOf("<script>") + "<script>".length;
+const browserScriptEnd = renderedHtml.lastIndexOf("</script>");
+assert.ok(browserScriptStart >= "<script>".length && browserScriptEnd > browserScriptStart);
+assert.doesNotThrow(() => new vm.Script(renderedHtml.slice(browserScriptStart, browserScriptEnd)));
+assert.ok(renderedHtml.includes("clientIntakeBtn"));
