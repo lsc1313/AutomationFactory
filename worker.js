@@ -774,14 +774,14 @@ async function finishEtsyOAuth(request,env) {
 
 function contractPaymentProfile(row) {
   const source=String(row?.source||"");
-  if(source==="freelancer_projects") return {platform:"Freelancer.com",application_method:"Open the original project and submit/confirm the platform bid",protection_hint:"Before client-account work, confirm the project is awarded and the agreed payment is secured through the platform.",payout_route_hint:"Freelancer platform balance → your configured withdrawal method",default_protection:"platform_escrow"};
-  if(source==="agent_bounties") return {platform:"Agent Bounties",application_method:"Claim/accept the bounty according to the bounty page",protection_hint:"Confirm assignment/claim status and the bounty payout conditions before production.",payout_route_hint:"Bounty payout → configured wallet",default_protection:"onchain_or_bounty"};
-  if(source==="github_paid") return {platform:"GitHub bounty / issuer",application_method:"Follow the issue/bounty application instructions",protection_hint:"Verify the payer, amount, assignment and payout protection before production.",payout_route_hint:"Issuer-defined payout route",default_protection:"unknown"};
-  return {platform:source||"External platform",application_method:"Use the original application/support page",protection_hint:"Confirm the agreement and secure payment before production.",payout_route_hint:"Platform/customer-defined payout route",default_protection:"unknown"};
+  if(source==="freelancer_projects") return {application_url:row?.url||"",platform:"Freelancer.com",application_method:"Open the original project and submit/confirm the platform bid",protection_hint:"Before client-account work, confirm the project is awarded and the agreed payment is secured through the platform.",payout_route_hint:"Freelancer platform balance → your configured withdrawal method",default_protection:"platform_escrow"};
+  if(source==="agent_bounties") return {application_url:row?.url||"",platform:"Agent Bounties",application_method:"Claim/accept the bounty according to the bounty page",protection_hint:"Confirm assignment/claim status and the bounty payout conditions before production.",payout_route_hint:"Bounty payout → configured wallet",default_protection:"onchain_or_bounty"};
+  if(source==="github_paid") return {application_url:row?.url||"",platform:"GitHub bounty / issuer",application_method:"Follow the issue/bounty application instructions",protection_hint:"Verify the payer, amount, assignment and payout protection before production.",payout_route_hint:"Issuer-defined payout route",default_protection:"unknown"};
+  return {application_url:row?.url||"",platform:source||"External platform",application_method:"Use the original application/support page",protection_hint:"Confirm the agreement and secure payment before production.",payout_route_hint:"Platform/customer-defined payout route",default_protection:"unknown"};
 }
 
 function contractPaymentReady(gate) {
-  return gate?.contract_status==="accepted" && (gate?.payment_status==="secured" || gate?.payment_status==="prepaid");
+  return gate?.contract_status==="accepted" && (gate?.payment_status==="secured" || gate?.payment_status==="prepaid" || gate?.payment_status==="paid");
 }
 
 async function getContractPaymentGate(env,row) {
