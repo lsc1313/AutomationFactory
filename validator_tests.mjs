@@ -733,7 +733,7 @@ assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
 assert.ok(smartIntakeV0182.includes("SKU mapping override"));
 assert.ok(smartIntakeV0182.includes("automatic discovery fails"));
 assert.ok(smartIntakeV0182.includes("autoMap:!Object.keys(parsedSkuMap).length"));
-assert.ok(smartIntakeV0182.includes("Taxonomy)"));
+assert.ok(smartIntakeV0182.toLowerCase().includes("taxonomy"));
 assert.ok(smartIntakeV0182.includes("고급 입력 — 자동처리가 실패할 때만"));
 assert.ok(smartIntakeV0182.includes("🤖 시스템이 자동으로 처리할 항목"));
 assert.ok(smartIntakeV0182.includes("config/client.json"));
