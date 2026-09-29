@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.16.6";
+const APP_VERSION = "0.17.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -88,6 +88,19 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_sandbox_runs_opportunity ON sandbox_runs(opportunity_id, created_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS production_runs (
+      run_id TEXT PRIMARY KEY,
+      opportunity_id TEXT NOT NULL,
+      bundle_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'created',
+      conclusion TEXT NOT NULL DEFAULT '',
+      log_summary TEXT NOT NULL DEFAULT '',
+      github_run_id TEXT NOT NULL DEFAULT '',
+      package_summary_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_production_runs_opportunity ON production_runs(opportunity_id, created_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
       opportunity_id TEXT NOT NULL,
       evidence_key TEXT NOT NULL,
@@ -622,18 +635,97 @@ function artifactGenerator(plan) {
 function codeWorker(plan) {
   const req=plan?.build_spec?.functional_requirements||[], text=req.join(" ").toLowerCase();
   const isAutomation=/api|integration|automat|monitor|scrap|webhook|migration|import|export/.test(text);
-  if(!isAutomation) return {code_worker_version:"code-worker-v1",status:"not_applicable",files:[],test_execution:"not_requested"};
+  if(!isAutomation) return {code_worker_version:"code-worker-v2",status:"not_applicable",files:[],test_execution:"not_requested"};
   const safeReq=req.map(x=>String(x));
+  const isCommerceMigration=/squarespace/.test(text)&&/etsy/.test(text);
   const files=[
-    {path:"project/package.json",language:"json",content:JSON.stringify({name:"automation-factory-deliverable",private:true,type:"module",scripts:{test:"node --test"}},null,2)},
-    {path:"project/src/spec.js",language:"javascript",content:"export const requirements = "+JSON.stringify(safeReq,null,2)+";\nexport const externalActionsAllowed = false;\n"},
-    {path:"project/src/index.js",language:"javascript",content:"import { requirements, externalActionsAllowed } from './spec.js';\nexport function buildPlan(){ return { requirements, externalActionsAllowed, status:'internal-build-ready' }; }\n"},
-    {path:"project/test/spec.test.js",language:"javascript",content:"import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { buildPlan } from '../src/index.js';\ntest('external actions stay disabled',()=>{ const p=buildPlan(); assert.equal(p.externalActionsAllowed,false); assert.ok(p.requirements.length>0); });\n"},
-    {path:"project/README.md",language:"markdown",content:"# Automation Factory generated project\n\nThis is an internal build scaffold generated from the approved Manager specification.\n\nExternal client/account actions are disabled until explicit approval and authorized credentials are available.\n"}
+    {path:"project/package.json",language:"json",content:JSON.stringify({name:"automation-factory-deliverable",version:"1.0.0",private:true,type:"module",scripts:{test:"node --test",build:"node src/cli.js fixtures/squarespace-products.json config/example.json delivery-output.json"}},null,2)},
+    {path:"project/src/spec.js",language:"javascript",content:"export const requirements = "+JSON.stringify(safeReq,null,2)+";\nexport const externalActionsAllowed = false;\n"}
   ];
-  return {code_worker_version:"code-worker-v1",status:"source_generated",project_kind:"node-esm",files,file_count:files.length,test_execution:"sandbox_runner_available",test_runner:"github-actions:sandbox-runner-v1",test_command:"npm test",external_side_effects:false,note:"Source and tests are generated in Cloudflare Worker; execution is delegated to the isolated GitHub Actions Sandbox Runner. A per-job run result is required before QC may claim tests passed."};
-}
 
+  if(isCommerceMigration){
+    files.push(
+      {path:"project/src/normalize.js",language:"javascript",content:[
+        "export function normalizeSquarespaceExport(input){",
+        "  const rows=Array.isArray(input)?input:(Array.isArray(input?.products)?input.products:[]);",
+        "  return rows.map((p,index)=>{",
+        "    const variants=Array.isArray(p?.variants)&&p.variants.length?p.variants:[{sku:p?.sku||'',price:p?.price??0,options:p?.options||{}}];",
+        "    return {",
+        "      sourceId:String(p?.id??p?.product_id??index+1),",
+        "      title:String(p?.title??p?.name??'').trim(),",
+        "      description:String(p?.description??p?.body??''),",
+        "      tags:Array.isArray(p?.tags)?p.tags.map(String).filter(Boolean):[],",
+        "      images:(Array.isArray(p?.images)?p.images:[]).map(x=>typeof x==='string'?x:x?.url).filter(Boolean),",
+        "      variants:variants.map((v,n)=>({sku:String(v?.sku||p?.sku||('SKU-'+(index+1)+'-'+(n+1))),price:Number(v?.price??p?.price??0),options:v?.options&&typeof v.options==='object'?v.options:{}}))",
+        "    };",
+        "  });",
+        "}"
+      ].join("\n")},
+      {path:"project/src/etsy.js",language:"javascript",content:[
+        "const clean=s=>String(s??'').replace(/\\s+/g,' ').trim();",
+        "export function buildEtsyListingDrafts(products,config={}){",
+        "  return products.map(p=>{",
+        "    const tags=[...new Set([...(p.tags||[]),...(config.defaultTags||[])].map(clean).filter(Boolean))].slice(0,13);",
+        "    return {sourceId:p.sourceId,title:clean(p.title).slice(0,140),description:String(p.description||''),price:Number(p.variants?.[0]?.price||0),quantity:Number(config.defaultQuantity||999),tags,images:p.images||[],variants:p.variants||[],sectionId:config.sectionId||null,shippingProfileId:config.shippingProfileId||null,status:'draft'};",
+        "  });",
+        "}"
+      ].join("\n")},
+      {path:"project/src/prodigi.js",language:"javascript",content:[
+        "export function buildProdigiMappings(products,config={}){",
+        "  const skuMap=config.skuMap||{},mappings=[],missing=[];",
+        "  for(const p of products){for(const v of p.variants||[]){const target=skuMap[v.sku];if(!target){missing.push({sourceId:p.sourceId,sku:v.sku});continue;}mappings.push({sourceId:p.sourceId,sku:v.sku,prodigiProductId:String(target.prodigiProductId||''),printArea:String(target.printArea||'default'),attributes:target.attributes||{}});}}",
+        "  return {mappings,missing,ready:missing.length===0};",
+        "}"
+      ].join("\n")},
+      {path:"project/src/pipeline.js",language:"javascript",content:[
+        "import { normalizeSquarespaceExport } from './normalize.js';",
+        "import { buildEtsyListingDrafts } from './etsy.js';",
+        "import { buildProdigiMappings } from './prodigi.js';",
+        "import { externalActionsAllowed, requirements } from './spec.js';",
+        "export function buildDeliveryPackage(input,config={}){",
+        "  const products=normalizeSquarespaceExport(input),etsyDrafts=buildEtsyListingDrafts(products,config.etsy||{}),prodigi=buildProdigiMappings(products,config.prodigi||{}),errors=[];",
+        "  if(!products.length) errors.push('No Squarespace products supplied');",
+        "  for(const p of products){if(!p.title)errors.push('Missing title: '+p.sourceId);if(!(p.variants||[]).length)errors.push('Missing variants: '+p.sourceId);if((p.variants||[]).some(v=>!Number.isFinite(v.price)||v.price<=0))errors.push('Invalid price: '+p.sourceId);}",
+        "  for(const m of prodigi.missing) errors.push('Missing Prodigi mapping: '+m.sku);",
+        "  return {packageVersion:'squarespace-etsy-prodigi-v1',externalActionsAllowed,requirements,products,etsyDrafts,prodigiMappings:prodigi.mappings,validation:{ready:errors.length===0,errors,warnings:[]}};",
+        "}"
+      ].join("\n")},
+      {path:"project/src/cli.js",language:"javascript",content:[
+        "import fs from 'node:fs';",
+        "import { buildDeliveryPackage } from './pipeline.js';",
+        "const inputPath=process.argv[2],configPath=process.argv[3],outputPath=process.argv[4]||'delivery-output.json';",
+        "if(!inputPath||!configPath){console.error('Usage: node src/cli.js <squarespace.json> <config.json> [output.json]');process.exit(1);}",
+        "const input=JSON.parse(fs.readFileSync(inputPath,'utf8')),config=JSON.parse(fs.readFileSync(configPath,'utf8')),out=buildDeliveryPackage(input,config);",
+        "fs.writeFileSync(outputPath,JSON.stringify(out,null,2));",
+        "console.log('delivery package:',out.validation.ready?'READY':'BLOCKED','products='+out.products.length,'etsy='+out.etsyDrafts.length,'prodigi='+out.prodigiMappings.length);",
+        "if(!out.validation.ready){console.error(out.validation.errors.join('\\n'));process.exitCode=2;}"
+      ].join("\n")},
+      {path:"project/test/pipeline.test.js",language:"javascript",content:[
+        "import test from 'node:test';",
+        "import assert from 'node:assert/strict';",
+        "import fs from 'node:fs';",
+        "import { buildDeliveryPackage } from '../src/pipeline.js';",
+        "test('builds a validated Squarespace to Etsy/Prodigi dry-run package',()=>{",
+        " const input=JSON.parse(fs.readFileSync(new URL('../fixtures/squarespace-products.json',import.meta.url),'utf8'));",
+        " const config=JSON.parse(fs.readFileSync(new URL('../config/example.json',import.meta.url),'utf8'));",
+        " const out=buildDeliveryPackage(input,config);",
+        " assert.equal(out.externalActionsAllowed,false);assert.equal(out.products.length,1);assert.equal(out.etsyDrafts.length,1);assert.equal(out.prodigiMappings.length,2);assert.equal(out.validation.ready,true);assert.deepEqual(out.validation.errors,[]);assert.ok(out.etsyDrafts[0].tags.length<=13);",
+        "});"
+      ].join("\n")},
+      {path:"project/fixtures/squarespace-products.json",language:"json",content:JSON.stringify({products:[{id:"demo-shirt",title:"Demo POD Shirt",description:"Fixture used for internal validation only.",tags:["shirt","pod"],images:["https://example.invalid/demo.jpg"],variants:[{sku:"DEMO-BLK-M",price:29.95,options:{color:"Black",size:"M"}},{sku:"DEMO-BLK-L",price:29.95,options:{color:"Black",size:"L"}}]}]},null,2)},
+      {path:"project/config/example.json",language:"json",content:JSON.stringify({etsy:{defaultQuantity:999,defaultTags:["print on demand"],sectionId:null,shippingProfileId:null},prodigi:{skuMap:{"DEMO-BLK-M":{prodigiProductId:"FIXTURE-PRODUCT",printArea:"front",attributes:{size:"M",color:"Black"}},"DEMO-BLK-L":{prodigiProductId:"FIXTURE-PRODUCT",printArea:"front",attributes:{size:"L",color:"Black"}}}}},null,2)},
+      {path:"project/README.md",language:"markdown",content:["# Squarespace → Etsy → Prodigi delivery package","","Implements the repeatable transformation layer without touching external accounts.","","## Implemented","- Normalize Squarespace-style product JSON, variants, images and tags.","- Produce Etsy listing drafts with title/tag/price/variant constraints.","- Map variant SKUs to client-supplied Prodigi product/template settings.","- Validate missing titles, invalid prices and missing Prodigi mappings.","- Run deterministic tests with npm test.","","## Run","1. Replace fixtures/squarespace-products.json with the authorized client export.","2. Fill config/example.json with approved Etsy profile IDs and Prodigi SKU mappings.","3. Run npm test.","4. Run node src/cli.js <products.json> <config.json> delivery-output.json.","","External publishing is intentionally disabled. Credentials are never embedded."].join("\n")},
+      {path:"project/HANDOVER.md",language:"markdown",content:["# Hand-over and client-access gate","","## Internal production complete","Migration transformation, listing-draft generation, SKU mapping and validation can be built and tested without client credentials.","","## Required before live execution","- Authorized Squarespace product export or account access.","- Etsy shop access plus approved section/shipping profile identifiers.","- Prodigi account/API access and the real SKU-to-product/template mapping.","- Client approval for shipping/tax configuration and a live test order.","","## Live acceptance sequence","Authorized export → validation → Etsy listing creation with approved access → real Prodigi mapping → controlled end-to-end test order → acceptance evidence.","","No external account action is performed until explicitly authorized."].join("\n")}
+    );
+  } else {
+    files.push(
+      {path:"project/src/index.js",language:"javascript",content:"import { requirements, externalActionsAllowed } from './spec.js';\nexport function buildPlan(){ return { requirements, externalActionsAllowed, status:'internal-build-ready' }; }\n"},
+      {path:"project/test/spec.test.js",language:"javascript",content:"import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { buildPlan } from '../src/index.js';\ntest('external actions stay disabled',()=>{ const p=buildPlan(); assert.equal(p.externalActionsAllowed,false); assert.ok(p.requirements.length>0); });\n"},
+      {path:"project/README.md",language:"markdown",content:"# Automation Factory generated project\n\nInternal build package generated from the Manager specification. External client/account actions remain disabled until explicit approval and authorized credentials are available.\n"}
+    );
+  }
+  return {code_worker_version:"code-worker-v2",status:"source_generated",implementation_level:isCommerceMigration?"runnable_job_specific_package":"runnable_generic_scaffold",project_kind:"node-esm",files,file_count:files.length,test_execution:"sandbox_runner_available",test_runner:"github-actions:sandbox-runner-v1",test_command:"npm test",external_side_effects:false,note:"Source and tests are generated in Cloudflare Worker; execution is delegated to the isolated GitHub Actions runner. Production packages remain side-effect-free until explicit user approval and authorized client access."};
+}
 
 function sandboxBundle(opportunityId, plan) {
   const cw=plan?.code_worker||codeWorker(plan);
@@ -656,10 +748,47 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.16.6"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
+}
+
+
+function productionBundle(opportunityId, plan) {
+  const cw=plan?.code_worker||codeWorker(plan), generated=plan?.artifact_generator||artifactGenerator(plan);
+  const files=(cw.files||[]).map(f=>({path:String(f.path||"").replace(/^project\//,""),content:String(f.content||"")}));
+  for(const a of generated.artifacts||[]){
+    const rel=String(a.path||a.name||a.artifact_id||"artifact.txt").replace(/^artifacts\//,"").replace(/\.\./g,"_");
+    files.push({path:"delivery/"+rel,content:String(a.content||"")});
+  }
+  const manifest={pipeline_version:"production-pipeline-v1",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,external_actions_allowed:false,generated_at:nowIso()};
+  files.push({path:"delivery/MANIFEST.json",content:JSON.stringify(manifest,null,2)});
+  return {bundle_version:"job-production-bundle-v1",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
+}
+
+async function dispatchProduction(request, env, opportunityId) {
+  const row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(opportunityId).first();
+  if(!row) return json({ok:false,error:"Paid job not found"},404);
+  let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+  if(!bd.actionable_paid_job||!bd.factory_fulfillable) return json({ok:false,error:"Factory-ready paid job only"},400);
+  const sandbox=await env.DB.prepare("SELECT run_id FROM sandbox_runs WHERE opportunity_id=? AND status='completed' AND conclusion='success' ORDER BY created_at DESC LIMIT 1").bind(opportunityId).first();
+  if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
+  const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
+  if(plan.qc.status!=="preflight_pass") return json({ok:false,error:"QC preflight blocked",qc:plan.qc},400);
+  if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for production"},400);
+  const runId="prd_"+crypto.randomUUID(), bundle=productionBundle(opportunityId,plan), now=nowIso();
+  const summary={pipeline_version:"production-pipeline-v1",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,next_gate:(plan.factory_builder.blocked_tasks||0)>0?"client_access_required":"user_delivery_review",sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
+  await env.DB.prepare("INSERT INTO production_runs(run_id,opportunity_id,bundle_json,status,package_summary_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",JSON.stringify(summary),now,now).run();
+  const missingConfig=[]; if(!env.GITHUB_ACTIONS_TOKEN)missingConfig.push("GITHUB_ACTIONS_TOKEN"); if(!env.SANDBOX_CALLBACK_TOKEN)missingConfig.push("SANDBOX_CALLBACK_TOKEN");
+  if(missingConfig.length) return json({ok:true,run_id:runId,status:"config_required",missing_configuration:missingConfig,summary},202);
+  const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
+  const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
+  const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
+  await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
+  return json({ok:true,run_id:runId,status:"dispatched",summary},202);
 }
 
 function qcPlan(plan) {
@@ -739,7 +868,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.16.6 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v${APP_VERSION} · Production Pipeline v1 · 수집→검증→제작→QC</div>
 </div>
 <script>
 let grade='all';
@@ -835,7 +964,7 @@ async function loadPaidJobs(){
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div></div>').join('');
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
 }
 async function runSandbox(btn){
   const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
@@ -860,6 +989,42 @@ async function runSandbox(btn){
   finally{btn.disabled=false;btn.textContent=old;}
 }
 
+
+async function runProduction(btn){
+  const id=btn.dataset.jobId, el=document.getElementById('production-'+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='제작 시작 중…'; el.textContent='Factory Worker가 납품 패키지를 생성하고 있습니다.';
+  try{
+    const start=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production',{method:'POST'});
+    if(start.status==='sandbox_required'){el.innerHTML='<b>🧪 샌드박스 성공이 먼저 필요합니다.</b><br>같은 카드의 샌드박스 테스트를 성공시킨 뒤 다시 눌러주세요.';return;}
+    if(start.status!=='dispatched'){const missing=Array.isArray(start.missing_configuration)&&start.missing_configuration.length?' · 누락: '+start.missing_configuration.join(', '):'';el.textContent='제작 상태: '+esc(start.status||'unknown')+esc(missing);return;}
+    el.textContent='제작 실행됨 · '+esc(start.run_id)+' · Factory Worker/QC 결과 확인 중…';
+    for(let i=0;i<40;i++){
+      await new Promise(r=>setTimeout(r,2000));
+      const p=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production');
+      if(p.status==='completed'){
+        const ok=p.conclusion==='success', sm=p.summary||{};
+        const gate=sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
+        el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
+        return;
+      }
+      if(p.status==='dispatch_failed'){el.textContent='실제 제작 dispatch 실패: '+esc(p.log_summary||'');return;}
+      el.textContent='제작 상태: '+esc(p.status||'running')+' · Factory Worker/QC 결과 확인 중…';
+    }
+    el.textContent='제작 작업이 아직 실행 중입니다. 잠시 후 다시 실제 제작 버튼을 눌러 상태를 확인하세요.';
+  }catch(err){el.textContent='실제 제작 실패: '+esc(err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+async function showProductionPackage(btn){
+  const id=btn.dataset.jobId, target=document.getElementById('production-package-'+id); if(!target)return;
+  btn.disabled=true;
+  try{
+    const d=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production/package');
+    const files=d.files||[];
+    target.innerHTML='<details open style="margin-top:8px"><summary>📦 생성 파일 '+esc(files.length)+'개</summary><div class="meta" style="white-space:pre-wrap;margin-top:8px">'+files.map(f=>'• '+esc(f.path)+' · '+esc(String(f.bytes||0))+' bytes').join('<br>')+'</div></details>';
+  }catch(err){target.textContent='파일 목록 조회 실패: '+err.message;}
+  finally{btn.disabled=false;}
+}
+
 async function showManagerPlan(btn){
  const id=btn.dataset.jobId, el=document.getElementById('plan-'+id); if(!el)return;
  btn.disabled=true; const old=btn.textContent; btn.textContent='분석 중…';
@@ -878,6 +1043,8 @@ async function showManagerPlan(btn){
 }
 
 document.addEventListener('click',async e=>{
+ const packageBtn=e.target.closest('.productionPackageBtn'); if(packageBtn){await showProductionPackage(packageBtn);return;}
+ const production=e.target.closest('.productionRunBtn'); if(production){await runProduction(production);return;}
  const sandbox=e.target.closest('.sandboxRunBtn'); if(sandbox){await runSandbox(sandbox);return;}
   const plan=e.target.closest('.managerPlanBtn'); if(plan){await showManagerPlan(plan);return;}
  const paid=e.target.closest('#paidJobsBtn'); if(paid){paid.disabled=true;try{await loadPaidJobs()}catch(err){alert(err.message)}finally{paid.disabled=false}return;}\n const b=e.target.closest('#candidateBtn'); if(!b)return;
@@ -940,6 +1107,39 @@ export default {
       if(sandboxStatusMatch&&request.method==="GET"){
         const r=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,created_at,updated_at FROM sandbox_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(sandboxStatusMatch[1])).first();
         return json(r||{status:"not_run"});
+      }
+
+      const productionBundleMatch=path.match(/^\/api\/production-runs\/([^/]+)\/bundle$/);
+      if(productionBundleMatch&&request.method==="GET"){
+        if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
+        const r=await env.DB.prepare("SELECT bundle_json,status FROM production_runs WHERE run_id=?").bind(decodeURIComponent(productionBundleMatch[1])).first();
+        if(!r)return json({ok:false,error:"Production run not found"},404);
+        return json(JSON.parse(r.bundle_json||"{}"));
+      }
+      const productionResultMatch=path.match(/^\/api\/production-runs\/([^/]+)\/result$/);
+      if(productionResultMatch&&request.method==="POST"){
+        if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
+        const body=await request.json(); const conclusion=body.conclusion==="success"?"success":"failure";
+        await env.DB.prepare("UPDATE production_runs SET status='completed',conclusion=?,log_summary=?,github_run_id=?,updated_at=? WHERE run_id=?").bind(conclusion,String(body.log_summary||"").slice(0,2000),String(body.github_run_id||""),nowIso(),decodeURIComponent(productionResultMatch[1])).run();
+        return json({ok:true});
+      }
+      const productionStartMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production$/);
+      if(productionStartMatch&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;return dispatchProduction(request,env,decodeURIComponent(productionStartMatch[1]));}
+      const productionStatusMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production$/);
+      if(productionStatusMatch&&request.method==="GET"){
+        const r=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,package_summary_json,created_at,updated_at FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionStatusMatch[1])).first();
+        if(!r)return json({status:"not_run"});
+        let summary={};try{summary=JSON.parse(r.package_summary_json||"{}")}catch{}
+        return json({...r,summary});
+      }
+      const productionPackageMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production\/package$/);
+      if(productionPackageMatch&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const r=await env.DB.prepare("SELECT bundle_json,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionPackageMatch[1])).first();
+        if(!r)return json({ok:false,error:"Production package not found"},404);
+        const bundle=JSON.parse(r.bundle_json||"{}");
+        const files=(bundle.files||[]).map(f=>({path:f.path,bytes:new TextEncoder().encode(String(f.content||"")).length}));
+        return json({ok:true,status:r.status,conclusion:r.conclusion,bundle_version:bundle.bundle_version,files});
       }
 
       const paidPlanMatch = path.startsWith("/api/paid-jobs/") && path.endsWith("/plan") ? { 1: path.slice("/api/paid-jobs/".length, -"/plan".length) } : null;

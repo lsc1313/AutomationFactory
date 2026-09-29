@@ -608,14 +608,14 @@ assert.ok(artifactGeneratorV1.includes("🛠 Artifact Generator"));
 
 // v0.14.0 Code Worker v1 contract
 const codeWorkerV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(codeWorkerV1.includes("code-worker-v1"));
+assert.ok(codeWorkerV1.includes("code-worker-v2"));
 assert.ok(codeWorkerV1.includes("source_generated"));
 assert.ok(codeWorkerV1.includes("project/package.json"));
 assert.ok(codeWorkerV1.includes("project/src/index.js"));
 assert.ok(codeWorkerV1.includes("project/test/spec.test.js"));
 assert.ok(codeWorkerV1.includes("sandbox_runner_available"));
 assert.ok(codeWorkerV1.includes("github-actions:sandbox-runner-v1"));
-assert.ok(codeWorkerV1.includes("A per-job run result is required before QC may claim tests passed"));
+assert.ok(codeWorkerV1.includes("Production packages remain side-effect-free"));
 assert.ok(codeWorkerV1.includes("💻 Code Worker"));
 
 // v0.16.1 dynamic per-job sandbox auth contract
@@ -644,4 +644,24 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.16.6"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.17.0"'));
+
+
+// v0.17.0 Production Pipeline v1 contract
+const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(productionV017.includes('const APP_VERSION = "0.17.0"'));
+assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
+assert.ok(productionV017.includes("production-pipeline-v1"));
+assert.ok(productionV017.includes("job-production-bundle-v1"));
+assert.ok(productionV017.includes("dispatchProduction"));
+assert.ok(productionV017.includes("productionRunBtn"));
+assert.ok(productionV017.includes("🏭 실제 제작"));
+assert.ok(productionV017.includes("제작 패키지 생성·QC 테스트 통과"));
+assert.ok(productionV017.includes("runnable_job_specific_package"));
+assert.ok(productionV017.includes("normalizeSquarespaceExport"));
+assert.ok(productionV017.includes("buildEtsyListingDrafts"));
+assert.ok(productionV017.includes("buildProdigiMappings"));
+assert.ok(productionV017.includes("sandbox_required"));
+assert.ok(productionV017.includes("/production/package"));
+assert.ok(productionV017.includes("client_access_required"));
+assert.ok(productionV017.includes("external_actions_allowed:false"));
