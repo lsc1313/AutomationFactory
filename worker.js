@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.18.1";
+const APP_VERSION = "0.18.2";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -543,64 +543,95 @@ async function setDecision(env, opportunityId, state) {
   `).bind(state, nowIso(), opportunityId).run();
 }
 
-function intakeField(id,label,type="text",required=false,secret=false,help="",options=[]) {
-  return {id,label,type,required,secret,help,options};
+function intakeField(id,label,type="text",required=false,secret=false,help="",options=[],advanced=false) {
+  return {id,label,type,required,secret,help,options,advanced};
 }
 
 function clientIntakeSpec(row, plan=null) {
   const raw=(String(row?.title||"")+" "+String(row?.description||"")+" "+String(row?.skills||"")).toLowerCase();
   const korean=((String(row?.title||"")+" "+String(row?.description||"")).match(/[가-힣]/g)||[]).length>20;
-  const fields=[], seen=new Set();
+  const fields=[], seen=new Set(), discovery=[];
   const add=(f)=>{if(!seen.has(f.id)){seen.add(f.id);fields.push(f)}};
-  const yesNo=[{value:"yes",label:korean?"예":"Yes"},{value:"no",label:korean?"아니오":"No"}];
+  const yesNo=[{value:"",label:korean?"선택":"Select"},{value:"yes",label:korean?"예":"Yes"},{value:"no",label:korean?"아니오":"No"}];
+
   if(/squarespace/.test(raw)){
-    add(intakeField("squarespace_access_confirmed",korean?"Squarespace 접근 권한 준비 여부":"Squarespace access available","select",true,false,"",yesNo));
-    add(intakeField("squarespace_token",korean?"Squarespace API 토큰":"Squarespace API token","password",true,true,korean?"암호화 저장되며 화면/API에 다시 표시하지 않습니다.":"Encrypted at rest and never returned by the UI/API."));
-    add(intakeField("product_scope",korean?"이전할 상품 범위":"Product scope to migrate","textarea",true,false,korean?"전체 상품 또는 상품명/ID/SKU 범위를 적어주세요.":"Specify all products or the product IDs/SKUs to migrate."));
+    add(intakeField("squarespace_token",korean?"Squarespace 접근 토큰":"Squarespace access token","password",true,true,korean?"고객이 제공한 작업용 토큰을 입력합니다. 암호화 저장되며 ZIP에는 포함되지 않습니다.":"Enter the authorized working token. It is encrypted at rest and excluded from delivery ZIP files."));
+    add(intakeField("product_scope",korean?"이전할 상품 범위":"Products to migrate","textarea",true,false,korean?"예: 전체 상품 / 특정 상품명 / SKU 범위. 정확한 ID 목록이 없어도 됩니다.":"Example: all products, named products, or a SKU range. Exact internal IDs are not required."));
+    discovery.push(korean?"Squarespace 상품·옵션·이미지·SKU 자동 수집":"Discover Squarespace products, variants, images and SKUs automatically");
   }
+
   if(/etsy/.test(raw)){
-    add(intakeField("etsy_shop_status",korean?"Etsy 상점 상태":"Etsy shop status","select",true,false,"",[{value:"existing",label:korean?"이미 생성됨":"Already created"},{value:"needs_setup",label:korean?"생성/초기설정 필요":"Needs setup"}]));
-    add(intakeField("etsy_shop_id",korean?"Etsy Shop ID":"Etsy Shop ID","text",true,false));
-    add(intakeField("etsy_oauth_token",korean?"Etsy OAuth 토큰":"Etsy OAuth token","password",true,true,korean?"암호화 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest; never included in the output ZIP."));
-    add(intakeField("etsy_api_key",korean?"Etsy API Key":"Etsy API key","password",true,true,korean?"암호화 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest; never included in the output ZIP."));
-    add(intakeField("etsy_taxonomy_id",korean?"Etsy Taxonomy ID":"Etsy taxonomy ID","text",true,false));
-    add(intakeField("etsy_shipping_profile_id",korean?"Etsy Shipping Profile ID":"Etsy shipping profile ID","text",true,false));
-    add(intakeField("etsy_readiness_state_id",korean?"Etsy Readiness State ID":"Etsy readiness state ID","text",true,false));
-    add(intakeField("etsy_section_id",korean?"Etsy Section ID (선택)":"Etsy section ID (optional)","text",false,false));
+    add(intakeField("etsy_shop_status",korean?"Etsy 상점 상태":"Etsy shop status","select",true,false,korean?"상점이 아직 없으면 고객이 Etsy에서 상점 개설 절차를 먼저 완료해야 할 수 있습니다.":"If the shop does not exist yet, the client may need to finish Etsy shop opening first.",[{value:"",label:korean?"선택":"Select"},{value:"existing",label:korean?"이미 생성됨":"Already created"},{value:"needs_setup",label:korean?"아직 없음 / 초기설정 필요":"Not created / needs setup"}]));
+    add(intakeField("etsy_oauth_token",korean?"Etsy OAuth 접근 토큰":"Etsy OAuth access token","password",true,true,korean?"보안 저장. 고객에게 받은 승인된 접근정보만 사용합니다.":"Stored securely. Use only client-authorized access."));
+    add(intakeField("etsy_api_key",korean?"Etsy API Key":"Etsy API key","password",true,true,korean?"보안 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest and excluded from the output ZIP."));
+    add(intakeField("etsy_category_hint",korean?"Etsy 카테고리 힌트 (선택)":"Etsy category hint (optional)","text",false,false,korean?"예: T-shirt, wall art. Taxonomy ID는 시스템이 후보를 찾습니다.":"Example: T-shirt or wall art. The system will resolve taxonomy candidates.",[],true));
+    add(intakeField("etsy_shop_id_override",korean?"Etsy Shop ID 직접 지정 (고급/선택)":"Etsy Shop ID override (advanced/optional)","text",false,false,korean?"자동 발견이 실패할 때만 입력합니다.":"Only needed if automatic discovery fails.",[],true));
+    add(intakeField("etsy_shipping_profile_id_override",korean?"Shipping Profile ID 직접 지정 (고급/선택)":"Shipping Profile ID override (advanced/optional)","text",false,false,korean?"자동 조회/설정이 실패할 때만 사용합니다.":"Only use if automatic lookup/configuration fails.",[],true));
+    add(intakeField("etsy_readiness_state_id_override",korean?"Readiness State ID 직접 지정 (고급/선택)":"Readiness State ID override (advanced/optional)","text",false,false,korean?"자동 조회가 실패할 때만 입력합니다.":"Only needed if automatic discovery fails.",[],true));
+    add(intakeField("etsy_section_id_override",korean?"Section ID 직접 지정 (고급/선택)":"Section ID override (advanced/optional)","text",false,false,"",[],true));
+    discovery.push(korean?"Etsy Shop ID·분류(Taxonomy)·배송프로필·Readiness 상태 자동 조회/후보화":"Auto-discover Etsy shop ID, taxonomy, shipping profiles and readiness states");
   }
+
   if(/prodigi/.test(raw)){
-    add(intakeField("prodigi_api_key",korean?"Prodigi API Key":"Prodigi API key","password",true,true,korean?"먼저 Sandbox 키를 권장합니다.":"A Sandbox key is recommended first."));
-    add(intakeField("prodigi_mode",korean?"Prodigi 검수 환경":"Prodigi validation mode","select",true,false,"",[{value:"sandbox",label:"Sandbox"},{value:"live_after_approval",label:korean?"Sandbox 통과 후 Live":"Live after Sandbox approval"}]));
-    add(intakeField("prodigi_sku_mapping",korean?"SKU → Prodigi 상품/템플릿 매핑":"SKU → Prodigi product/template mapping","textarea",true,false,korean?"예: SKU별 Prodigi product ID, print area, 옵션 매핑":"Provide Prodigi product ID, print area and options per SKU."));
+    add(intakeField("prodigi_api_key",korean?"Prodigi API Key":"Prodigi API key","password",true,true,korean?"처음에는 Sandbox 키 사용을 권장합니다.":"A Sandbox key is recommended first."));
+    add(intakeField("prodigi_mode",korean?"Prodigi 검수 환경":"Prodigi validation mode","select",true,false,"",[{value:"",label:korean?"선택":"Select"},{value:"sandbox",label:"Sandbox"},{value:"live_after_approval",label:korean?"Sandbox 통과 후 Live":"Live after Sandbox approval"}]));
+    add(intakeField("prodigi_product_notes",korean?"Prodigi 상품/템플릿 선호 (선택)":"Prodigi product/template preference (optional)","textarea",false,false,korean?"예: 티셔츠는 특정 제품군 사용. SKU 매핑표는 시스템이 후보를 생성합니다.":"Example: preferred blank/product family. The system will generate SKU mapping candidates."));
+    add(intakeField("prodigi_sku_mapping_override",korean?"SKU 매핑 직접 지정 (고급/선택)":"SKU mapping override (advanced/optional)","textarea",false,false,korean?"자동 매핑 후보가 틀릴 때만 JSON 또는 메모 형태로 입력합니다.":"Only use when automatic mapping candidates need correction.",[],true));
+    discovery.push(korean?"Squarespace SKU와 Prodigi 카탈로그를 비교해 SKU→제품/템플릿 매핑 후보 생성":"Generate SKU-to-Prodigi product/template mapping candidates");
   }
+
   if(/tax|shipping/.test(raw)||/etsy/.test(raw)){
-    add(intakeField("shipping_regions",korean?"판매/배송 대상 지역":"Target shipping regions","textarea",true,false,korean?"예: 미국 본토 전체, 제외 지역 등":"Example: continental US and excluded regions."));
-    add(intakeField("shipping_policy",korean?"배송 정책":"Shipping policy","textarea",true,false));
-    add(intakeField("tax_policy",korean?"세금 처리 기준":"Tax handling preference","textarea",true,false,korean?"플랫폼 자동 처리 여부 등":"State whether platform-managed tax rules should be used."));
+    add(intakeField("commerce_settings_mode",korean?"배송·세금 설정 방식":"Shipping/tax setup","select",true,false,"",[{value:"",label:korean?"선택":"Select"},{value:"reuse_existing",label:korean?"기존 Etsy 설정 사용":"Reuse existing Etsy settings"},{value:"configure_new",label:korean?"새 설정 필요":"Configure new settings"}]));
+    add(intakeField("shipping_regions",korean?"배송 대상 지역 (필요시)":"Target shipping regions (if needed)","textarea",false,false,korean?"새 배송설정이 필요한 경우만 작성합니다.":"Only needed when creating new shipping settings."));
+    add(intakeField("shipping_policy",korean?"배송 정책 메모 (선택)":"Shipping policy notes (optional)","textarea",false,false,""));
+    add(intakeField("tax_policy",korean?"세금 처리 메모 (선택)":"Tax handling notes (optional)","textarea",false,false,korean?"기존 플랫폼 자동처리를 사용할 경우 비워둘 수 있습니다.":"Leave blank when using existing platform-managed tax behavior."));
   }
+
   if(/excel|spreadsheet|workbook|google sheets|sheet/.test(raw)){
     add(intakeField("source_data",korean?"원본 데이터/파일 위치":"Source data/file location","textarea",true,false,korean?"파일명, Drive 링크 또는 데이터 구조 설명":"File name, Drive link, or data-structure description."));
     add(intakeField("workbook_requirements",korean?"시트/수식/대시보드 요구사항":"Workbook/formula/dashboard requirements","textarea",true,false));
-    add(intakeField("output_format",korean?"최종 납품 형식":"Final delivery format","select",true,false,"",[{value:"xlsx",label:"Excel .xlsx"},{value:"google_sheets",label:"Google Sheets"},{value:"xlsx_and_pdf",label:"Excel + PDF"}]));
+    add(intakeField("output_format",korean?"최종 납품 형식":"Final delivery format","select",true,false,"",[{value:"",label:korean?"선택":"Select"},{value:"xlsx",label:"Excel .xlsx"},{value:"google_sheets",label:"Google Sheets"},{value:"xlsx_and_pdf",label:"Excel + PDF"}]));
     add(intakeField("sample_style",korean?"원하는 디자인/예시":"Preferred design/reference","textarea",false,false));
   }
+
   if(/api|integration|integrate|webhook/.test(raw) && !(/squarespace|etsy|prodigi/.test(raw))){
     add(intakeField("api_docs_url",korean?"연동 API 문서 URL":"API documentation URL","text",true,false));
     add(intakeField("sample_payload",korean?"샘플 입력/출력 또는 요청·응답":"Sample input/output or request/response","textarea",true,false));
     add(intakeField("integration_credentials",korean?"연동 인증정보":"Integration credentials","password",true,true,korean?"암호화 저장되며 제작 ZIP에는 들어가지 않습니다.":"Encrypted at rest and excluded from the production ZIP."));
   }
+
   const questions=plan?.clarification_questions||[];
-  for(const [i,q] of questions.entries()){const qt=String(q).toLowerCase();if(/squarespace/.test(qt)&&fields.some(f=>f.id==="squarespace_access_confirmed"))continue;if(/etsy/.test(qt)&&fields.some(f=>f.id==="etsy_shop_status"))continue;if(/prodigi/.test(qt)&&fields.some(f=>f.id==="prodigi_api_key"))continue;if(/tax|shipping/.test(qt)&&fields.some(f=>f.id==="shipping_policy"))continue;if(/delivery|deadline|납기|마감/.test(qt))continue;const id="clarification_"+(i+1);add(intakeField(id,String(q),"textarea",true,false));}
+  for(const [i,q] of questions.entries()){
+    const qt=String(q).toLowerCase();
+    if(/squarespace/.test(qt)&&fields.some(f=>f.id==="squarespace_token"))continue;
+    if(/etsy/.test(qt)&&fields.some(f=>f.id==="etsy_shop_status"))continue;
+    if(/prodigi/.test(qt)&&fields.some(f=>f.id==="prodigi_api_key"))continue;
+    if(/tax|shipping/.test(qt)&&fields.some(f=>f.id==="commerce_settings_mode"))continue;
+    if(/delivery|deadline|납기|마감/.test(qt))continue;
+    add(intakeField("clarification_"+(i+1),String(q),"textarea",true,false));
+  }
   add(intakeField("delivery_date",korean?"희망 납기일":"Preferred delivery date","text",!String(row?.deadline||"").trim(),false));
   add(intakeField("client_notes",korean?"추가 메모":"Additional client notes","textarea",false,false));
-  return {intake_version:"client-intake-v1",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields};
+  return {intake_version:"client-intake-v2",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields,discovery_plan:discovery};
 }
 
 function clientRequestMessage(row,spec) {
-  const ko=spec.language==="ko", required=spec.fields.filter(f=>f.required);
-  const lines=required.map((f,i)=>(i+1)+". "+f.label+(f.secret?(ko?" (보안정보)":" (secure credential)"):""));
-  if(ko)return "작업 시작을 위해 아래 정보를 부탁드립니다.\n"+lines.join("\n")+"\n보안정보는 작업용 보안 입력란으로만 받고 결과 파일에는 포함하지 않습니다.";
-  return "To start the project, please provide the following:\n"+lines.join("\n")+"\nSecure credentials are stored only in the protected intake vault and are never included in delivery files.";
+  const ko=spec.language==="ko";
+  const labels=[];
+  const has=id=>(spec.fields||[]).some(f=>f.id===id);
+  if(has("squarespace_token"))labels.push(ko?"Squarespace 작업 접근정보":"Authorized Squarespace access");
+  if(has("product_scope"))labels.push(ko?"이전할 상품 범위":"Which products should be migrated");
+  if(has("etsy_shop_status"))labels.push(ko?"Etsy 상점 생성 여부":"Whether the Etsy shop already exists");
+  if(has("etsy_oauth_token"))labels.push(ko?"Etsy 작업 접근정보":"Authorized Etsy access");
+  if(has("prodigi_api_key"))labels.push(ko?"Prodigi Sandbox/API 접근정보":"Prodigi Sandbox/API access");
+  if(has("commerce_settings_mode"))labels.push(ko?"기존 배송·세금 설정 사용 여부":"Whether to reuse existing shipping/tax settings");
+  if(has("source_data"))labels.push(ko?"원본 데이터/파일":"Source data/file");
+  if(has("workbook_requirements"))labels.push(ko?"원하는 시트·수식·대시보드 구성":"Workbook/formula/dashboard requirements");
+  if(has("delivery_date"))labels.push(ko?"희망 납기일":"Preferred delivery date");
+  for(const f of spec.fields||[]){if(f.required&&!f.secret&&f.id.startsWith("clarification_"))labels.push(f.label)}
+  const lines=[...new Set(labels)].map((x,i)=>(i+1)+". "+x);
+  if(ko)return "작업 시작을 위해 아래 정보만 부탁드립니다. 내부 ID나 SKU 매핑표처럼 기술적인 값은 가능한 한 시스템에서 자동 확인하겠습니다.\n"+lines.join("\n")+"\n보안정보는 별도 보안 입력으로만 저장되며 납품 ZIP에는 포함되지 않습니다.";
+  return "To start, please provide only the items below. Technical IDs and SKU mapping details will be discovered automatically where possible.\n"+lines.join("\n")+"\nCredentials are kept only in the secure intake vault and are never included in delivery ZIP files.";
 }
 
 function bytesToBase64(bytes) { let s=""; for(const b of bytes)s+=String.fromCharCode(b); return btoa(s); }
@@ -631,7 +662,7 @@ async function getClientIntake(env,row,plan=null) {
   let publicAnswers={}, secrets={};
   if(saved){try{publicAnswers=JSON.parse(saved.public_answers_json||"{}")}catch{} try{secrets=await decryptClientSecrets(env,saved.secret_answers_enc||"")}catch{}}
   const completion=intakeCompletion(spec,publicAnswers,secrets), secretPresent={}; for(const f of spec.fields||[])if(f.secret)secretPresent[f.id]=Boolean(secrets[f.id]);
-  return {ok:true,spec,answers:publicAnswers,secret_present:secretPresent,status:completion.status,completion,request_message:clientRequestMessage(row,spec),updated_at:saved?.updated_at||null};
+  return {ok:true,spec,answers:publicAnswers,secret_present:secretPresent,status:completion.status,completion,request_message:clientRequestMessage(row,spec),discovery_plan:spec.discovery_plan||[],updated_at:saved?.updated_at||null};
 }
 async function saveClientIntake(env,row,plan,body) {
   const spec=clientIntakeSpec(row,plan), allowed=new Map(spec.fields.map(f=>[f.id,f]));
@@ -644,7 +675,7 @@ async function saveClientIntake(env,row,plan,body) {
   const sql="INSERT INTO client_intakes(opportunity_id,public_answers_json,secret_answers_enc,status,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET public_answers_json=excluded.public_answers_json,secret_answers_enc=excluded.secret_answers_enc,status=excluded.status,updated_at=excluded.updated_at";
   await env.DB.prepare(sql).bind(row.opportunity_id,JSON.stringify(publicAnswers),encrypted,completion.status,existing?.created_at||ts,ts).run();
   const secretPresent={}; for(const fld of spec.fields||[])if(fld.secret)secretPresent[fld.id]=Boolean(secrets[fld.id]);
-  return {ok:true,status:completion.status,completion,answers:publicAnswers,secret_present:secretPresent,request_message:clientRequestMessage(row,spec),updated_at:ts};
+  return {ok:true,status:completion.status,completion,answers:publicAnswers,secret_present:secretPresent,request_message:clientRequestMessage(row,spec),discovery_plan:spec.discovery_plan||[],updated_at:ts};
 }
 
 function paidJobPlan(row) {
@@ -880,7 +911,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.2"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -895,14 +926,14 @@ function productionBundle(opportunityId, plan) {
     files.push({path:"delivery/"+rel,content:String(a.content||"")});
   }
   const intake=plan?.client_intake||{status:"not_started",answers:{},secret_present:{},completion:{missing:[]}};
-  const safeIntake={intake_version:"client-intake-v1",status:intake.status||"not_started",answers:intake.answers||{},secret_present:intake.secret_present||{},completion:intake.completion||{},note:"Secret values are intentionally excluded from this package."};
+  const safeIntake={intake_version:"client-intake-v2",status:intake.status||"not_started",answers:intake.answers||{},secret_present:intake.secret_present||{},completion:intake.completion||{},discovery_plan:intake.discovery_plan||[],note:"Secret values are intentionally excluded from this package."};
   files.push({path:"client/CLIENT_INPUT.json",content:JSON.stringify(safeIntake,null,2)});
   const ia=safeIntake.answers||{};
-  let parsedSkuMap={}; try{const x=JSON.parse(ia.prodigi_sku_mapping||"{}");if(x&&typeof x==="object"&&!Array.isArray(x))parsedSkuMap=x}catch{}
+  let parsedSkuMap={}; try{const x=JSON.parse(ia.prodigi_sku_mapping_override||"{}");if(x&&typeof x==="object"&&!Array.isArray(x))parsedSkuMap=x}catch{}
   const clientConfig={
-    etsy:{shopId:ia.etsy_shop_id||"",taxonomyId:ia.etsy_taxonomy_id||"",shippingProfileId:ia.etsy_shipping_profile_id||"",readinessStateId:ia.etsy_readiness_state_id||"",sectionId:ia.etsy_section_id||""},
-    prodigi:{mode:ia.prodigi_mode||"sandbox",skuMap:parsedSkuMap,skuMappingRaw:ia.prodigi_sku_mapping||""},
-    scope:{productScope:ia.product_scope||"",shippingRegions:ia.shipping_regions||"",shippingPolicy:ia.shipping_policy||"",taxPolicy:ia.tax_policy||"",deliveryDate:ia.delivery_date||""},
+    etsy:{shopId:ia.etsy_shop_id_override||"",taxonomyId:"auto",shippingProfileId:ia.etsy_shipping_profile_id_override||"auto",readinessStateId:ia.etsy_readiness_state_id_override||"auto",sectionId:ia.etsy_section_id_override||"auto",categoryHint:ia.etsy_category_hint||""},
+    prodigi:{mode:ia.prodigi_mode||"sandbox",skuMap:parsedSkuMap,skuMappingOverrideRaw:ia.prodigi_sku_mapping_override||"",productNotes:ia.prodigi_product_notes||"",autoMap:!Object.keys(parsedSkuMap).length},
+    scope:{productScope:ia.product_scope||"",commerceSettingsMode:ia.commerce_settings_mode||"",shippingRegions:ia.shipping_regions||"",shippingPolicy:ia.shipping_policy||"",taxPolicy:ia.tax_policy||"",deliveryDate:ia.delivery_date||""},
     credentialsPresent:safeIntake.secret_present||{},
     externalActionsAllowed:false
   };
@@ -924,7 +955,7 @@ async function dispatchProduction(request, env, opportunityId) {
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
   const intake=await getClientIntake(env,row,plan);
-  plan.client_intake={status:intake.status,answers:intake.answers,secret_present:intake.secret_present,completion:intake.completion,request_message:intake.request_message};
+  plan.client_intake={status:intake.status,answers:intake.answers,secret_present:intake.secret_present,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
   if(plan.qc.status!=="preflight_pass") return json({ok:false,error:"QC preflight blocked",qc:plan.qc},400);
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for production"},400);
   const runId="prd_"+crypto.randomUUID(), bundle=productionBundle(opportunityId,plan), now=nowIso();
@@ -936,7 +967,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.2"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1019,7 +1050,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v${APP_VERSION} · Client Intake v1 · 수집→질문→보안입력→재제작→QC</div>
+  <div class="footer">v${APP_VERSION} · Smart Intake v2 · 수집→최소질문→자동발견→재제작→QC</div>
 </div>
 <script>
 let grade='all';
@@ -1147,7 +1178,7 @@ async function showClientIntake(btn){
   try{
     const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/intake");
     const a=d.answers||{}, sp=d.secret_present||{}, fields=d.spec?.fields||[];
-    const fieldHtml=fields.map(f=>{
+    const renderField=f=>{
       const val=a[f.id]??""; const req=f.required?" *":""; const help=f.help?("<div class=\\\"intakeHelp\\\">"+esc(f.help)+"</div>"):"";
       let control="";
       if(f.type==="select"){control="<select data-intake-field=\\\""+esc(f.id)+"\\\">"+((f.options||[]).map(o=>"<option value=\\\""+esc(o.value)+"\\\" "+(String(val)===String(o.value)?"selected":"")+">"+esc(o.label)+"</option>").join(""))+"</select>";}
@@ -1155,9 +1186,14 @@ async function showClientIntake(btn){
       else if(f.type==="password"){control="<input data-intake-field=\\\""+esc(f.id)+"\\\" type=\\\"password\\\" value=\\\"\\\" placeholder=\\\""+(sp[f.id]?"암호화 저장됨 — 변경할 때만 입력":"보안정보 입력")+"\\\">";}
       else {control="<input data-intake-field=\\\""+esc(f.id)+"\\\" type=\\\"text\\\" value=\\\""+esc(val)+"\\\">";}
       return "<div class=\\\"intakeField\\\"><label>"+esc(f.label)+req+(f.secret?" 🔐":"")+"</label>"+control+help+"</div>";
-    }).join("");
+    };
+    const basicHtml=fields.filter(f=>!f.advanced).map(renderField).join("");
+    const advancedHtml=fields.filter(f=>f.advanced).map(renderField).join("");
+    const discovery=(d.discovery_plan||d.spec?.discovery_plan||[]);
+    const discoveryHtml=discovery.length?("<div class=\\\"reason\\\" style=\\\"margin:10px 0\\\"><b>🤖 시스템이 자동으로 처리할 항목</b><br>"+discovery.map(x=>"• "+esc(x)).join("<br>")+"</div>"):"";
+    const advancedSection=advancedHtml?("<details style=\\\"margin:10px 0\\\"><summary><b>⚙️ 고급 입력 — 자동처리가 실패할 때만</b></summary>"+advancedHtml+"</details>"):"";
     const status=d.status==="ready_for_build"?("<div class=\\\"intakeReady\\\">✅ 고객정보 준비 완료 · 실제 제작을 다시 누르면 반영됩니다.</div>"):("<div class=\\\"intakeMissing\\\">🟡 입력 진행 중 · 필수 "+esc(d.completion?.complete||0)+"/"+esc(d.completion?.required||0)+"</div>");
-    el.innerHTML="<div class=\\\"card\\\" style=\\\"margin-top:10px\\\"><b>👤 고객정보 / Client Intake</b><div class=\\\"reason\\\" style=\\\"white-space:pre-wrap\\\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+status+"<div data-intake-form=\\\""+esc(id)+"\\\">"+fieldHtml+"<button class=\\\"clientIntakeSaveBtn\\\" data-job-id=\\\""+esc(id)+"\\\">💾 고객정보 저장</button></div></div>";
+    el.innerHTML="<div class=\\\"card\\\" style=\\\"margin-top:10px\\\"><b>👤 고객정보 / Smart Intake</b><div class=\\\"reason\\\" style=\\\"white-space:pre-wrap\\\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+discoveryHtml+status+"<div data-intake-form=\\\""+esc(id)+"\\\">"+basicHtml+advancedSection+"<button class=\\\"clientIntakeSaveBtn\\\" data-job-id=\\\""+esc(id)+"\\\">💾 고객정보 저장</button></div></div>";
   }catch(err){el.innerHTML="<div class=\\\"empty error\\\">고객정보 조회 실패: "+esc(err.message)+"</div>";}
   finally{btn.disabled=false;btn.textContent=old;}
 }
@@ -1347,7 +1383,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.1"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.2"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
