@@ -1238,7 +1238,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v${APP_VERSION} · Account Connection Gate v1 · 고객답변→계정연결→자동발견→재제작→QC</div>
+  <div class="footer">v${APP_VERSION} · Contract & Payment Gate v1 · 계약/결제→고객답변→계정연결→제작→납품/정산</div>
 </div>
 <script>
 let grade='all';
@@ -1334,7 +1334,7 @@ async function loadPaidJobs(){
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="dealGateBtn" data-job-id="'+esc(j.opportunity_id)+'">💳 계약·결제</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="deal-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
 }
 async function runSandbox(btn){
   const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
@@ -1360,6 +1360,49 @@ async function runSandbox(btn){
 }
 
 
+
+async function showDealGate(btn){
+  const id=btn.dataset.jobId, el=document.getElementById('deal-'+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='불러오는 중…';
+  try{
+    const d=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/deal'), g=d.gate||{}, p=d.profile||{};
+    const sel=(name,value,options)=>'<select data-deal-field="'+name+'">'+options.map(o=>'<option value="'+esc(o[0])+'" '+(String(value)===String(o[0])?'selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
+    const status=d.ready?'<div class="intakeReady">✅ 계약·결제 확보 완료 — 고객정보/계정연결/실제 제작 진행 가능</div>':'<div class="intakeMissing">🟡 실제 제작 전 계약 수락 + 결제 확보가 필요합니다.</div>';
+    const app=sel('application_status',g.application_status,[['not_applied','미지원'],['applied','지원함'],['client_replied','고객 응답'],['assigned','배정/낙찰']]);
+    const contract=sel('contract_status',g.contract_status,[['not_agreed','계약 전'],['negotiating','협의 중'],['accepted','계약/작업 합의 완료'],['cancelled','취소']]);
+    const pay=sel('payment_status',g.payment_status,[['unsecured','결제 미확보'],['secured','결제 확보/에스크로·마일스톤 확인'],['prepaid','선결제 확인'],['paid','입금 완료'],['failed','결제 실패']]);
+    const protect=sel('payment_protection',g.payment_protection,[['unknown','확인 필요'],['platform_escrow','플랫폼 에스크로'],['funded_milestone','펀딩된 마일스톤'],['onchain_or_bounty','온체인/바운티'],['direct_prepaid','직접 선결제'],['other','기타']]);
+    const input=(name,value,placeholder,type='text')=>'<input data-deal-field="'+name+'" type="'+type+'" value="'+esc(value??'')+'" placeholder="'+esc(placeholder)+'">';
+    const net=g.net_estimate==null?'미확정':Number(g.net_estimate).toLocaleString()+' '+esc(g.currency||'');
+    el.innerHTML='<div class="card" style="margin-top:10px"><b>💳 Contract / Payment Gate</b><div class="reason">'+esc(p.platform||g.platform||'')+' · '+esc(p.application_method||'')+'<br>'+esc(p.protection_hint||'')+'</div>'+status+
+      '<div class="intakeField"><label>지원 상태</label>'+app+'</div>'+
+      '<div class="intakeField"><label>계약 상태 *</label>'+contract+'</div>'+
+      '<div class="intakeField"><label>결제 상태 *</label>'+pay+'</div>'+
+      '<div class="intakeField"><label>결제 보호 방식</label>'+protect+'</div>'+
+      '<div class="intakeField"><label>합의 금액 / 통화</label><div class="connectionControls">'+input('gross_amount',g.gross_amount,'합의 총액','number')+input('currency',g.currency,'USD')+'</div></div>'+
+      '<div class="intakeField"><label>플랫폼 수수료 예상액 (선택)</label>'+input('fee_estimate',g.fee_estimate,'예: 50','number')+'<div class="intakeHelp">예상 실수령액: '+net+'</div></div>'+
+      '<div class="intakeField"><label>정산 경로</label>'+input('payout_route',g.payout_route,p.payout_route_hint||'플랫폼 → 출금수단')+'</div>'+
+      '<div class="intakeField"><label>내 수령처 표시명</label>'+input('payout_destination',g.payout_destination,'예: Payoneer / 은행계좌 / Base wallet')+'<div class="intakeHelp">계좌번호·카드번호·비밀번호·시드문구·개인키는 입력하지 마세요.</div></div>'+
+      '<div class="intakeField"><label>계약/마일스톤/바운티 참조번호 (선택)</label>'+input('external_reference',g.external_reference,'프로젝트/마일스톤/Claim ID')+'</div>'+
+      '<div class="intakeField"><label>결제 확보 근거 URL (선택)</label>'+input('evidence_url',g.evidence_url,'플랫폼 계약/마일스톤 URL')+'</div>'+
+      '<div class="intakeField"><label>메모 (선택)</label><textarea data-deal-field="note">'+esc(g.note||'')+'</textarea></div>'+
+      '<button class="dealGateSaveBtn" data-job-id="'+esc(id)+'">💾 계약·결제 상태 저장</button> <a class="link" target="_blank" rel="noopener" href="'+esc(p.application_url||'')+'"></a>'+
+      '<div class="intakeHelp">이 Gate는 자동 입금을 받는 기능이 아니라, 실제 제작 전에 계약과 결제 확보를 확인하는 안전장치입니다.</div></div>';
+  }catch(err){el.innerHTML='<div class="empty error">계약·결제 조회 실패: '+esc(err.message)+'</div>';}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+async function saveDealGate(btn){
+  const id=btn.dataset.jobId, el=document.getElementById('deal-'+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='저장 중…';
+  try{
+    const body={}; el.querySelectorAll('[data-deal-field]').forEach(x=>body[x.dataset.dealField]=x.value);
+    const d=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/deal',{method:'POST',body:JSON.stringify(body)});
+    const fake={dataset:{jobId:id},disabled:false,textContent:'💳 계약·결제'}; await showDealGate(fake);
+    if(d.ready)alert('계약·결제 Gate 통과. 이제 고객정보/계정연결/실제 제작을 진행할 수 있습니다.');
+  }catch(err){alert('계약·결제 저장 실패: '+err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+
 async function showClientIntake(btn){
   const id=btn.dataset.jobId, el=document.getElementById("intake-"+id); if(!el)return;
   btn.disabled=true; const old=btn.textContent; btn.textContent="불러오는 중…";
@@ -1383,12 +1426,12 @@ async function showClientIntake(btn){
     const connRows=(c.connections||[]).map(x=>{
       const ok=x.status==="connected_verified", meta=x.metadata||{}, summary=x.provider==="squarespace"?(meta.title||meta.url||""):x.provider==="prodigi"?(meta.mode||""):"";
       let controls="";
-      if(!ok&&x.provider==="squarespace")controls="<div class=\\\"connectionControls\\\"><input type=\\\"password\\\" data-account-key=\\\"squarespace\\\" placeholder=\\\"Squarespace 작업용 API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"squarespace\\\">연결 확인</button></div>";
-      if(!ok&&x.provider==="etsy")controls="<div class=\\\"connectionControls\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"etsy\\\">Etsy에서 연결 승인</button></div>"+(x.app_configured?"":"<div class=\\\"intakeHelp\\\">Money Scout Etsy 앱 설정이 아직 필요합니다.</div>");
-      if(!ok&&x.provider==="prodigi")controls="<div class=\\\"connectionControls\\\"><select data-account-mode=\\\"prodigi\\\"><option value=\\\"sandbox\\\">Sandbox</option><option value=\\\"live\\\">Live (읽기 검증)</option></select><input type=\\\"password\\\" data-account-key=\\\"prodigi\\\" placeholder=\\\"Prodigi API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"prodigi\\\">연결 확인</button></div>";
+      if(c.deal_ready&&!ok&&x.provider==="squarespace")controls="<div class=\\\"connectionControls\\\"><input type=\\\"password\\\" data-account-key=\\\"squarespace\\\" placeholder=\\\"Squarespace 작업용 API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"squarespace\\\">연결 확인</button></div>";
+      if(c.deal_ready&&!ok&&x.provider==="etsy")controls="<div class=\\\"connectionControls\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"etsy\\\">Etsy에서 연결 승인</button></div>"+(x.app_configured?"":"<div class=\\\"intakeHelp\\\">Money Scout Etsy 앱 설정이 아직 필요합니다.</div>");
+      if(c.deal_ready&&!ok&&x.provider==="prodigi")controls="<div class=\\\"connectionControls\\\"><select data-account-mode=\\\"prodigi\\\"><option value=\\\"sandbox\\\">Sandbox</option><option value=\\\"live\\\">Live (읽기 검증)</option></select><input type=\\\"password\\\" data-account-key=\\\"prodigi\\\" placeholder=\\\"Prodigi API key\\\"><button class=\\\"accountConnectBtn\\\" data-job-id=\\\""+esc(id)+"\\\" data-provider=\\\"prodigi\\\">연결 확인</button></div>";
       return "<div class=\\\"connectionRow\\\" data-connection-provider=\\\""+esc(x.provider)+"\\\"><b>"+esc(x.label)+"</b><div class=\\\"connectionStatus "+(ok?"ok":"wait")+"\\\">"+(ok?"✅ 연결·검증 완료":"연결 필요")+(summary?" · "+esc(summary):"")+"</div>"+controls+"</div>";
     }).join("");
-    const connectionHtml=(c.connections||[]).length?("<div class=\\\"connectionGate\\\"><b>🔗 계정 연결</b><div class=\\\"intakeHelp\\\">OAuth/API 키는 고객 답변과 분리해 보안 저장하며 ZIP에 포함하지 않습니다.</div>"+connRows+"</div>"):"";
+    const connectionHtml=(c.connections||[]).length?("<div class=\\\"connectionGate\\\"><b>🔗 계정 연결</b><div class=\\\"intakeHelp\\\">"+(c.deal_ready?"OAuth/API 키는 고객 답변과 분리해 보안 저장하며 ZIP에 포함하지 않습니다.":"🔒 계약·결제 Gate 통과 후 계정 연결이 활성화됩니다.")+"</div>"+connRows+"</div>"):"";
     el.innerHTML="<div class=\\\"card\\\" style=\\\"margin-top:10px\\\"><b>👤 고객정보 / Account Connection Gate</b><div class=\\\"reason\\\" style=\\\"white-space:pre-wrap\\\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+discoveryHtml+"<div style=\\\"display:flex;gap:12px;flex-wrap:wrap;margin:10px 0\\\">"+answerStatus+connStatus+"</div>"+connectionHtml+"<div data-intake-form=\\\""+esc(id)+"\\\">"+basicHtml+advancedSection+"<button class=\\\"clientIntakeSaveBtn\\\" data-job-id=\\\""+esc(id)+"\\\">💾 고객 답변 저장</button></div></div>";
   }catch(err){el.innerHTML="<div class=\\\"empty error\\\">고객정보 조회 실패: "+esc(err.message)+"</div>";}
   finally{btn.disabled=false;btn.textContent=old;}
@@ -1429,7 +1472,7 @@ async function runProduction(btn){
   btn.disabled=true; const old=btn.textContent; btn.textContent='제작 시작 중…'; el.textContent='Factory Worker가 납품 패키지를 생성하고 있습니다.';
   try{
     const start=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production',{method:'POST'});
-    if(start.status==='sandbox_required'){el.innerHTML='<b>🧪 샌드박스 성공이 먼저 필요합니다.</b><br>같은 카드의 샌드박스 테스트를 성공시킨 뒤 다시 눌러주세요.';return;}
+    if(start.status==='contract_payment_required'){el.innerHTML='<b>💳 계약·결제 확보가 먼저 필요합니다.</b><br>같은 카드의 계약·결제 버튼에서 계약 완료와 결제 확보 상태를 저장해주세요.';return;}\n    if(start.status==='sandbox_required'){el.innerHTML='<b>🧪 샌드박스 성공이 먼저 필요합니다.</b><br>같은 카드의 샌드박스 테스트를 성공시킨 뒤 다시 눌러주세요.';return;}
     if(start.status!=='dispatched'){const missing=Array.isArray(start.missing_configuration)&&start.missing_configuration.length?' · 누락: '+start.missing_configuration.join(', '):'';el.textContent='제작 상태: '+esc(start.status||'unknown')+esc(missing);return;}
     el.textContent='제작 실행됨 · '+esc(start.run_id)+' · Factory Worker/QC 결과 확인 중…';
     for(let i=0;i<40;i++){
@@ -1488,8 +1531,7 @@ async function showManagerPlan(btn){
  finally{btn.disabled=false;btn.textContent=old;}
 }
 
-document.addEventListener('click',async e=>{
- const connectBtn=e.target.closest('.accountConnectBtn'); if(connectBtn){await connectAccount(connectBtn);return;}
+document.addEventListener('click',async e=>{\n const dealSave=e.target.closest('.dealGateSaveBtn'); if(dealSave){await saveDealGate(dealSave);return;}\n const dealBtn=e.target.closest('.dealGateBtn'); if(dealBtn){await showDealGate(dealBtn);return;}\n const connectBtn=e.target.closest('.accountConnectBtn'); if(connectBtn){await connectAccount(connectBtn);return;}
  const intakeSave=e.target.closest('.clientIntakeSaveBtn'); if(intakeSave){await saveClientIntakeUi(intakeSave);return;}
  const intakeBtn=e.target.closest('.clientIntakeBtn'); if(intakeBtn){await showClientIntake(intakeBtn);return;}
  const downloadBtn=e.target.closest('.productionDownloadBtn'); if(downloadBtn){await downloadProduction(downloadBtn);return;}
