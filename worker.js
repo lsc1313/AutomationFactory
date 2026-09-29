@@ -2352,7 +2352,7 @@ export default {
         return json({ok:true,status:r.status,conclusion:r.conclusion,bundle_version:bundle.bundle_version,files});
       }
 
-      const deliveryMatch=path.match(/^\\/api\\/paid-jobs\\/([^/]+)\\/delivery$/);
+      const deliveryMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/delivery$/);
       if(deliveryMatch&&(request.method==="GET"||request.method==="POST")){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const id=decodeURIComponent(deliveryMatch[1]),row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
