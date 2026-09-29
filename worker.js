@@ -590,7 +590,7 @@ function clientIntakeSpec(row, plan=null) {
     add(intakeField("integration_credentials",korean?"연동 인증정보":"Integration credentials","password",true,true,korean?"암호화 저장되며 제작 ZIP에는 들어가지 않습니다.":"Encrypted at rest and excluded from the production ZIP."));
   }
   const questions=plan?.clarification_questions||[];
-  for(const [i,q] of questions.entries()){const id="clarification_"+(i+1);add(intakeField(id,String(q),"textarea",true,false));}
+  for(const [i,q] of questions.entries()){const qt=String(q).toLowerCase();if(/squarespace/.test(qt)&&fields.some(f=>f.id==="squarespace_access_confirmed"))continue;if(/etsy/.test(qt)&&fields.some(f=>f.id==="etsy_shop_status"))continue;if(/prodigi/.test(qt)&&fields.some(f=>f.id==="prodigi_api_key"))continue;if(/tax|shipping/.test(qt)&&fields.some(f=>f.id==="shipping_policy"))continue;if(/delivery|deadline|납기|마감/.test(qt))continue;const id="clarification_"+(i+1);add(intakeField(id,String(q),"textarea",true,false));}
   add(intakeField("delivery_date",korean?"희망 납기일":"Preferred delivery date","text",!String(row?.deadline||"").trim(),false));
   add(intakeField("client_notes",korean?"추가 메모":"Additional client notes","textarea",false,false));
   return {intake_version:"client-intake-v1",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields};
