@@ -497,7 +497,7 @@ assert.ok(discoverySources.includes("AutomationFactory-MoneyScout/0.7.9"));
 
 // v0.8.1 Paid Job Manager
 const managerWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerWorker.includes("paid-job-manager-v0.8.7"));
+assert.ok(managerWorker.includes("paid-job-manager-v2.0"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
 assert.ok(managerWorker.includes('path.endsWith("/plan")'));
@@ -509,12 +509,12 @@ assert.ok(managerUi.includes("작업계획 보기"));
 assert.ok(managerUi.includes("showManagerPlan"));
 assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음"));
 
-// v0.8.3 Paid Job Manager v2
+// Paid Job Manager current contract
 const managerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerV2.includes('paid-job-manager-v0.8.7'));
+assert.ok(managerV2.includes('paid-job-manager-v2.0'));
 assert.ok(managerV2.includes('detected_language'));
-assert.ok(managerV2.includes('questions=q.slice(0,3)'));
-assert.ok(managerV2.includes('acceptance criteria'));
+assert.ok(managerV2.includes('const questions=[...new Set(q)].slice(0,4)'));
+assert.ok(managerV2.includes('factory-build-spec-v2'));
 
 // v0.8.4 Manager v3 implementation spec
 const managerV3 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
@@ -524,18 +524,18 @@ assert.ok(managerV3.includes("external_cost_status"));
 assert.ok(managerV3.includes("needs_validation"));
 assert.ok(managerV3.includes("p.external_cost_status===\'needs_validation\'||p.estimated_external_cost==null"));
 
-// v0.8.5 Builder-ready spec
+// Current Builder-ready spec contract
 const builderReady = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(builderReady.includes("factory-build-spec-v1"));
+assert.ok(builderReady.includes("factory-build-spec-v2"));
 assert.ok(builderReady.includes("functional_requirements"));
 assert.ok(builderReady.includes("acceptance_criteria"));
-assert.ok(builderReady.includes("corePriority"));
-assert.ok(builderReady.includes("external_cost_status==='needs_validation'"));
+assert.ok(builderReady.includes("open_questions"));
+assert.ok(builderReady.includes('externalCostStatus=externalCostKnown?"source_indicates_none":"needs_validation"'));
 
 // v0.8.6 source-of-truth regression
 const managerSourceFix = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerSourceFix.includes('const raw=String(row.title||"")+" "+String(row.description||"");'));
-assert.ok(!managerSourceFix.includes('const raw=String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"");'));
+assert.ok(managerSourceFix.includes('String(row.title||"")+" "+String(row.description||"'));
+assert.ok(!managerSourceFix.includes('String(row.description||"")+" "+String(row.skills||"'));
 assert.ok(managerSourceFix.includes("Manager '+esc(p.manager_version)"));
 assert.ok(managerSourceFix.includes("p.build_spec?.spec_version"));
 
@@ -556,3 +556,13 @@ const diagRender = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf
 assert.ok(diagRender.includes("</div>'+diag+'<b>🧩 요구 기능</b>"));
 assert.ok(!diagRender.includes("const externalCostKnown=/free|"));
 assert.ok(diagRender.includes("no external cost|no paid service|no paid api"));
+
+// v0.9.0 Manager v2: client-brief-driven requirements
+const briefDrivenManagerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(briefDrivenManagerV2.includes("paid-job-manager-v2.0"));
+assert.ok(briefDrivenManagerV2.includes("factory-build-spec-v2"));
+assert.ok(briefDrivenManagerV2.includes("Export the selected products from Squarespace"));
+assert.ok(briefDrivenManagerV2.includes("Create the Etsy listings"));
+assert.ok(briefDrivenManagerV2.includes("Connect Etsy to Prodigi"));
+assert.ok(briefDrivenManagerV2.includes("Squarespace → Etsy → Prodigi"));
+assert.ok(briefDrivenManagerV2.includes("US-targeted tax and shipping"));

@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.8.9";
+const APP_VERSION = "0.9.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -511,50 +511,45 @@ async function setDecision(env, opportunityId, state) {
 
 function paidJobPlan(row) {
   let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
-  const raw=String(row.title||"")+" "+String(row.description||"");
+  const raw=String(row.title||"")+" "+String(row.description||""), desc=String(row.description||"");
   const text=raw.toLowerCase(), korean=(raw.match(/[가-힣]/g)||[]).length>20;
-  const steps=[];
-  const step=(test,en,ko)=>{if(test)steps.push(korean?ko:en)};
-  step(/scrap|crawl|browser|page|website|web site|monitor|check/.test(text),"Access and monitor the target web page/service","대상 웹페이지/서비스에 접근해 상태를 주기적으로 확인");
-  step(/protected|login|authentication|auth|account/.test(text),"Handle authorized login/session access safely","허가된 로그인/세션 접근을 안전하게 처리");
-  step(/slot|availability|available|state|status|change/.test(text),"Detect the requested availability/state transition","요청된 가용성/상태 변화를 판별");
-  step(/telegram/.test(text),"Send immediate Telegram notifications when the state changes","상태 변경 시 Telegram으로 즉시 알림 전송");
-  step(/discord/.test(text),"Send Discord notifications when the trigger condition is met","조건 충족 시 Discord 알림 전송");
-  step(/slack/.test(text),"Send Slack notifications when the trigger condition is met","조건 충족 시 Slack 알림 전송");
-  step(/api/.test(text),"Integrate the required API/authentication flow where available","사용 가능한 API/인증 흐름 연동");
-  step(/database|sqlite|mysql|postgres|store|history/.test(text),"Persist required state/history for reliable operation","안정적 운영을 위한 상태/이력 저장");
-  step(/retry|resilien|error|failure|robust/.test(text),"Add retry, error handling and recovery behavior","재시도·오류처리·복구 로직 구성");
-  step(/python/.test(text),"Package the implementation as a runnable Python service","실행 가능한 Python 서비스 형태로 패키징");
-  if(!steps.length) steps.push(korean?"요청 기능 구현 및 실행 가능한 납품물 구성":"Implement the requested behavior as a runnable software deliverable");
-  const corePriority=[];
-  const core=(test,en,ko)=>{if(test)corePriority.push(korean?ko:en)};
-  core(/scrap|crawl|browser|page|website|web site|monitor|check/.test(text),"Monitor the target page/service at the requested interval","요청 주기로 대상 페이지/서비스 감시");
-  core(/slot|availability|available|state|status|change/.test(text),"Detect the exact availability/state transition requested by the client","고객이 요청한 정확한 가용성/상태 변화 감지");
-  core(/telegram/.test(text),"Send an immediate Telegram alert on each relevant state transition","관련 상태 변화마다 Telegram 즉시 알림");
-  core(/retry|resilien|error|failure|robust/.test(text),"Recover from transient failures with retry/error handling","일시 오류 발생 시 재시도/복구 처리");
-  core(/python/.test(text),"Deliver the solution as a runnable Python service","실행 가능한 Python 서비스로 납품");
-  const supporting=steps.filter(x=>!corePriority.includes(x));
-  const deliverables=[...new Set([...corePriority,...supporting])].slice(0,8);
-  deliverables.push(korean?"설치/실행 방법과 검수 절차 문서":"Setup/run instructions and acceptance-test steps");
-  const q=[]; const add=(test,answered,en,ko)=>{if(test&&!answered)q.push(korean?ko:en)};
-  add(/protected|login|authentication|auth|account/.test(text),/test account|credentials provided|login provided|access provided/.test(text),"Can you provide an authorized test account and confirm the login/authentication method?","허가된 테스트 계정과 로그인/인증 방식을 제공할 수 있나요?");
-  add(/scrap|crawl|browser|page|website|web site|monitor/.test(text),/target url|url is|https?:\/\//.test(text),"Please provide the target URL and confirm the exact state-change condition to detect.","대상 URL과 감지해야 할 정확한 상태 변경 조건을 알려주세요.");
-  add(/telegram|discord|slack|notification|alert/.test(text),/bot token|chat id|channel id|message format/.test(text),"Please confirm the notification destination and preferred message format.","알림 대상과 원하는 메시지 형식을 확인해주세요.");
-  if(!/deadline|deliver by|within \d+ (?:day|hour)|납기|마감/.test(text)) q.push(korean?"원하는 납기일과 실행환경(Windows/Linux/Cloud)을 알려주세요.":"What is your preferred delivery date and target runtime (Windows, Linux, or cloud)?");
-  if(!q.length) q.push(korean?"최종 검수 기준에서 반드시 통과해야 할 조건을 확인해주세요.":"Please confirm the final acceptance criteria that must pass before delivery.");
-  const questions=q.slice(0,3);
-  const complexity=Math.min(5,Math.max(1,Math.ceil((deliverables.length+questions.length)/3)));
-  const hours=[0,2,4,8,16,28][complexity];
+  const requirements=[]; const addReq=(test,en,ko)=>{if(test)requirements.push(korean?ko:en)};
+  // Manager v2: domain/workflow requirements from the actual client brief, before generic technical support.
+  addReq(/squarespace/.test(text)&&/(export|migrat|move|transfer|jump)/.test(text),"Export the selected products from Squarespace with existing copy, imagery, pricing and variants","Squarespace 선택 상품의 설명·이미지·가격·옵션을 함께 추출");
+  addReq(/etsy/.test(text)&&/(listing|listings|shop)/.test(text),"Create the Etsy listings with required sections, shipping profiles and attributes","Etsy 상품 등록 및 섹션·배송 프로필·필수 속성 구성");
+  addReq(/image/.test(text)&&/(dimension|optim|re-format|reformat)/.test(text),"Reformat and optimize product assets for Etsy image, title, tag and SEO requirements","Etsy 이미지·제목·태그·SEO 기준에 맞게 상품 자산 최적화");
+  addReq(/prodigi/.test(text)&&/(connect|mapping|map|fulfil|fulfill)/.test(text),"Connect Etsy to Prodigi and map each product to the correct print-on-demand template","Etsy와 Prodigi를 연결하고 각 상품을 올바른 POD 템플릿에 매핑");
+  addReq(/workflow/.test(text)&&/etsy/.test(text)&&/prodigi/.test(text),"Test the end-to-end Squarespace → Etsy → Prodigi order/fulfilment workflow","Squarespace → Etsy → Prodigi 전체 주문·이행 흐름 테스트");
+  addReq(/tax/.test(text)&&/shipping/.test(text),"Configure and verify US-targeted tax and shipping settings within the supported platform options","지원 범위 내 미국 판매용 세금·배송 설정 구성 및 확인");
+  addReq(/hand.?over|step-by-step guide|future updates/.test(text),"Provide concise hand-over instructions for editing products and adding future listings","향후 상품 수정·추가를 위한 인수인계 가이드 제공");
+  addReq(/csv|json|bulk migration|bulk upload/.test(text),"Use an appropriate bulk migration/import path (API, CSV or JSON) where it improves speed and accuracy","속도·정확도를 위해 적절한 대량 이전 방식(API/CSV/JSON) 적용");
+  addReq(/slot|availability/.test(text)&&/(monitor|check|page)/.test(text),"Monitor the target slot/availability page at the requested interval","요청 주기로 슬롯/가용성 페이지 감시");
+  addReq(/slot|availability/.test(text)&&/telegram/.test(text),"Send Telegram alerts immediately when the requested availability state changes","가용성 상태 변경 즉시 Telegram 알림");
+  addReq(/retry|resilien|robust/.test(text),"Add retry, error handling and recovery for transient failures","일시 오류에 대한 재시도·오류처리·복구 구성");
+  if(!requirements.length){
+    addReq(/scrap|crawl|monitor/.test(text),"Implement the requested web data/monitoring workflow","요청된 웹 데이터/모니터링 흐름 구현");
+    addReq(/api|integration|integrate/.test(text),"Implement the requested service/API integration","요청된 서비스/API 연동 구현");
+  }
+  if(!requirements.length) requirements.push(korean?"의뢰문에 명시된 핵심 결과물을 실행 가능한 형태로 구현":"Implement the concrete deliverable described in the client brief");
+  const deliverables=[...new Set(requirements)].slice(0,10);
+  if(!deliverables.some(x=>/hand-over|guide|인수인계/.test(x))) deliverables.push(korean?"설치·운영·검수 및 인수인계 안내":"Setup, operation, acceptance-test and hand-over instructions");
+  const q=[]; const ask=(needed,answered,en,ko)=>{if(needed&&!answered)q.push(korean?ko:en)};
+  ask(/squarespace/.test(text),/credentials.+(?:shared|provided|supply)|(?:share|provide|supply).+credentials/.test(text),"Please confirm the Squarespace access/permissions to be provided at project start.","프로젝트 시작 시 제공할 Squarespace 접근 권한을 확인해주세요.");
+  ask(/prodigi/.test(text)&&/api/.test(text),/(?:api keys?|credentials).+(?:shared|provided|supply)|(?:share|provide|supply).+(?:api keys?|credentials)/.test(text),"Please confirm the Prodigi API credentials/access available for testing.","Prodigi 테스트용 API 접근정보를 확인해주세요.");
+  ask(/etsy/.test(text),/etsy.+(?:credentials|access).+(?:shared|provided)|(?:share|provide).+etsy.+(?:credentials|access)/.test(text),"Please confirm Etsy shop access and whether the shop is already created/configured.","Etsy 상점 접근 권한과 상점 생성/초기설정 여부를 확인해주세요.");
+  ask(/tax/.test(text)&&/shipping/.test(text),false,"Please confirm the target US shipping regions, shipping policy, and whether tax settings should follow Etsy's platform-managed rules.","미국 판매 대상 지역·배송 정책과 세금 설정 기준을 확인해주세요.");
+  if(!/deadline|deliver by|within \d+ (?:day|hour)|납기|마감/.test(text)) q.push(korean?"원하는 납기일을 알려주세요.":"What is your preferred delivery date?");
+  const questions=[...new Set(q)].slice(0,4);
+  const complexity=Math.min(5,Math.max(1,Math.ceil((deliverables.length+questions.length)/3))), hours=[0,2,4,8,16,28][complexity];
   const externalCostKnown=/no external cost|no paid service|no paid api|no additional cost|without paid services|외부비용 없음|추가 비용 없음/.test(text);
-  const externalCost=externalCostKnown?0:null;
-  const externalCostStatus=externalCostKnown?"source_indicates_none":"needs_validation";
-  const riskFactors=[]; if(/protected|login|auth/.test(text))riskFactors.push(korean?"인증/접근 방식":"authentication/access"); if(/every few seconds|every \d+ seconds|real.?time/.test(text))riskFactors.push(korean?"고빈도 모니터링":"high-frequency monitoring"); if(questions.length>=3)riskFactors.push(korean?"미확정 요구사항":"open requirements");
-  const risk=riskFactors.length>=2?"medium":riskFactors.length?"low":"low";
-  const scopeText=deliverables.slice(0,5).join(korean?" → ":"; ");
-  const proposal=korean?`안녕하세요. 요청 내용을 기준으로 ${scopeText} 범위로 구현할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·테스트를 진행하고 실행 가능한 결과물과 설치/운영 및 검수 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 구현시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"현재 원문상 별도 비용 없음":"사용 서비스가 확정된 뒤 확인"}입니다.`:`Hello, I can implement this as a concrete deliverable covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement and test the solution and deliver the runnable package with setup, operation, and acceptance-test instructions. Based on the current brief, I estimate about ${hours} hours of implementation. Any external service cost will be confirmed once the required services and access method are known.`;
-  const buildSpec={spec_version:"factory-build-spec-v1",job_id:row.opportunity_id,title:row.title||"",language:korean?"ko":"en",objective:deliverables[0]||"",functional_requirements:deliverables,open_questions:questions,acceptance_criteria:[...corePriority.slice(0,3),korean?"설치 문서대로 실행 가능해야 함":"Must run successfully using the supplied setup instructions"],target_runtime:null,estimated_build_hours:hours,external_cost_status:externalCostStatus,external_cost:externalCost,risk_level:risk,risk_factors:riskFactors,source_url:row.url||""};
-  const inputDiagnostics={title:String(row.title||""),description:String(row.description||""),description_length:String(row.description||"").length,skills:String(row.skills||""),url:String(row.url||""),analysis_text_length:raw.length,analysis_preview:raw.slice(0,700)};
-  return {manager_version:"paid-job-manager-v0.8.7",input_diagnostics:inputDiagnostics,status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:riskFactors,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
+  const externalCost=externalCostKnown?0:null, externalCostStatus=externalCostKnown?"source_indicates_none":"needs_validation";
+  const risks=[]; if(/credentials|api key|account|shop/.test(text))risks.push(korean?"외부 계정·권한 의존":"external account/access dependency"); if(/tax/.test(text))risks.push(korean?"세금 설정 범위 확인 필요":"tax configuration scope"); if(/bulk|11-50|\d+\s*(?:products|items)/.test(text))risks.push(korean?"대량 데이터 이전 검수":"bulk migration validation");
+  const risk=risks.length>=2?"medium":risks.length?"low":"low";
+  const scopeText=deliverables.slice(0,6).join(korean?" → ":"; ");
+  const proposal=korean?`안녕하세요. 의뢰문 기준으로 ${scopeText} 범위로 진행할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·이전·통합 테스트를 진행하고 검수 가능한 결과물과 인수인계 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 작업시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"원문상 별도 비용 없음":"사용 계정·서비스 조건 확인 후 확정"}입니다.`:`Hello, I can deliver the requested scope covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement/migrate the requested workflow, test the end-to-end result, and provide the completed deliverable with hand-over instructions. Based on the current brief, I estimate about ${hours} hours of work. External service cost will be confirmed from the actual account/service requirements.`;
+  const buildSpec={spec_version:"factory-build-spec-v2",job_id:row.opportunity_id,title:row.title||"",language:korean?"ko":"en",objective:deliverables[0],functional_requirements:deliverables,open_questions:questions,acceptance_criteria:deliverables.slice(0,Math.min(6,deliverables.length)),target_runtime:null,estimated_build_hours:hours,external_cost_status:externalCostStatus,external_cost:externalCost,risk_level:risk,risk_factors:risks,source_url:row.url||""};
+  const inputDiagnostics={title:String(row.title||""),description:desc,description_length:desc.length,skills:String(row.skills||""),url:String(row.url||""),analysis_text_length:raw.length,analysis_preview:raw.slice(0,700)};
+  return {manager_version:"paid-job-manager-v2.0",input_diagnostics:inputDiagnostics,status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:risks,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
 }
 
 async function listRuns(env) {
@@ -620,7 +615,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.8.9 · Diagnostics Render Fix · 실제 입력 추적 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.9.0 · Manager v2 · 의뢰문 기반 작업명세 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
