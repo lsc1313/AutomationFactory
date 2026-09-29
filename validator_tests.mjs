@@ -615,5 +615,5 @@ assert.ok(codeWorkerV1.includes("project/src/index.js"));
 assert.ok(codeWorkerV1.includes("project/test/spec.test.js"));
 assert.ok(codeWorkerV1.includes("sandbox_runner_available"));
 assert.ok(codeWorkerV1.includes("github-actions:sandbox-runner-v1"));
-assert.ok(codeWorkerV1.includes("tests have not been executed inside Cloudflare Worker"));
+assert.ok(codeWorkerV1.includes("A per-job run result is required before QC may claim tests passed"));
 assert.ok(codeWorkerV1.includes("💻 Code Worker"));
