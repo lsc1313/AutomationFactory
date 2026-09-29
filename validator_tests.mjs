@@ -608,7 +608,7 @@ assert.ok(artifactGeneratorV1.includes("🛠 Artifact Generator"));
 
 // v0.14.0 Code Worker v1 contract
 const codeWorkerV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(codeWorkerV1.includes("code-worker-v2.1"));
+assert.ok(codeWorkerV1.includes("code-worker-v2.2"));
 assert.ok(codeWorkerV1.includes("source_generated"));
 assert.ok(codeWorkerV1.includes("project/package.json"));
 assert.ok(codeWorkerV1.includes("project/src/index.js"));
