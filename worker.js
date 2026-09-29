@@ -1176,7 +1176,7 @@ async function runProduction(btn){
       const p=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production');
       if(p.status==='completed'){
         const ok=p.conclusion==='success', sm=p.summary||{};
-        const gate=sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
+        const gate=sm.next_gate==='client_intake_required'?'고객정보 입력 필요':sm.next_gate==='secure_execution_approval'?'보안연동 승인 대기':sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
         el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button><button class="productionDownloadBtn" data-job-id="'+esc(id)+'">⬇ ZIP 다운로드</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
         return;
       }
@@ -1275,6 +1275,17 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      const intakeMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/intake$/);
+      if(intakeMatch&&(request.method==="GET"||request.method==="POST")){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(intakeMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+        if(!bd.actionable_paid_job||!bd.factory_fulfillable)return json({ok:false,error:"Factory-ready paid job only"},400);
+        const plan=paidJobPlan(row);
+        if(request.method==="GET")return json(await getClientIntake(env,row,plan));
+        const body=await request.json().catch(()=>({})); return json(await saveClientIntake(env,row,plan,body));
+      }
       const sandboxBundleMatch=path.match(/^\/api\/sandbox-runs\/([^/]+)\/bundle$/);
       if(sandboxBundleMatch&&request.method==="GET"){
         if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
