@@ -1677,6 +1677,12 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      if(path==="/api/orchestrator/tick"&&request.method==="POST"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        let body={};try{body=await request.json()}catch{}
+        return json(await runManagerOrchestrator(env,{request,maxActions:Number(body.max_actions??2),limit:Number(body.limit??40)}));
+      }
+
       if(path==="/oauth/etsy/callback"&&request.method==="GET")return finishEtsyOAuth(request,env);
 
       const dealMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/deal$/);
@@ -1821,7 +1827,10 @@ export default {
           else await refresh;
         }
 
-        const rows = await env.DB.prepare(`SELECT * FROM opportunities WHERE user_state!='reject' AND json_extract(score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(score_breakdown,'$.factory_fulfillable')=1 AND json_extract(score_breakdown,'$.actionable_paid_job')=1 ORDER BY score DESC,last_seen_at DESC LIMIT 50`).all();
+        const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at
+          FROM opportunities o LEFT JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
+          WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
+          ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all();
         return json(rows.results || []);
       }
       if (path === "/api/market-candidates") {
@@ -1887,6 +1896,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runMoneyPipeline(env));
+    if(controller.cron==="47 * * * *") ctx.waitUntil(runManagerOrchestrator(env,{maxActions:3,limit:40}));
+    else ctx.waitUntil(Promise.all([runMoneyPipeline(env),runManagerOrchestrator(env,{maxActions:3,limit:40})]));
   }
 };
