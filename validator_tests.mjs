@@ -842,7 +842,7 @@ assert.ok(managerV0200.includes("waiting_client_answers"));
 assert.ok(managerV0200.includes("waiting_account_connections"));
 assert.ok(managerV0200.includes("production_queued"));
 assert.ok(managerV0200.includes("delivery_ready"));
-assert.ok(managerV0200.includes("🏭 자동공장 ON"));
+assert.ok(managerV0200.includes("💰 수익 실행 대시보드"));
 assert.ok(managerV0200.includes("⚙️ 고급/수동 제어"));
 assert.ok(managerV0200.includes("상세보기"));
 assert.ok(managerV0200.includes("client_intake_required"));
