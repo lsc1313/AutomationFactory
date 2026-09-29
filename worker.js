@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.16.2";
+const APP_VERSION = "0.16.3";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -650,7 +650,8 @@ async function dispatchSandbox(request, env, opportunityId) {
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for sandbox"},400);
   const runId="sbx_"+crypto.randomUUID(), bundle=sandboxBundle(opportunityId,plan), now=nowIso();
   await env.DB.prepare("INSERT INTO sandbox_runs(run_id,opportunity_id,bundle_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",now,now).run();
-  if(!env.GITHUB_ACTIONS_TOKEN||!env.SANDBOX_CALLBACK_TOKEN||!env.PUBLIC_BASE_URL) return json({ok:true,run_id:runId,status:"config_required",required_secrets:["GITHUB_ACTIONS_TOKEN","SANDBOX_CALLBACK_TOKEN"],required_setting:"PUBLIC_BASE_URL",note:"Bundle created safely; dispatch is blocked until runtime secrets are configured."},202);
+  const missingConfig=[]; if(!env.GITHUB_ACTIONS_TOKEN)missingConfig.push("GITHUB_ACTIONS_TOKEN"); if(!env.SANDBOX_CALLBACK_TOKEN)missingConfig.push("SANDBOX_CALLBACK_TOKEN"); if(!env.PUBLIC_BASE_URL)missingConfig.push("PUBLIC_BASE_URL");
+  if(missingConfig.length) return json({ok:true,run_id:runId,status:"config_required",missing_configuration:missingConfig,note:"Bundle created safely; dispatch is blocked until runtime configuration is complete."},202);
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const bundleUrl=env.PUBLIC_BASE_URL.replace(/\/$/,"")+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=env.PUBLIC_BASE_URL.replace(/\/$/,"")+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
@@ -737,7 +738,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.16.2 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.16.3 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -840,7 +841,7 @@ async function runSandbox(btn){
   btn.disabled=true; const old=btn.textContent; btn.textContent='실행 요청 중…'; el.textContent='GitHub Actions 샌드박스 실행을 요청하고 있습니다.';
   try{
     const start=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/sandbox',{method:'POST'});
-    if(start.status!=='dispatched'){el.textContent='샌드박스 상태: '+esc(start.status||'unknown');return;}
+    if(start.status!=='dispatched'){const missing=Array.isArray(start.missing_configuration)&&start.missing_configuration.length?' · 누락: '+start.missing_configuration.join(', '):'';el.textContent='샌드박스 상태: '+esc(start.status||'unknown')+esc(missing);return;}
     el.textContent='샌드박스 실행됨 · run '+esc(start.run_id)+' · 결과 확인 중…';
     for(let i=0;i<30;i++){
       await new Promise(r=>setTimeout(r,2000));
