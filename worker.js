@@ -1022,11 +1022,11 @@ function productionBundle(opportunityId, plan) {
   const intake=plan?.client_intake||{status:"not_started",answers:{},completion:{missing:[]}};
   const safeIntake={intake_version:"client-intake-v3",status:intake.status||"not_started",answers:intake.answers||{},completion:intake.completion||{},discovery_plan:intake.discovery_plan||[],note:"Account credentials are stored separately and are intentionally excluded from this package."};
   files.push({path:"client/CLIENT_INPUT.json",content:JSON.stringify(safeIntake,null,2)});
-  const ia=safeIntake.answers||{};
+  const ia=safeIntake.answers||{}, connList=plan?.account_connections?.connections||[], prodigiConn=connList.find(x=>x.provider==="prodigi");
   let parsedSkuMap={}; try{const x=JSON.parse(ia.prodigi_sku_mapping_override||"{}");if(x&&typeof x==="object"&&!Array.isArray(x))parsedSkuMap=x}catch{}
   const clientConfig={
     etsy:{shopId:ia.etsy_shop_id_override||"",taxonomyId:"auto",shippingProfileId:ia.etsy_shipping_profile_id_override||"auto",readinessStateId:ia.etsy_readiness_state_id_override||"auto",sectionId:ia.etsy_section_id_override||"auto",categoryHint:ia.etsy_category_hint||""},
-    prodigi:{mode:ia.prodigi_mode||"sandbox",skuMap:parsedSkuMap,skuMappingOverrideRaw:ia.prodigi_sku_mapping_override||"",productNotes:ia.prodigi_product_notes||"",autoMap:!Object.keys(parsedSkuMap).length},
+    prodigi:{mode:prodigiConn?.metadata?.mode||"sandbox",skuMap:parsedSkuMap,skuMappingOverrideRaw:ia.prodigi_sku_mapping_override||"",productNotes:ia.prodigi_product_notes||"",autoMap:!Object.keys(parsedSkuMap).length},
     scope:{productScope:ia.product_scope||"",commerceSettingsMode:ia.commerce_settings_mode||"",shippingRegions:ia.shipping_regions||"",shippingPolicy:ia.shipping_policy||"",taxPolicy:ia.tax_policy||"",deliveryDate:ia.delivery_date||""},
     accountConnections:(plan?.account_connections?.connections||[]).map(x=>({provider:x.provider,status:x.status,auth_method:x.auth_method,metadata:x.metadata||{}})),
     externalActionsAllowed:false
@@ -1306,7 +1306,7 @@ async function connectAccount(btn){
   try{
     if(provider==="etsy"){
       const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/connections/etsy/start",{method:"POST"});
-      if(d.status==="config_required"){alert("Etsy 앱 설정 필요: "+(d.missing_configuration||[]).join(", "));return;}
+      if(d.status==="config_required"){alert("Money Scout Etsy 앱 설정 필요: "+(d.missing_configuration||[]).join(", ")+"\n고객이 입력할 값이 아니라 Automation Factory 운영 설정입니다.");return;}
       if(!d.authorization_url)throw new Error(d.error||"Etsy authorization URL missing");
       location.href=d.authorization_url; return;
     }
