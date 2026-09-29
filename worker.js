@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.23.0";
+const APP_VERSION = "0.24.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -122,6 +122,16 @@ async function ensureSchema(env) {
       PRIMARY KEY(opportunity_id, provider)
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_account_connections_status ON account_connections(status, updated_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS platform_connections (
+      provider TEXT PRIMARY KEY,
+      account_status TEXT NOT NULL DEFAULT 'not_ready',
+      api_status TEXT NOT NULL DEFAULT 'disconnected',
+      auth_method TEXT NOT NULL DEFAULT '',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_platform_connections_status ON platform_connections(api_status, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS oauth_states (
       state TEXT PRIMARY KEY,
       opportunity_id TEXT NOT NULL,
@@ -725,7 +735,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.23.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.24.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -985,6 +995,32 @@ function applicationPriority(row,draft) {
   return {points,reasons,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold};
 }
 
+async function getPlatformConnection(env, provider) {
+  await ensureSchema(env);
+  const row=await env.DB.prepare("SELECT * FROM platform_connections WHERE provider=?").bind(provider).first();
+  if(row){let metadata={};try{metadata=JSON.parse(row.metadata_json||"{}")}catch{};return {...row,metadata};}
+  return {provider,account_status:"not_ready",api_status:"disconnected",auth_method:"",metadata:{},created_at:"",updated_at:""};
+}
+
+async function savePlatformAccountReady(env, provider, ready=true) {
+  await ensureSchema(env); const ts=nowIso(), current=await getPlatformConnection(env,provider);
+  const accountStatus=ready?"ready":"not_ready";
+  await env.DB.prepare(`INSERT INTO platform_connections(provider,account_status,api_status,auth_method,metadata_json,created_at,updated_at)
+    VALUES(?,?,?,'',?, ?, ?) ON CONFLICT(provider) DO UPDATE SET account_status=excluded.account_status,updated_at=excluded.updated_at`)
+    .bind(provider,accountStatus,current.api_status||"disconnected",JSON.stringify(current.metadata||{}),ts,ts).run();
+  return getPlatformConnection(env,provider);
+}
+
+async function platformConnectionCenter(env) {
+  const freelancer=await getPlatformConnection(env,"freelancer");
+  return {ok:true,providers:[{
+    provider:"freelancer",label:"Freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status,
+    connected:freelancer.api_status==="connected",auth_method:freelancer.auth_method||"",
+    next_action:freelancer.api_status==="connected"?"연결 완료":freelancer.account_status==="ready"?"공식 API/OAuth 연결 설정 필요":"Freelancer 계정 준비 확인",
+    automation_policy:"공식 API/승인된 연동만 사용. 비밀번호 저장·브라우저 자동입찰·CAPTCHA 우회 금지."
+  }]};
+}
+
 async function applicationCenterRows(env) {
   const rows=(await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,
     g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
@@ -994,7 +1030,13 @@ async function applicationCenterRows(env) {
     WHERE o.user_state!='reject' AND m.stage='waiting_contract_payment' AND COALESCE(g.application_status,'not_applied')='not_applied'
     AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
     ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all()).results||[];
-  const ranked=rows.map(row=>{const draft=applicationDraft(row),priority=applicationPriority(row,draft);return {row,draft:{...draft,priority}}})
+  const freelancer=await getPlatformConnection(env,"freelancer");
+  const ranked=rows.map(row=>{const draft=applicationDraft(row),priority=applicationPriority(row,draft);
+    const needsFreelancer=String(row.source||"")==="freelancer_projects";
+    if(needsFreelancer&&freelancer.api_status!=="connected"){
+      priority.points-=100; priority.hard_hold=true; priority.reasons.push("platform_not_connected");
+    }
+    return {row,draft:{...draft,priority,platform_connection:needsFreelancer?{provider:"freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status}:null}}})
     .sort((a,b)=>b.draft.priority.points-a.draft.priority.points||Number(b.row.score||0)-Number(a.row.score||0));
   const selected=ranked.filter(x=>x.draft.priority.points>=4&&!x.draft.priority.hard_hold).slice(0,3);
   return {selected,held:ranked.filter(x=>!selected.includes(x))};
@@ -1192,7 +1234,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.23.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.24.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1254,7 +1296,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.23.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.24.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1529,8 +1571,9 @@ async function loadPaidJobs(){
  const shortlistCount=Math.min(3,applicationRows.length), heldApplicationCount=Math.max(0,applicationRows.length-shortlistCount);
  const actionableHumanCount=shortlistCount+otherHumanRows.length;
  const humanInbox=actionableHumanCount?'<div class="notice"><b>👆 지금 사람이 할 일 '+actionableHumanCount+'건</b><br><span class="sub">실제로 개입할 항목만 표시합니다. 지원후보 '+heldApplicationCount+'건은 Manager가 자동보류 중입니다.</span>'+(shortlistCount?'<div class="decisions"><button id="openApplicationCenter">📨 우선지원 '+shortlistCount+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다.</span></div>';
- const summary='<div class="notice"><b>💰 수익 실행 대시보드</b><br>자동처리 '+autoCount+' · <b>사람확인 '+actionableHumanCount+'</b> · 자동보류 '+heldApplicationCount+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">Money Scout는 뒤에서 계속 탐색합니다. 여기에는 지금 돈으로 연결되는 실행 항목을 먼저 표시합니다.</span></div>'+humanInbox;
- el.innerHTML=summary+'<details class="jobDetails" style="margin-top:14px"><summary>📦 전체 유료 일감 '+rows.length+'개 보기</summary><div class="sub" style="margin:10px 0">평소에는 열어볼 필요 없습니다. Manager가 우선지원·계약·제작·납품 단계가 되면 위 실행 영역으로 올립니다.</div>'+rows.map(j=>{
+ const platformBox='<div class="notice" id="platformConnectionCenter"><b>🔌 플랫폼 연결센터</b><br><span class="sub">Freelancer 연결 상태 확인 중…</span></div>';
+  const summary='<div class="notice"><b>💰 수익 실행 대시보드</b><br>자동처리 '+autoCount+' · <b>사람확인 '+actionableHumanCount+'</b> · 자동보류 '+heldApplicationCount+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">Money Scout는 뒤에서 계속 탐색합니다. 여기에는 지금 돈으로 연결되는 실행 항목을 먼저 표시합니다.</span></div>'+humanInbox;
+ el.innerHTML=platformBox+summary+'<details class="jobDetails" style="margin-top:14px"><summary>📦 전체 유료 일감 '+rows.length+'개 보기</summary><div class="sub" style="margin:10px 0">평소에는 열어볼 필요 없습니다. Manager가 우선지원·계약·제작·납품 단계가 되면 위 실행 영역으로 올립니다.</div>'+rows.map(j=>{
    const state=j.manager_status_label||'🤖 Manager 분석 대기';
    const next=j.manager_next_action||'자동공장이 다음 단계를 판단합니다.';
    const auto=j.manager_autopilot==='on'?'자동공장 ON':'자동공장 상태 확인 중';
@@ -1548,7 +1591,19 @@ async function loadPaidJobs(){
      '</details>'+
    '</div>';
  }).join('')+'</details>';
- const appBtn=document.getElementById('openApplicationCenter');
+ const pcb=document.getElementById('platformConnectionCenter');
+ if(pcb){
+   api('/api/platform-connections').then(d=>{
+     const f=(d.providers||[]).find(x=>x.provider==='freelancer')||{};
+     const account=f.account_status==='ready'?'계정 준비됨':'계정 준비 확인 필요';
+     const apiState=f.connected?'공식 연결됨':'API 미연결';
+     pcb.innerHTML='<b>🔌 플랫폼 연결센터</b><br><b>Freelancer</b> · '+esc(account)+' · '+esc(apiState)+'<br><span class="sub">'+esc(f.next_action||'')+'</span>'+
+       (f.account_status!=='ready'?'<div class="decisions"><button id="markFreelancerReady">방금 만든 Freelancer 계정 준비 완료</button></div>':'')+
+       (!f.connected?'<div class="reason">⚠️ 공식 API 연결 전에는 Freelancer 일감의 자동지원·메시지·수주 확인을 실행하지 않습니다.</div>':'');
+     const b=document.getElementById('markFreelancerReady'); if(b)b.onclick=async()=>{b.disabled=true;await api('/api/platform-connections/freelancer/account-ready',{method:'POST',body:JSON.stringify({ready:true})});await loadPaidJobs();};
+   }).catch(e=>{pcb.innerHTML='<b>🔌 플랫폼 연결센터</b><br><span class="sub">연결 상태 조회 실패: '+esc(e.message)+'</span>';});
+ }
+  const appBtn=document.getElementById('openApplicationCenter');
  if(appBtn)appBtn.onclick=async()=>{
    const box=document.getElementById('applicationCenter'); appBtn.disabled=true;appBtn.textContent='지원서 준비 중…';
    try{
@@ -1805,6 +1860,15 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      if(path==="/api/platform-connections"&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        return json(await platformConnectionCenter(env));
+      }
+      if(path==="/api/platform-connections/freelancer/account-ready"&&request.method==="POST"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const body=await request.json().catch(()=>({}));
+        return json({ok:true,connection:await savePlatformAccountReady(env,"freelancer",body.ready!==false)});
+      }
       if(path==="/api/application-center"&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const center=await applicationCenterRows(env);
@@ -1923,7 +1987,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.23.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.24.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
