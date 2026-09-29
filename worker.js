@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.17.1";
+const APP_VERSION = "0.18.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -101,6 +101,15 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_production_runs_opportunity ON production_runs(opportunity_id, created_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_intakes (
+      opportunity_id TEXT PRIMARY KEY,
+      public_answers_json TEXT NOT NULL DEFAULT '{}',
+      secret_answers_enc TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'not_started',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_client_intakes_status ON client_intakes(status, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
       opportunity_id TEXT NOT NULL,
       evidence_key TEXT NOT NULL,
@@ -534,6 +543,110 @@ async function setDecision(env, opportunityId, state) {
   `).bind(state, nowIso(), opportunityId).run();
 }
 
+function intakeField(id,label,type="text",required=false,secret=false,help="",options=[]) {
+  return {id,label,type,required,secret,help,options};
+}
+
+function clientIntakeSpec(row, plan=null) {
+  const raw=(String(row?.title||"")+" "+String(row?.description||"")+" "+String(row?.skills||"")).toLowerCase();
+  const korean=((String(row?.title||"")+" "+String(row?.description||"")).match(/[가-힣]/g)||[]).length>20;
+  const fields=[], seen=new Set();
+  const add=(f)=>{if(!seen.has(f.id)){seen.add(f.id);fields.push(f)}};
+  const yesNo=[{value:"yes",label:korean?"예":"Yes"},{value:"no",label:korean?"아니오":"No"}];
+  if(/squarespace/.test(raw)){
+    add(intakeField("squarespace_access_confirmed",korean?"Squarespace 접근 권한 준비 여부":"Squarespace access available","select",true,false,"",yesNo));
+    add(intakeField("squarespace_token",korean?"Squarespace API 토큰":"Squarespace API token","password",true,true,korean?"암호화 저장되며 화면/API에 다시 표시하지 않습니다.":"Encrypted at rest and never returned by the UI/API."));
+    add(intakeField("product_scope",korean?"이전할 상품 범위":"Product scope to migrate","textarea",true,false,korean?"전체 상품 또는 상품명/ID/SKU 범위를 적어주세요.":"Specify all products or the product IDs/SKUs to migrate."));
+  }
+  if(/etsy/.test(raw)){
+    add(intakeField("etsy_shop_status",korean?"Etsy 상점 상태":"Etsy shop status","select",true,false,"",[{value:"existing",label:korean?"이미 생성됨":"Already created"},{value:"needs_setup",label:korean?"생성/초기설정 필요":"Needs setup"}]));
+    add(intakeField("etsy_shop_id",korean?"Etsy Shop ID":"Etsy Shop ID","text",true,false));
+    add(intakeField("etsy_oauth_token",korean?"Etsy OAuth 토큰":"Etsy OAuth token","password",true,true,korean?"암호화 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest; never included in the output ZIP."));
+    add(intakeField("etsy_api_key",korean?"Etsy API Key":"Etsy API key","password",true,true,korean?"암호화 저장 · 결과 ZIP에는 포함되지 않습니다.":"Encrypted at rest; never included in the output ZIP."));
+    add(intakeField("etsy_taxonomy_id",korean?"Etsy Taxonomy ID":"Etsy taxonomy ID","text",true,false));
+    add(intakeField("etsy_shipping_profile_id",korean?"Etsy Shipping Profile ID":"Etsy shipping profile ID","text",true,false));
+    add(intakeField("etsy_readiness_state_id",korean?"Etsy Readiness State ID":"Etsy readiness state ID","text",true,false));
+    add(intakeField("etsy_section_id",korean?"Etsy Section ID (선택)":"Etsy section ID (optional)","text",false,false));
+  }
+  if(/prodigi/.test(raw)){
+    add(intakeField("prodigi_api_key",korean?"Prodigi API Key":"Prodigi API key","password",true,true,korean?"먼저 Sandbox 키를 권장합니다.":"A Sandbox key is recommended first."));
+    add(intakeField("prodigi_mode",korean?"Prodigi 검수 환경":"Prodigi validation mode","select",true,false,"",[{value:"sandbox",label:"Sandbox"},{value:"live_after_approval",label:korean?"Sandbox 통과 후 Live":"Live after Sandbox approval"}]));
+    add(intakeField("prodigi_sku_mapping",korean?"SKU → Prodigi 상품/템플릿 매핑":"SKU → Prodigi product/template mapping","textarea",true,false,korean?"예: SKU별 Prodigi product ID, print area, 옵션 매핑":"Provide Prodigi product ID, print area and options per SKU."));
+  }
+  if(/tax|shipping/.test(raw)||/etsy/.test(raw)){
+    add(intakeField("shipping_regions",korean?"판매/배송 대상 지역":"Target shipping regions","textarea",true,false,korean?"예: 미국 본토 전체, 제외 지역 등":"Example: continental US and excluded regions."));
+    add(intakeField("shipping_policy",korean?"배송 정책":"Shipping policy","textarea",true,false));
+    add(intakeField("tax_policy",korean?"세금 처리 기준":"Tax handling preference","textarea",true,false,korean?"플랫폼 자동 처리 여부 등":"State whether platform-managed tax rules should be used."));
+  }
+  if(/excel|spreadsheet|workbook|google sheets|sheet/.test(raw)){
+    add(intakeField("source_data",korean?"원본 데이터/파일 위치":"Source data/file location","textarea",true,false,korean?"파일명, Drive 링크 또는 데이터 구조 설명":"File name, Drive link, or data-structure description."));
+    add(intakeField("workbook_requirements",korean?"시트/수식/대시보드 요구사항":"Workbook/formula/dashboard requirements","textarea",true,false));
+    add(intakeField("output_format",korean?"최종 납품 형식":"Final delivery format","select",true,false,"",[{value:"xlsx",label:"Excel .xlsx"},{value:"google_sheets",label:"Google Sheets"},{value:"xlsx_and_pdf",label:"Excel + PDF"}]));
+    add(intakeField("sample_style",korean?"원하는 디자인/예시":"Preferred design/reference","textarea",false,false));
+  }
+  if(/api|integration|integrate|webhook/.test(raw) && !(/squarespace|etsy|prodigi/.test(raw))){
+    add(intakeField("api_docs_url",korean?"연동 API 문서 URL":"API documentation URL","text",true,false));
+    add(intakeField("sample_payload",korean?"샘플 입력/출력 또는 요청·응답":"Sample input/output or request/response","textarea",true,false));
+    add(intakeField("integration_credentials",korean?"연동 인증정보":"Integration credentials","password",true,true,korean?"암호화 저장되며 제작 ZIP에는 들어가지 않습니다.":"Encrypted at rest and excluded from the production ZIP."));
+  }
+  const questions=plan?.clarification_questions||[];
+  for(const [i,q] of questions.entries()){const qt=String(q).toLowerCase();if(/squarespace/.test(qt)&&fields.some(f=>f.id==="squarespace_access_confirmed"))continue;if(/etsy/.test(qt)&&fields.some(f=>f.id==="etsy_shop_status"))continue;if(/prodigi/.test(qt)&&fields.some(f=>f.id==="prodigi_api_key"))continue;if(/tax|shipping/.test(qt)&&fields.some(f=>f.id==="shipping_policy"))continue;if(/delivery|deadline|납기|마감/.test(qt))continue;const id="clarification_"+(i+1);add(intakeField(id,String(q),"textarea",true,false));}
+  add(intakeField("delivery_date",korean?"희망 납기일":"Preferred delivery date","text",!String(row?.deadline||"").trim(),false));
+  add(intakeField("client_notes",korean?"추가 메모":"Additional client notes","textarea",false,false));
+  return {intake_version:"client-intake-v1",language:korean?"ko":"en",job_id:row?.opportunity_id||"",title:row?.title||"",fields};
+}
+
+function clientRequestMessage(row,spec) {
+  const ko=spec.language==="ko", required=spec.fields.filter(f=>f.required);
+  const lines=required.map((f,i)=>(i+1)+". "+f.label+(f.secret?(ko?" (보안정보)":" (secure credential)"):""));
+  if(ko)return "작업 시작을 위해 아래 정보를 부탁드립니다.\n"+lines.join("\n")+"\n보안정보는 작업용 보안 입력란으로만 받고 결과 파일에는 포함하지 않습니다.";
+  return "To start the project, please provide the following:\n"+lines.join("\n")+"\nSecure credentials are stored only in the protected intake vault and are never included in delivery files.";
+}
+
+function bytesToBase64(bytes) { let s=""; for(const b of bytes)s+=String.fromCharCode(b); return btoa(s); }
+function base64ToBytes(s) { const raw=atob(s), out=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i); return out; }
+async function clientVaultKey(env) {
+  const material=String(env.SANDBOX_CALLBACK_TOKEN||""); if(!material)return null;
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("AutomationFactory-ClientVault-v1:"+material));
+  return crypto.subtle.importKey("raw",digest,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+async function encryptClientSecrets(env,obj) {
+  if(!obj||!Object.keys(obj).length)return ""; const key=await clientVaultKey(env); if(!key)throw new Error("Client vault key unavailable");
+  const iv=crypto.getRandomValues(new Uint8Array(12)), data=new TextEncoder().encode(JSON.stringify(obj));
+  const encrypted=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,data));
+  return "v1."+bytesToBase64(iv)+"."+bytesToBase64(encrypted);
+}
+async function decryptClientSecrets(env,cipher) {
+  if(!cipher)return {}; const parts=String(cipher).split("."); if(parts.length!==3||parts[0]!=="v1")return {};
+  const key=await clientVaultKey(env); if(!key)throw new Error("Client vault key unavailable");
+  const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:base64ToBytes(parts[1])},key,base64ToBytes(parts[2]));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+function intakeCompletion(spec,publicAnswers,secrets) {
+  const missing=[]; for(const f of spec.fields||[]){if(!f.required)continue;const v=f.secret?secrets?.[f.id]:publicAnswers?.[f.id];if(v==null||String(v).trim()==="")missing.push(f.id)}
+  const required=(spec.fields||[]).filter(f=>f.required).length; return {status:missing.length?"collecting":"ready_for_build",missing,required,complete:required-missing.length};
+}
+async function getClientIntake(env,row,plan=null) {
+  const spec=clientIntakeSpec(row,plan), saved=await env.DB.prepare("SELECT * FROM client_intakes WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  let publicAnswers={}, secrets={};
+  if(saved){try{publicAnswers=JSON.parse(saved.public_answers_json||"{}")}catch{} try{secrets=await decryptClientSecrets(env,saved.secret_answers_enc||"")}catch{}}
+  const completion=intakeCompletion(spec,publicAnswers,secrets), secretPresent={}; for(const f of spec.fields||[])if(f.secret)secretPresent[f.id]=Boolean(secrets[f.id]);
+  return {ok:true,spec,answers:publicAnswers,secret_present:secretPresent,status:completion.status,completion,request_message:clientRequestMessage(row,spec),updated_at:saved?.updated_at||null};
+}
+async function saveClientIntake(env,row,plan,body) {
+  const spec=clientIntakeSpec(row,plan), allowed=new Map(spec.fields.map(f=>[f.id,f]));
+  const existing=await env.DB.prepare("SELECT * FROM client_intakes WHERE opportunity_id=?").bind(row.opportunity_id).first();
+  let publicAnswers={}, secrets={};
+  if(existing){try{publicAnswers=JSON.parse(existing.public_answers_json||"{}")}catch{} try{secrets=await decryptClientSecrets(env,existing.secret_answers_enc||"")}catch{}}
+  const incoming=body?.answers&&typeof body.answers==="object"?body.answers:{};
+  for(const [id,value] of Object.entries(incoming)){const fld=allowed.get(id);if(!fld)continue;const v=String(value??"").trim();if(fld.secret){if(v)secrets[id]=v}else publicAnswers[id]=v}
+  const completion=intakeCompletion(spec,publicAnswers,secrets), ts=nowIso(), encrypted=await encryptClientSecrets(env,secrets);
+  const sql="INSERT INTO client_intakes(opportunity_id,public_answers_json,secret_answers_enc,status,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET public_answers_json=excluded.public_answers_json,secret_answers_enc=excluded.secret_answers_enc,status=excluded.status,updated_at=excluded.updated_at";
+  await env.DB.prepare(sql).bind(row.opportunity_id,JSON.stringify(publicAnswers),encrypted,completion.status,existing?.created_at||ts,ts).run();
+  const secretPresent={}; for(const fld of spec.fields||[])if(fld.secret)secretPresent[fld.id]=Boolean(secrets[fld.id]);
+  return {ok:true,status:completion.status,completion,answers:publicAnswers,secret_present:secretPresent,request_message:clientRequestMessage(row,spec),updated_at:ts};
+}
+
 function paidJobPlan(row) {
   let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
   const raw=String(row.title||"")+" "+String(row.description||""), desc=String(row.description||"");
@@ -767,7 +880,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -781,9 +894,25 @@ function productionBundle(opportunityId, plan) {
     const rel=String(a.path||a.name||a.artifact_id||"artifact.txt").replace(/^artifacts\//,"").replace(/\.\./g,"_");
     files.push({path:"delivery/"+rel,content:String(a.content||"")});
   }
-  const manifest={pipeline_version:"production-pipeline-v1",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,external_actions_allowed:false,generated_at:nowIso()};
+  const intake=plan?.client_intake||{status:"not_started",answers:{},secret_present:{},completion:{missing:[]}};
+  const safeIntake={intake_version:"client-intake-v1",status:intake.status||"not_started",answers:intake.answers||{},secret_present:intake.secret_present||{},completion:intake.completion||{},note:"Secret values are intentionally excluded from this package."};
+  files.push({path:"client/CLIENT_INPUT.json",content:JSON.stringify(safeIntake,null,2)});
+  const ia=safeIntake.answers||{};
+  let parsedSkuMap={}; try{const x=JSON.parse(ia.prodigi_sku_mapping||"{}");if(x&&typeof x==="object"&&!Array.isArray(x))parsedSkuMap=x}catch{}
+  const clientConfig={
+    etsy:{shopId:ia.etsy_shop_id||"",taxonomyId:ia.etsy_taxonomy_id||"",shippingProfileId:ia.etsy_shipping_profile_id||"",readinessStateId:ia.etsy_readiness_state_id||"",sectionId:ia.etsy_section_id||""},
+    prodigi:{mode:ia.prodigi_mode||"sandbox",skuMap:parsedSkuMap,skuMappingRaw:ia.prodigi_sku_mapping||""},
+    scope:{productScope:ia.product_scope||"",shippingRegions:ia.shipping_regions||"",shippingPolicy:ia.shipping_policy||"",taxPolicy:ia.tax_policy||"",deliveryDate:ia.delivery_date||""},
+    credentialsPresent:safeIntake.secret_present||{},
+    externalActionsAllowed:false
+  };
+  files.push({path:"config/client.json",content:JSON.stringify(clientConfig,null,2)});
+  const missing=(safeIntake.completion?.missing||[]);
+  const accessLines=Object.entries(safeIntake.secret_present||{}).map(([k,v])=>"- "+k+": "+(v?"stored in encrypted vault":"missing"));
+  files.push({path:"client/ACCESS_STATUS.md",content:["# Client intake/access status","","Intake status: "+safeIntake.status,"Missing required fields: "+(missing.length?missing.join(", "):"none"),"","## Secure credentials",...(accessLines.length?accessLines:["- none required"]), "", "Secret values are not exported to GitHub Actions artifacts or delivery ZIP files."].join("\n")});
+  const manifest={pipeline_version:"production-pipeline-v2",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,client_intake:{status:safeIntake.status,completion:safeIntake.completion,secret_present:safeIntake.secret_present},external_actions_allowed:false,generated_at:nowIso()};
   files.push({path:"delivery/MANIFEST.json",content:JSON.stringify(manifest,null,2)});
-  return {bundle_version:"job-production-bundle-v1",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
+  return {bundle_version:"job-production-bundle-v2",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
 }
 
 async function dispatchProduction(request, env, opportunityId) {
@@ -794,17 +923,20 @@ async function dispatchProduction(request, env, opportunityId) {
   const sandbox=await env.DB.prepare("SELECT run_id FROM sandbox_runs WHERE opportunity_id=? AND status='completed' AND conclusion='success' ORDER BY created_at DESC LIMIT 1").bind(opportunityId).first();
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
+  const intake=await getClientIntake(env,row,plan);
+  plan.client_intake={status:intake.status,answers:intake.answers,secret_present:intake.secret_present,completion:intake.completion,request_message:intake.request_message};
   if(plan.qc.status!=="preflight_pass") return json({ok:false,error:"QC preflight blocked",qc:plan.qc},400);
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for production"},400);
   const runId="prd_"+crypto.randomUUID(), bundle=productionBundle(opportunityId,plan), now=nowIso();
-  const summary={pipeline_version:"production-pipeline-v1",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,next_gate:(plan.factory_builder.blocked_tasks||0)>0?"client_access_required":"user_delivery_review",sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
+  const nextGate=intake.status!=="ready_for_build"?"client_intake_required":((plan.factory_builder.blocked_tasks||0)>0?"secure_execution_approval":"user_delivery_review");
+  const summary={pipeline_version:"production-pipeline-v2",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,intake_status:intake.status,intake_missing:intake.completion?.missing||[],next_gate:nextGate,sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
   await env.DB.prepare("INSERT INTO production_runs(run_id,opportunity_id,bundle_json,status,package_summary_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",JSON.stringify(summary),now,now).run();
   const missingConfig=[]; if(!env.GITHUB_ACTIONS_TOKEN)missingConfig.push("GITHUB_ACTIONS_TOKEN"); if(!env.SANDBOX_CALLBACK_TOKEN)missingConfig.push("SANDBOX_CALLBACK_TOKEN");
   if(missingConfig.length) return json({ok:true,run_id:runId,status:"config_required",missing_configuration:missingConfig,summary},202);
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -840,7 +972,7 @@ function appHtml() {
 <title>Automation Factory · Money Scout</title>
 <style>
 :root{color-scheme:dark;--bg:#070d18;--panel:#111a2a;--panel2:#0c1524;--line:#27344b;--text:#f3f7fc;--muted:#99a8bd;--hot:#53e49d;--watch:#ffd269;--cold:#93a0b4;--accent:#7eb0ff;--danger:#ff8f9b}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#070d18,#0b1321);font-family:system-ui,-apple-system,sans-serif;color:var(--text)}button,input,select{font:inherit}.wrap{max-width:1120px;margin:auto;padding:18px 14px 44px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.brand{font-size:25px;font-weight:900}.sub{color:var(--muted);font-size:12px;line-height:1.5}.badge{border:1px solid var(--line);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:12px}.notice{margin:12px 0;padding:10px 12px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;color:var(--muted);font-size:12px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px}.stat b{display:block;font-size:22px;margin-top:4px}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.toolbar button,.action{background:#17243a;color:white;border:1px solid #34435c;border-radius:10px;padding:9px 11px;font-weight:800}.toolbar button.active{background:#264e82;border-color:#6da7ff}.scan{background:#173d2c!important}.token{display:flex;gap:7px;margin:10px 0}.token input{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:10px}.token button{background:#17243a;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 11px}.filters{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.filters select{background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px;margin:10px 0}.head{display:flex;gap:10px;justify-content:space-between}.title{font-size:16px;font-weight:900;line-height:1.35}.score{min-width:54px;text-align:center;border-radius:12px;padding:8px 7px;font-size:20px;font-weight:950;background:#0b1422;border:1px solid var(--line)}.score small{display:block;font-size:9px;color:var(--muted);font-weight:700}.meta,.reason{color:var(--muted);font-size:12px;margin-top:7px;line-height:1.5}.metrics{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.metric{font-size:11px;padding:5px 7px;border-radius:8px;background:#0b1422;border:1px solid var(--line);color:#cbd6e5}.desc{font-size:13px;line-height:1.55;margin-top:9px;color:#d9e1ed;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.pill{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.hot{background:#123d2a;color:#6bf0aa}.watch{background:#493914;color:#ffdc7f}.cold{background:#252d3a;color:#b0bbca}.paycheck{background:#273657;color:#aecdff}.decisions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.decisions button{border:1px solid var(--line);background:#0e1828;color:white;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:850}.decisions button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}.link{color:#9fc5ff;text-decoration:none}.empty{text-align:center;color:var(--muted);padding:42px 5px}.runinfo{color:var(--muted);font-size:11px;margin:10px 0}.runerrors{display:none;margin:8px 0 12px;padding:10px 12px;border:1px solid #633845;background:#24131a;border-radius:10px;color:#ffb4bd;font-size:11px;line-height:1.55;white-space:pre-wrap}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:28px}.error{color:#ffabb3}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#070d18,#0b1321);font-family:system-ui,-apple-system,sans-serif;color:var(--text)}button,input,select,textarea{font:inherit}.wrap{max-width:1120px;margin:auto;padding:18px 14px 44px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.brand{font-size:25px;font-weight:900}.sub{color:var(--muted);font-size:12px;line-height:1.5}.badge{border:1px solid var(--line);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:12px}.notice{margin:12px 0;padding:10px 12px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;color:var(--muted);font-size:12px}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px}.stat b{display:block;font-size:22px;margin-top:4px}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.toolbar button,.action{background:#17243a;color:white;border:1px solid #34435c;border-radius:10px;padding:9px 11px;font-weight:800}.toolbar button.active{background:#264e82;border-color:#6da7ff}.scan{background:#173d2c!important}.token{display:flex;gap:7px;margin:10px 0}.token input{min-width:0;flex:1;background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:10px}.intakeField{margin:9px 0}.intakeField label{display:block;font-size:11px;font-weight:800;margin-bottom:5px;color:#cbd6e5}.intakeField input,.intakeField select,.intakeField textarea{width:100%;background:#0d1624;color:white;border:1px solid var(--line);border-radius:9px;padding:9px}.intakeField textarea{min-height:78px;resize:vertical}.intakeHelp{font-size:10px;color:var(--muted);margin-top:4px}.intakeReady{color:#6bf0aa;font-weight:850}.intakeMissing{color:#ffdc7f;font-weight:850}.token button{background:#17243a;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 11px}.filters{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.filters select{background:#0d1624;color:white;border:1px solid var(--line);border-radius:10px;padding:9px 10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px;margin:10px 0}.head{display:flex;gap:10px;justify-content:space-between}.title{font-size:16px;font-weight:900;line-height:1.35}.score{min-width:54px;text-align:center;border-radius:12px;padding:8px 7px;font-size:20px;font-weight:950;background:#0b1422;border:1px solid var(--line)}.score small{display:block;font-size:9px;color:var(--muted);font-weight:700}.meta,.reason{color:var(--muted);font-size:12px;margin-top:7px;line-height:1.5}.metrics{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.metric{font-size:11px;padding:5px 7px;border-radius:8px;background:#0b1422;border:1px solid var(--line);color:#cbd6e5}.desc{font-size:13px;line-height:1.55;margin-top:9px;color:#d9e1ed;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.pill{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.hot{background:#123d2a;color:#6bf0aa}.watch{background:#493914;color:#ffdc7f}.cold{background:#252d3a;color:#b0bbca}.paycheck{background:#273657;color:#aecdff}.decisions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.decisions button{border:1px solid var(--line);background:#0e1828;color:white;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:850}.decisions button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}.link{color:#9fc5ff;text-decoration:none}.empty{text-align:center;color:var(--muted);padding:42px 5px}.runinfo{color:var(--muted);font-size:11px;margin:10px 0}.runerrors{display:none;margin:8px 0 12px;padding:10px 12px;border:1px solid #633845;background:#24131a;border-radius:10px;color:#ffb4bd;font-size:11px;line-height:1.55;white-space:pre-wrap}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:28px}.error{color:#ffabb3}
 @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}.stats .stat:first-child{grid-column:span 2}.head{align-items:flex-start}.brand{font-size:22px}.card{padding:13px}.wrap{padding:14px 10px 36px}.toolbar button{flex:1 0 auto}}
 </style>
 </head>
@@ -887,7 +1019,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v${APP_VERSION} · Production Pipeline v1 · 수집→검증→제작→QC</div>
+  <div class="footer">v${APP_VERSION} · Client Intake v1 · 수집→질문→보안입력→재제작→QC</div>
 </div>
 <script>
 let grade='all';
@@ -983,7 +1115,7 @@ async function loadPaidJobs(){
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button><button class="clientIntakeBtn" data-job-id="'+esc(j.opportunity_id)+'">👤 고객정보</button><button class="productionRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🏭 실제 제작</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div><div class="reason" id="intake-'+esc(j.opportunity_id)+'"></div><div class="reason" id="production-'+esc(j.opportunity_id)+'"></div></div>').join('');
 }
 async function runSandbox(btn){
   const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
@@ -1009,6 +1141,38 @@ async function runSandbox(btn){
 }
 
 
+async function showClientIntake(btn){
+  const id=btn.dataset.jobId, el=document.getElementById("intake-"+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent="불러오는 중…";
+  try{
+    const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/intake");
+    const a=d.answers||{}, sp=d.secret_present||{}, fields=d.spec?.fields||[];
+    const fieldHtml=fields.map(f=>{
+      const val=a[f.id]??""; const req=f.required?" *":""; const help=f.help?("<div class=\"intakeHelp\">"+esc(f.help)+"</div>"):"";
+      let control="";
+      if(f.type==="select"){control="<select data-intake-field=\""+esc(f.id)+"\">"+((f.options||[]).map(o=>"<option value=\""+esc(o.value)+"\" "+(String(val)===String(o.value)?"selected":"")+">"+esc(o.label)+"</option>").join(""))+"</select>";}
+      else if(f.type==="textarea"){control="<textarea data-intake-field=\""+esc(f.id)+"\">"+esc(val)+"</textarea>";}
+      else if(f.type==="password"){control="<input data-intake-field=\""+esc(f.id)+"\" type=\"password\" value=\"\" placeholder=\""+(sp[f.id]?"암호화 저장됨 — 변경할 때만 입력":"보안정보 입력")+"\">";}
+      else {control="<input data-intake-field=\""+esc(f.id)+"\" type=\"text\" value=\""+esc(val)+"\">";}
+      return "<div class=\"intakeField\"><label>"+esc(f.label)+req+(f.secret?" 🔐":"")+"</label>"+control+help+"</div>";
+    }).join("");
+    const status=d.status==="ready_for_build"?("<div class=\"intakeReady\">✅ 고객정보 준비 완료 · 실제 제작을 다시 누르면 반영됩니다.</div>"):("<div class=\"intakeMissing\">🟡 입력 진행 중 · 필수 "+esc(d.completion?.complete||0)+"/"+esc(d.completion?.required||0)+"</div>");
+    el.innerHTML="<div class=\"card\" style=\"margin-top:10px\"><b>👤 고객정보 / Client Intake</b><div class=\"reason\" style=\"white-space:pre-wrap\"><b>고객에게 보낼 질문</b><br>"+esc(d.request_message||"")+"</div>"+status+"<div data-intake-form=\""+esc(id)+"\">"+fieldHtml+"<button class=\"clientIntakeSaveBtn\" data-job-id=\""+esc(id)+"\">💾 고객정보 저장</button></div></div>";
+  }catch(err){el.innerHTML="<div class=\"empty error\">고객정보 조회 실패: "+esc(err.message)+"</div>";}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+async function saveClientIntakeUi(btn){
+  const id=btn.dataset.jobId, el=document.getElementById("intake-"+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent="저장 중…";
+  try{
+    const answers={}; el.querySelectorAll("[data-intake-field]").forEach(x=>answers[x.dataset.intakeField]=x.value);
+    const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/intake",{method:"POST",body:JSON.stringify({answers})});
+    const fake={dataset:{jobId:id},disabled:false,textContent:"👤 고객정보"}; await showClientIntake(fake);
+    if(d.status==="ready_for_build")alert("고객정보 준비 완료. 이제 실제 제작을 다시 누르면 고객정보가 반영됩니다.");
+  }catch(err){alert("고객정보 저장 실패: "+err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+
 async function runProduction(btn){
   const id=btn.dataset.jobId, el=document.getElementById('production-'+id); if(!el)return;
   btn.disabled=true; const old=btn.textContent; btn.textContent='제작 시작 중…'; el.textContent='Factory Worker가 납품 패키지를 생성하고 있습니다.';
@@ -1022,7 +1186,7 @@ async function runProduction(btn){
       const p=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/production');
       if(p.status==='completed'){
         const ok=p.conclusion==='success', sm=p.summary||{};
-        const gate=sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
+        const gate=sm.next_gate==='client_intake_required'?'고객정보 입력 필요':sm.next_gate==='secure_execution_approval'?'보안연동 승인 대기':sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
         el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button><button class="productionDownloadBtn" data-job-id="'+esc(id)+'">⬇ ZIP 다운로드</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
         return;
       }
@@ -1074,6 +1238,8 @@ async function showManagerPlan(btn){
 }
 
 document.addEventListener('click',async e=>{
+ const intakeSave=e.target.closest('.clientIntakeSaveBtn'); if(intakeSave){await saveClientIntakeUi(intakeSave);return;}
+ const intakeBtn=e.target.closest('.clientIntakeBtn'); if(intakeBtn){await showClientIntake(intakeBtn);return;}
  const downloadBtn=e.target.closest('.productionDownloadBtn'); if(downloadBtn){await downloadProduction(downloadBtn);return;}
  const packageBtn=e.target.closest('.productionPackageBtn'); if(packageBtn){await showProductionPackage(packageBtn);return;}
  const production=e.target.closest('.productionRunBtn'); if(production){await runProduction(production);return;}
@@ -1119,6 +1285,17 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      const intakeMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/intake$/);
+      if(intakeMatch&&(request.method==="GET"||request.method==="POST")){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(intakeMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+        if(!bd.actionable_paid_job||!bd.factory_fulfillable)return json({ok:false,error:"Factory-ready paid job only"},400);
+        const plan=paidJobPlan(row);
+        if(request.method==="GET")return json(await getClientIntake(env,row,plan));
+        const body=await request.json().catch(()=>({})); return json(await saveClientIntake(env,row,plan,body));
+      }
       const sandboxBundleMatch=path.match(/^\/api\/sandbox-runs\/([^/]+)\/bundle$/);
       if(sandboxBundleMatch&&request.method==="GET"){
         if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
@@ -1170,7 +1347,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
