@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.22.2";
+const APP_VERSION = "0.23.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -725,7 +725,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.22.2",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.23.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -970,9 +970,19 @@ function applicationPriority(row,draft) {
   const q=(draft.questions||[]).length;
   if(q===0){points+=1;reasons.push("clear_brief")} else if(q>=3){points-=1;reasons.push("clarification_dependency")}
   const text=(String(row.title||"")+" "+String(row.description||"")).toLowerCase();
-  if(/credentials|oauth|account access|shop access|api key/.test(text)){points-=1;reasons.push("external_access_dependency")}
-  if(/clone|entire platform|full.?stack/.test(text)&&draft.delivery_days<=3){points-=2;reasons.push("large_scope_tight_schedule")}
-  return {points,reasons,value_per_hour:Math.round(valuePerHour*100)/100};
+  let deliveryRisk=0;
+  if(/credentials|oauth|account access|shop access|api key|admin access|login/.test(text)){points-=2;deliveryRisk+=2;reasons.push("external_access_dependency")}
+  if(/migration|migrate|transfer|import|export/.test(text)){points-=2;deliveryRisk+=2;reasons.push("migration_risk")}
+  if(/bigcommerce|shopify|etsy|squarespace|woocommerce/.test(text)&&/migration|integration|sync|transfer/.test(text)){points-=2;deliveryRisk+=2;reasons.push("commerce_platform_dependency")}
+  if(/customer data|client data|production data|database|orders|customers|inventory/.test(text)){points-=1;deliveryRisk+=1;reasons.push("client_data_dependency")}
+  if(/payment|subscription|membership|streaming|billing/.test(text)){points-=2;deliveryRisk+=2;reasons.push("production_critical_scope")}
+  if(/clone|entire platform|full.?stack/.test(text)&&draft.delivery_days<=3){points-=3;deliveryRisk+=3;reasons.push("large_scope_tight_schedule")}
+  if(/migration|integration|clone|entire platform|full.?stack/.test(text)&&draft.delivery_days<=3){points-=3;deliveryRisk+=3;reasons.push("unsafe_delivery_window")}
+  const automationRatio=Math.max(0,Math.min(1,1-(deliveryRisk*0.12)));
+  if(automationRatio<0.65){points-=3;reasons.push("low_automation_completion_ratio")}
+  const hardHold=deliveryRisk>=5&&draft.delivery_days<=3;
+  if(hardHold){reasons.push("delivery_risk_gate")}
+  return {points,reasons,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold};
 }
 
 async function applicationCenterRows(env) {
@@ -986,7 +996,7 @@ async function applicationCenterRows(env) {
     ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all()).results||[];
   const ranked=rows.map(row=>{const draft=applicationDraft(row),priority=applicationPriority(row,draft);return {row,draft:{...draft,priority}}})
     .sort((a,b)=>b.draft.priority.points-a.draft.priority.points||Number(b.row.score||0)-Number(a.row.score||0));
-  const selected=ranked.filter(x=>x.draft.priority.points>=4).slice(0,3);
+  const selected=ranked.filter(x=>x.draft.priority.points>=4&&!x.draft.priority.hard_hold).slice(0,3);
   return {selected,held:ranked.filter(x=>!selected.includes(x))};
 }
 
@@ -1182,7 +1192,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.22.2"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.23.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1244,7 +1254,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.22.2"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.23.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1913,7 +1923,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.22.2"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.23.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
