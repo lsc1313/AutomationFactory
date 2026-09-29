@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.21.1";
+const APP_VERSION = "0.22.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -725,7 +725,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.21.1",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.22.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -953,6 +953,28 @@ function applicationDraft(row) {
   };
 }
 
+
+function applicationPriority(row,draft) {
+  let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+  const reasons=[]; let points=0;
+  const net=Number(draft.bid_amount||0), hours=Math.max(1,Number(draft.effective_estimated_hours||1));
+  const valuePerHour=net/hours;
+  if(valuePerHour>=100){points+=4;reasons.push("high_value_per_hour")}
+  else if(valuePerHour>=50){points+=3;reasons.push("good_value_per_hour")}
+  else if(valuePerHour>=25){points+=1;reasons.push("acceptable_value_per_hour")}
+  else {points-=3;reasons.push("low_value_per_hour")}
+  if(Number(row.score||0)>=80){points+=2;reasons.push("strong_scout_score")}
+  else if(Number(row.score||0)>=65){points+=1;reasons.push("solid_scout_score")}
+  if(Number(bd.factory_fulfillable)===1){points+=2;reasons.push("factory_fulfillable")}
+  if(Number(bd.actionable_paid_job)===1){points+=1;reasons.push("actionable_paid_job")}
+  const q=(draft.questions||[]).length;
+  if(q===0){points+=1;reasons.push("clear_brief")} else if(q>=3){points-=1;reasons.push("clarification_dependency")}
+  const text=(String(row.title||"")+" "+String(row.description||"")).toLowerCase();
+  if(/credentials|oauth|account access|shop access|api key/.test(text)){points-=1;reasons.push("external_access_dependency")}
+  if(/clone|entire platform|full.?stack/.test(text)&&draft.delivery_days<=3){points-=2;reasons.push("large_scope_tight_schedule")}
+  return {points,reasons,value_per_hour:Math.round(valuePerHour*100)/100};
+}
+
 async function applicationCenterRows(env) {
   const rows=(await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,
     g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
@@ -962,7 +984,10 @@ async function applicationCenterRows(env) {
     WHERE o.user_state!='reject' AND m.stage='waiting_contract_payment' AND COALESCE(g.application_status,'not_applied')='not_applied'
     AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
     ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all()).results||[];
-  return rows.map(row=>({row,draft:applicationDraft(row)}));
+  const ranked=rows.map(row=>{const draft=applicationDraft(row),priority=applicationPriority(row,draft);return {row,draft:{...draft,priority}}})
+    .sort((a,b)=>b.draft.priority.points-a.draft.priority.points||Number(b.row.score||0)-Number(a.row.score||0));
+  const selected=ranked.filter(x=>x.draft.priority.points>=4).slice(0,3);
+  return {selected,held:ranked.filter(x=>!selected.includes(x))};
 }
 
 function factoryBuilder(plan) {
@@ -1157,7 +1182,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.21.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.22.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1219,7 +1244,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.21.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.22.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1513,7 +1538,7 @@ async function loadPaidJobs(){
    const box=document.getElementById('applicationCenter'); appBtn.disabled=true;appBtn.textContent='지원서 준비 중…';
    try{
      const d=await api('/api/application-center');
-     box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 준비 완료 '+d.count+'건</b><div class="intakeHelp">Manager가 초안을 준비했습니다. 현재 플랫폼 제출은 사람 확인이 필요한 단계라 자동 제출하지 않습니다.</div>'+
+     box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. 현재 플랫폼 제출은 사람 확인이 필요한 단계라 자동 제출하지 않습니다.</div>'+
        d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="decisions"><a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">지원 페이지 열기</a></div></details>').join('')+
        '</div>';
    }catch(e){box.innerHTML='<div class="empty error">지원센터 조회 실패: '+esc(e.message)+'</div>';}
@@ -1766,8 +1791,8 @@ export default {
 
       if(path==="/api/application-center"&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
-        const items=await applicationCenterRows(env);
-        return json({ok:true,count:items.length,items:items.map(x=>x.draft)});
+        const center=await applicationCenterRows(env);
+        return json({ok:true,count:center.selected.length,held_count:center.held.length,items:center.selected.map(x=>x.draft)});
       }
       const appPrepareMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/application-draft$/);
       if(appPrepareMatch&&request.method==="GET"){
@@ -1882,7 +1907,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.21.1"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.22.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
