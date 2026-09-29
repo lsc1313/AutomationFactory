@@ -810,7 +810,7 @@ assert.ok(dealV0190.includes("payout_destination"));
 assert.ok(dealV0190.includes("계좌번호·카드번호·비밀번호·시드문구·개인키는 입력하지 마세요."));
 assert.ok(dealV0190.includes("production-pipeline-v4"));
 assert.ok(dealV0190.includes("job-production-bundle-v4"));
-assert.ok(dealV0190.includes("Contract & Payment Gate v1"));
+assert.ok(dealV0190.includes("Contract / Payment Gate"));
 
 assert.ok(dealV0190.includes("계약·결제 Gate가 더 이상 준비 상태가 아닙니다."));
 
