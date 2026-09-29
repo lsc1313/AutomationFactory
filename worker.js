@@ -1021,7 +1021,7 @@ function productionBundle(opportunityId, plan) {
     files.push({path:"delivery/"+rel,content:String(a.content||"")});
   }
   const intake=plan?.client_intake||{status:"not_started",answers:{},secret_present:{},completion:{missing:[]}};
-  const safeIntake={intake_version:"client-intake-v2",status:intake.status||"not_started",answers:intake.answers||{},secret_present:intake.secret_present||{},completion:intake.completion||{},discovery_plan:intake.discovery_plan||[],note:"Secret values are intentionally excluded from this package."};
+  const safeIntake={intake_version:"client-intake-v3",status:intake.status||"not_started",answers:intake.answers||{},completion:intake.completion||{},discovery_plan:intake.discovery_plan||[],note:"Account credentials are stored separately and are intentionally excluded from this package."};
   files.push({path:"client/CLIENT_INPUT.json",content:JSON.stringify(safeIntake,null,2)});
   const ia=safeIntake.answers||{};
   let parsedSkuMap={}; try{const x=JSON.parse(ia.prodigi_sku_mapping_override||"{}");if(x&&typeof x==="object"&&!Array.isArray(x))parsedSkuMap=x}catch{}
@@ -1029,16 +1029,16 @@ function productionBundle(opportunityId, plan) {
     etsy:{shopId:ia.etsy_shop_id_override||"",taxonomyId:"auto",shippingProfileId:ia.etsy_shipping_profile_id_override||"auto",readinessStateId:ia.etsy_readiness_state_id_override||"auto",sectionId:ia.etsy_section_id_override||"auto",categoryHint:ia.etsy_category_hint||""},
     prodigi:{mode:ia.prodigi_mode||"sandbox",skuMap:parsedSkuMap,skuMappingOverrideRaw:ia.prodigi_sku_mapping_override||"",productNotes:ia.prodigi_product_notes||"",autoMap:!Object.keys(parsedSkuMap).length},
     scope:{productScope:ia.product_scope||"",commerceSettingsMode:ia.commerce_settings_mode||"",shippingRegions:ia.shipping_regions||"",shippingPolicy:ia.shipping_policy||"",taxPolicy:ia.tax_policy||"",deliveryDate:ia.delivery_date||""},
-    credentialsPresent:safeIntake.secret_present||{},
+    accountConnections:(plan?.account_connections?.connections||[]).map(x=>({provider:x.provider,status:x.status,auth_method:x.auth_method,metadata:x.metadata||{}})),
     externalActionsAllowed:false
   };
   files.push({path:"config/client.json",content:JSON.stringify(clientConfig,null,2)});
   const missing=(safeIntake.completion?.missing||[]);
-  const accessLines=Object.entries(safeIntake.secret_present||{}).map(([k,v])=>"- "+k+": "+(v?"stored in encrypted vault":"missing"));
-  files.push({path:"client/ACCESS_STATUS.md",content:["# Client intake/access status","","Intake status: "+safeIntake.status,"Missing required fields: "+(missing.length?missing.join(", "):"none"),"","## Secure credentials",...(accessLines.length?accessLines:["- none required"]), "", "Secret values are not exported to GitHub Actions artifacts or delivery ZIP files."].join("\n")});
-  const manifest={pipeline_version:"production-pipeline-v2",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,client_intake:{status:safeIntake.status,completion:safeIntake.completion,secret_present:safeIntake.secret_present},external_actions_allowed:false,generated_at:nowIso()};
+  const conn=(plan?.account_connections?.connections||[]), accessLines=conn.map(x=>"- "+x.provider+": "+x.status+" via "+x.auth_method);
+  files.push({path:"client/ACCESS_STATUS.md",content:["# Client intake/access status","","Intake status: "+safeIntake.status,"Missing required fields: "+(missing.length?missing.join(", "):"none"),"","## Account connections",...(accessLines.length?accessLines:["- none required"]), "", "Passwords, API keys, OAuth access tokens and refresh tokens are never exported to GitHub Actions artifacts or delivery ZIP files."].join("\n")});
+  const manifest={pipeline_version:"production-pipeline-v3",opportunity_id:opportunityId,title:plan?.build_spec?.title||"",implementation_level:cw.implementation_level||"unknown",requirements:plan?.build_spec?.functional_requirements||[],acceptance_criteria:plan?.build_spec?.acceptance_criteria||[],qc:plan?.qc||null,factory_builder:plan?.factory_builder||null,client_intake:{status:safeIntake.status,completion:safeIntake.completion},account_connections:{progress:plan?.account_connections?.progress||{},connections:(plan?.account_connections?.connections||[]).map(x=>({provider:x.provider,status:x.status,auth_method:x.auth_method}))},external_actions_allowed:false,generated_at:nowIso()};
   files.push({path:"delivery/MANIFEST.json",content:JSON.stringify(manifest,null,2)});
-  return {bundle_version:"job-production-bundle-v2",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
+  return {bundle_version:"job-production-bundle-v3",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
 }
 
 async function dispatchProduction(request, env, opportunityId) {
@@ -1049,13 +1049,14 @@ async function dispatchProduction(request, env, opportunityId) {
   const sandbox=await env.DB.prepare("SELECT run_id FROM sandbox_runs WHERE opportunity_id=? AND status='completed' AND conclusion='success' ORDER BY created_at DESC LIMIT 1").bind(opportunityId).first();
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
-  const intake=await getClientIntake(env,row,plan);
-  plan.client_intake={status:intake.status,answers:intake.answers,secret_present:intake.secret_present,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
+  const intake=await getClientIntake(env,row,plan), accountConnections=await getAccountConnections(env,row);
+  plan.client_intake={status:intake.status,answers:intake.answers,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
+  plan.account_connections=accountConnections;
   if(plan.qc.status!=="preflight_pass") return json({ok:false,error:"QC preflight blocked",qc:plan.qc},400);
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for production"},400);
   const runId="prd_"+crypto.randomUUID(), bundle=productionBundle(opportunityId,plan), now=nowIso();
-  const nextGate=intake.status!=="ready_for_build"?"client_intake_required":((plan.factory_builder.blocked_tasks||0)>0?"secure_execution_approval":"user_delivery_review");
-  const summary={pipeline_version:"production-pipeline-v2",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,intake_status:intake.status,intake_missing:intake.completion?.missing||[],next_gate:nextGate,sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
+  const nextGate=intake.status!=="ready_for_build"?"client_intake_required":(!accountConnections.progress.ready?"account_connection_required":((plan.factory_builder.blocked_tasks||0)>0?"secure_execution_approval":"user_delivery_review"));
+  const summary={pipeline_version:"production-pipeline-v3",implementation_level:plan.code_worker.implementation_level||"unknown",file_count:bundle.files.length,qc_status:plan.qc.status,ready_tasks:plan.factory_builder.ready_tasks||0,blocked_tasks:plan.factory_builder.blocked_tasks||0,intake_status:intake.status,intake_missing:intake.completion?.missing||[],account_connections:accountConnections.progress,next_gate:nextGate,sandbox_run_id:sandbox.run_id,external_actions_allowed:false};
   await env.DB.prepare("INSERT INTO production_runs(run_id,opportunity_id,bundle_json,status,package_summary_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",JSON.stringify(summary),now,now).run();
   const missingConfig=[]; if(!env.GITHUB_ACTIONS_TOKEN)missingConfig.push("GITHUB_ACTIONS_TOKEN"); if(!env.SANDBOX_CALLBACK_TOKEN)missingConfig.push("SANDBOX_CALLBACK_TOKEN");
   if(missingConfig.length) return json({ok:true,run_id:runId,status:"config_required",missing_configuration:missingConfig,summary},202);
