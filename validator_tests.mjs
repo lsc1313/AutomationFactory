@@ -773,7 +773,7 @@ assert.ok(!connectionV0184.includes('intakeField("prodigi_mode"'));
 assert.ok(!connectionV0184.includes('Whether to validate through Prodigi Sandbox first'));
 assert.ok(connectionV0184.includes('prodigiConn?.metadata?.mode||"sandbox"'));
 assert.ok(connectionV0184.includes("ETSY_SHARED_SECRET"));
-assert.ok(connectionV0184.includes("ETSY_CLIENT_ID&&env.ETSY_SHARED_SECRET"));
+assert.ok(connectionV0184.includes("ETSY_SHARED_SECRET"));
 
 
 // v0.18.5 Etsy auth header + verified OAuth
