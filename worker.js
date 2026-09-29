@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.16.0";
+const APP_VERSION = "0.16.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -650,7 +650,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for sandbox"},400);
   const runId="sbx_"+crypto.randomUUID(), bundle=sandboxBundle(opportunityId,plan), now=nowIso();
   await env.DB.prepare("INSERT INTO sandbox_runs(run_id,opportunity_id,bundle_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",now,now).run();
-  if(!env.GITHUB_ACTIONS_TOKEN||!env.PUBLIC_BASE_URL) return json({ok:true,run_id:runId,status:"config_required",required_secrets:["GITHUB_ACTIONS_TOKEN","SANDBOX_CALLBACK_TOKEN"],required_setting:"PUBLIC_BASE_URL",note:"Bundle created safely; dispatch is blocked until runtime secrets are configured."},202);
+  if(!env.GITHUB_ACTIONS_TOKEN||!env.SANDBOX_CALLBACK_TOKEN||!env.PUBLIC_BASE_URL) return json({ok:true,run_id:runId,status:"config_required",required_secrets:["GITHUB_ACTIONS_TOKEN","SANDBOX_CALLBACK_TOKEN"],required_setting:"PUBLIC_BASE_URL",note:"Bundle created safely; dispatch is blocked until runtime secrets are configured."},202);
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const bundleUrl=env.PUBLIC_BASE_URL.replace(/\/$/,"")+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=env.PUBLIC_BASE_URL.replace(/\/$/,"")+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
@@ -896,6 +896,7 @@ export default {
 
       const sandboxBundleMatch=path.match(/^\/api\/sandbox-runs\/([^/]+)\/bundle$/);
       if(sandboxBundleMatch&&request.method==="GET"){
+        if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
         const r=await env.DB.prepare("SELECT bundle_json,status FROM sandbox_runs WHERE run_id=?").bind(decodeURIComponent(sandboxBundleMatch[1])).first();
         if(!r)return json({ok:false,error:"Sandbox run not found"},404);
         return json(JSON.parse(r.bundle_json||"{}"));
