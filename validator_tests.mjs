@@ -615,7 +615,7 @@ assert.ok(codeWorkerV1.includes("project/src/index.js"));
 assert.ok(codeWorkerV1.includes("project/test/spec.test.js"));
 assert.ok(codeWorkerV1.includes("sandbox_runner_available"));
 assert.ok(codeWorkerV1.includes("github-actions:sandbox-runner-v1"));
-assert.ok(codeWorkerV1.includes("Production packages remain side-effect-free"));
+assert.ok(codeWorkerV1.includes("production remains gated on contract/payment"));
 assert.ok(codeWorkerV1.includes("💻 Code Worker"));
 
 // v0.16.1 dynamic per-job sandbox auth contract
