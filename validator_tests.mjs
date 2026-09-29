@@ -524,13 +524,13 @@ assert.ok(managerV3.includes("external_cost_status"));
 assert.ok(managerV3.includes("needs_validation"));
 assert.ok(managerV3.includes("p.external_cost_status===\'needs_validation\'||p.estimated_external_cost==null"));
 
-// v0.8.5 Builder-ready spec
+// Current Builder-ready spec contract
 const builderReady = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(builderReady.includes("factory-build-spec-v2"));
 assert.ok(builderReady.includes("functional_requirements"));
 assert.ok(builderReady.includes("acceptance_criteria"));
-assert.ok(builderReady.includes("corePriority"));
-assert.ok(builderReady.includes("external_cost_status==='needs_validation'"));
+assert.ok(builderReady.includes("open_questions"));
+assert.ok(builderReady.includes('externalCostStatus=externalCostKnown?"source_indicates_none":"needs_validation"'));
 
 // v0.8.6 source-of-truth regression
 const managerSourceFix = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
