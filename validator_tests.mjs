@@ -644,15 +644,15 @@ assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
-assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.18.2"'));
+assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.18.3"'));
 
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.18.2"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.18.3"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
-assert.ok(productionV017.includes("production-pipeline-v2"));
-assert.ok(productionV017.includes("job-production-bundle-v2"));
+assert.ok(productionV017.includes("production-pipeline-v3"));
+assert.ok(productionV017.includes("job-production-bundle-v3"));
 assert.ok(productionV017.includes("dispatchProduction"));
 assert.ok(productionV017.includes("productionRunBtn"));
 assert.ok(productionV017.includes("🏭 실제 제작"));
@@ -686,13 +686,13 @@ assert.ok(workflowV0171.includes("job-package-${{ inputs.run_id }}"));
 // v0.18.0 Client Intake v1 contract
 const intakeV018 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(intakeV018.includes("CREATE TABLE IF NOT EXISTS client_intakes"));
-assert.ok(intakeV018.includes("client-intake-v2"));
+assert.ok(intakeV018.includes("client-intake-v3"));
 assert.ok(intakeV018.includes("clientIntakeSpec"));
 assert.ok(intakeV018.includes("encryptClientSecrets"));
 assert.ok(intakeV018.includes("AES-GCM"));
 assert.ok(intakeV018.includes("AutomationFactory-ClientVault-v1"));
 assert.ok(intakeV018.includes("secret_present"));
-assert.ok(intakeV018.includes("Secret values are intentionally excluded from this package."));
+assert.ok(intakeV018.includes("Account credentials are stored separately and are intentionally excluded from this package."));
 assert.ok(intakeV018.includes("clientIntakeBtn"));
 assert.ok(intakeV018.includes("clientIntakeSaveBtn"));
 assert.ok(intakeV018.includes("👤 고객정보"));
@@ -702,7 +702,7 @@ assert.ok(intakeV018.includes("secure_execution_approval"));
 assert.ok(intakeV018.includes("client/CLIENT_INPUT.json"));
 assert.ok(intakeV018.includes("client/ACCESS_STATUS.md"));
 assert.ok(intakeV018.includes("config/client.json"));
-assert.ok(intakeV018.includes("Secret values are not exported to GitHub Actions artifacts or delivery ZIP files."));
+assert.ok(intakeV018.includes("Passwords, API keys, OAuth access tokens and refresh tokens are never exported to GitHub Actions artifacts or delivery ZIP files."));
 
 
 // v0.18.1 browser-script syntax regression
@@ -726,14 +726,41 @@ assert.ok(renderedHtml.includes("clientIntakeBtn"));
 
 // v0.18.2 Smart Intake v2 contract
 const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.18.2"'));
-assert.ok(smartIntakeV0182.includes("Smart Intake v2"));
+assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.18.3"'));
+assert.ok(smartIntakeV0182.includes("Account Connection Gate v1"));
 assert.ok(smartIntakeV0182.includes("discovery_plan"));
 assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
 assert.ok(smartIntakeV0182.includes("SKU mapping override"));
 assert.ok(smartIntakeV0182.includes("automatic discovery fails"));
 assert.ok(smartIntakeV0182.includes("autoMap:!Object.keys(parsedSkuMap).length"));
-assert.ok(smartIntakeV0182.includes("Taxonomy)"));
+assert.ok(smartIntakeV0182.toLowerCase().includes("taxonomy"));
 assert.ok(smartIntakeV0182.includes("고급 입력 — 자동처리가 실패할 때만"));
 assert.ok(smartIntakeV0182.includes("🤖 시스템이 자동으로 처리할 항목"));
 assert.ok(smartIntakeV0182.includes("config/client.json"));
+
+
+// v0.18.3 Account Connection Gate v1 contract
+const connectionV0183 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(connectionV0183.includes('const APP_VERSION = "0.18.3"'));
+assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS account_connections"));
+assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS oauth_states"));
+assert.ok(connectionV0183.includes("accountProviderSpec"));
+assert.ok(connectionV0183.includes("connectSquarespace"));
+assert.ok(connectionV0183.includes("connectProdigi"));
+assert.ok(connectionV0183.includes("startEtsyOAuth"));
+assert.ok(connectionV0183.includes("finishEtsyOAuth"));
+assert.ok(connectionV0183.includes("https://www.etsy.com/oauth/connect"));
+assert.ok(connectionV0183.includes("https://api.etsy.com/v3/public/oauth/token"));
+assert.ok(connectionV0183.includes('code_challenge_method","S256"'));
+assert.ok(connectionV0183.includes("https://api.squarespace.com/1.0/authorization/website"));
+assert.ok(connectionV0183.includes("https://api.sandbox.prodigi.com"));
+assert.ok(connectionV0183.includes("account_connection_required"));
+assert.ok(connectionV0183.includes("Account Connection Gate v1"));
+assert.ok(connectionV0183.includes("accountConnectBtn"));
+assert.ok(connectionV0183.includes("Etsy에서 연결 승인"));
+assert.ok(connectionV0183.includes("고객 답변"));
+assert.ok(connectionV0183.includes("계정 연결"));
+assert.ok(!connectionV0183.includes('intakeField("etsy_oauth_token"'));
+assert.ok(!connectionV0183.includes('intakeField("etsy_api_key"'));
+assert.ok(!connectionV0183.includes('intakeField("squarespace_token"'));
+assert.ok(!connectionV0183.includes('intakeField("prodigi_api_key"'));
