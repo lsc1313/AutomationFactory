@@ -643,3 +643,4 @@ assert.ok(dynamicSandbox.includes('missing_configuration'));
 assert.ok(dynamicSandbox.includes('GITHUB_ACTIONS_TOKEN'));
 assert.ok(dynamicSandbox.includes('SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicSandbox.includes('PUBLIC_BASE_URL'));
+assert.ok(dynamicSandbox.includes("j.detail?(' · '+String(j.detail).slice(0,300))"));
