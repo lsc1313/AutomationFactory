@@ -1,4 +1,4 @@
--- Automation Factory · Money Scout v0.18.2
+-- Automation Factory · Money Scout v0.18.3
 -- v0.1의 jobs 테이블은 삭제하지 않습니다. v0.2는 새 opportunities 테이블을 사용합니다.
 
 CREATE TABLE IF NOT EXISTS opportunities (
@@ -90,3 +90,33 @@ CREATE TABLE IF NOT EXISTS client_intakes (
 
 CREATE INDEX IF NOT EXISTS idx_client_intakes_status
 ON client_intakes(status, updated_at DESC);
+
+
+-- v0.18.3 Account Connection Gate
+CREATE TABLE IF NOT EXISTS account_connections (
+  opportunity_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'disconnected',
+  auth_method TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  secret_enc TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(opportunity_id, provider)
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_connections_status
+ON account_connections(status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state TEXT PRIMARY KEY,
+  opportunity_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  verifier_enc TEXT NOT NULL DEFAULT '',
+  redirect_uri TEXT NOT NULL DEFAULT '',
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_states_expiry
+ON oauth_states(expires_at);
