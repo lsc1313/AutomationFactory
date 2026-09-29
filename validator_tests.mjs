@@ -917,7 +917,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
 
 // v0.34.0 delivery approval gate static regression checks
 {
-  const workerSource = await readFile(new URL("./worker.js", import.meta.url), "utf8");
+  const workerSource = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
   assert.match(workerSource, /CREATE TABLE IF NOT EXISTS delivery_approvals/);
   assert.match(workerSource, /async function getDeliveryApproval/);
   assert.match(workerSource, /async function approveDelivery/);
