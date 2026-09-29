@@ -586,3 +586,15 @@ assert.ok(workerExecutionV1.includes("waiting_for_client_access"));
 assert.ok(workerExecutionV1.includes("external_action_allowed:false"));
 assert.ok(workerExecutionV1.includes("user_approval_before_any_external_action"));
 assert.ok(workerExecutionV1.includes("⚙️ Worker Execution"));
+
+// v0.12.0 Build Runtime + QC v1 contract
+const buildRuntimeQcV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(buildRuntimeQcV1.includes("build-runtime-v1"));
+assert.ok(buildRuntimeQcV1.includes("artifact_manifest_only"));
+assert.ok(buildRuntimeQcV1.includes("planned_internal_artifact"));
+assert.ok(buildRuntimeQcV1.includes("external_side_effect:false"));
+assert.ok(buildRuntimeQcV1.includes("qc-v1"));
+assert.ok(buildRuntimeQcV1.includes("external_side_effects_blocked"));
+assert.ok(buildRuntimeQcV1.includes("preflight_pass"));
+assert.ok(buildRuntimeQcV1.includes("📦 Build Runtime"));
+assert.ok(buildRuntimeQcV1.includes("🧪 QC"));
