@@ -1109,6 +1109,39 @@ export default {
         return json(r||{status:"not_run"});
       }
 
+      const productionBundleMatch=path.match(/^\/api\/production-runs\/([^/]+)\/bundle$/);
+      if(productionBundleMatch&&request.method==="GET"){
+        if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
+        const r=await env.DB.prepare("SELECT bundle_json,status FROM production_runs WHERE run_id=?").bind(decodeURIComponent(productionBundleMatch[1])).first();
+        if(!r)return json({ok:false,error:"Production run not found"},404);
+        return json(JSON.parse(r.bundle_json||"{}"));
+      }
+      const productionResultMatch=path.match(/^\/api\/production-runs\/([^/]+)\/result$/);
+      if(productionResultMatch&&request.method==="POST"){
+        if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
+        const body=await request.json(); const conclusion=body.conclusion==="success"?"success":"failure";
+        await env.DB.prepare("UPDATE production_runs SET status='completed',conclusion=?,log_summary=?,github_run_id=?,updated_at=? WHERE run_id=?").bind(conclusion,String(body.log_summary||"").slice(0,2000),String(body.github_run_id||""),nowIso(),decodeURIComponent(productionResultMatch[1])).run();
+        return json({ok:true});
+      }
+      const productionStartMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production$/);
+      if(productionStartMatch&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;return dispatchProduction(request,env,decodeURIComponent(productionStartMatch[1]));}
+      const productionStatusMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production$/);
+      if(productionStatusMatch&&request.method==="GET"){
+        const r=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,package_summary_json,created_at,updated_at FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionStatusMatch[1])).first();
+        if(!r)return json({status:"not_run"});
+        let summary={};try{summary=JSON.parse(r.package_summary_json||"{}")}catch{}
+        return json({...r,summary});
+      }
+      const productionPackageMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production\/package$/);
+      if(productionPackageMatch&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const r=await env.DB.prepare("SELECT bundle_json,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionPackageMatch[1])).first();
+        if(!r)return json({ok:false,error:"Production package not found"},404);
+        const bundle=JSON.parse(r.bundle_json||"{}");
+        const files=(bundle.files||[]).map(f=>({path:f.path,bytes:new TextEncoder().encode(String(f.content||"")).length}));
+        return json({ok:true,status:r.status,conclusion:r.conclusion,bundle_version:bundle.bundle_version,files});
+      }
+
       const paidPlanMatch = path.startsWith("/api/paid-jobs/") && path.endsWith("/plan") ? { 1: path.slice("/api/paid-jobs/".length, -"/plan".length) } : null;
       if (paidPlanMatch && request.method === "GET") {
         const id=decodeURIComponent(paidPlanMatch[1]);
