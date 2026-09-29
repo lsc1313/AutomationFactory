@@ -1,0 +1,26 @@
+name: Sandbox Runner v1
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sandbox/**'
+      - '.github/workflows/sandbox-runner.yml'
+jobs:
+  generated-project-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sandbox/generated
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify sandbox package has no dependencies
+        run: node -e "const p=require('./package.json'); if(Object.keys(p.dependencies||{}).length||Object.keys(p.devDependencies||{}).length) process.exit(1)"
+      - name: Execute generated project tests
+        run: npm test

@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.14.0";
+const APP_VERSION = "0.15.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -619,7 +619,7 @@ function codeWorker(plan) {
     {path:"project/test/spec.test.js",language:"javascript",content:"import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { buildPlan } from '../src/index.js';\ntest('external actions stay disabled',()=>{ const p=buildPlan(); assert.equal(p.externalActionsAllowed,false); assert.ok(p.requirements.length>0); });\n"},
     {path:"project/README.md",language:"markdown",content:"# Automation Factory generated project\n\nThis is an internal build scaffold generated from the approved Manager specification.\n\nExternal client/account actions are disabled until explicit approval and authorized credentials are available.\n"}
   ];
-  return {code_worker_version:"code-worker-v1",status:"source_generated",project_kind:"node-esm",files,file_count:files.length,test_execution:"sandbox_required",test_command:"npm test",external_side_effects:false,note:"Source and tests are generated, but tests have not been executed inside Cloudflare Worker."};
+  return {code_worker_version:"code-worker-v1",status:"source_generated",project_kind:"node-esm",files,file_count:files.length,test_execution:"sandbox_runner_available",test_runner:"github-actions:sandbox-runner-v1",test_command:"npm test",external_side_effects:false,note:"Source and tests are generated in Cloudflare Worker; execution is delegated to the isolated GitHub Actions Sandbox Runner. A per-job run result is required before QC may claim tests passed."};
 }
 
 
@@ -700,7 +700,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.14.0 · Code Worker v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.15.0 · Sandbox Runner v1 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
