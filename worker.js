@@ -2322,7 +2322,7 @@ export default {
       if (evidenceMatch && request.method === "GET") {
         const id = decodeURIComponent(evidenceMatch[1]);
         const rows = await env.DB.prepare(`SELECT evidence_key AS evidence_id,source,app_id,app_name,evidence_kind,evidence_quality,complaint_bearing,rating,text,url,posted_at FROM opportunity_evidence WHERE opportunity_id=? ORDER BY complaint_bearing DESC, rating ASC LIMIT 20`).bind(id).all();
-        const paidRows=rows.results||[];\n        return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
+        return json(rows.results || []);
       }
       if (path === "/api/pipeline/run" && request.method === "POST") {
         const denied = requireAdmin(request, env); if (denied) return denied;
@@ -2529,7 +2529,8 @@ export default {
           LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
           WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
           ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all();
-        const paidRows=rows.results||[];\n        return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
+        const paidRows=rows.results||[];
+        return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
       }
       if (path === "/api/market-candidates") {
         const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'verified_money' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
