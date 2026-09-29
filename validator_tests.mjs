@@ -546,10 +546,8 @@ assert.ok(inputDiag.includes("Manager 실제 입력 진단"));
 
 // v0.8.8 browser script regression: diagnostic lines must be escaped inside generated HTML
 const browserHotfix = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(browserHotfix.includes("\\\
-DESCRIPTION LENGTH:"));
-assert.ok(browserHotfix.includes("\\\
-ANALYSIS PREVIEW:"));
+assert.ok(browserHotfix.includes("\\\\nDESCRIPTION LENGTH:"));
+assert.ok(browserHotfix.includes("\\\\nANALYSIS PREVIEW:"));
 
 // v0.8.9 diagnostics render + cost evidence
 const diagRender = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
