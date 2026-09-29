@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.44.0";
+const APP_VERSION = "0.45.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -781,7 +781,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.44.0",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.45.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -1096,7 +1096,7 @@ async function verifyFreelancerConnection(env) {
   let response,payload={};
   try {
     response=await fetch("https://www.freelancer.com/api/users/0.1/self/",{
-      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.44.0"}
+      headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.45.0"}
     });
     payload=await response.json().catch(()=>({}));
   } catch { return {ok:false,connected:false}; }
@@ -1114,7 +1114,7 @@ async function freelancerApiRead(env,path) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.44.0"}});
+    const response=await fetch("https://www.freelancer.com"+path,{headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.45.0"}});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1129,7 +1129,7 @@ async function freelancerApiForm(env,path,fields) {
       if(Array.isArray(value))for(const item of value)form.append(key+"[]",String(item));
       else if(value!==undefined&&value!==null)form.append(key,String(value));
     }
-    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.44.0"},body:form});
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","user-agent":"AutomationFactory-MoneyScout/0.45.0"},body:form});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1288,7 +1288,7 @@ async function freelancerApiWrite(env,path,body) {
   const credential=String(env.FREELANCER_ACCESS_TOKEN||"").trim();
   if(!credential)return {ok:false,status:0,error:"credential_missing"};
   try{
-    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.44.0"},body:JSON.stringify(body)});
+    const response=await fetch("https://www.freelancer.com"+path,{method:"POST",headers:{"freelancer-oauth-v1":credential,"accept":"application/json","content-type":"application/json","user-agent":"AutomationFactory-MoneyScout/0.45.0"},body:JSON.stringify(body)});
     const payload=await response.json().catch(()=>({}));
     return {ok:response.ok,status:response.status,payload};
   }catch(error){return {ok:false,status:0,error:String(error?.message||error)}}
@@ -1549,7 +1549,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.44.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.45.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1616,7 +1616,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.44.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.45.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -2009,7 +2009,7 @@ async function loadMarketCandidates(){
  });
 }
 async function loadPaidJobs(){
- await api('/api/orchestrator/tick',{method:'POST',body:JSON.stringify({max_actions:2,limit:40})}).catch(()=>null);
+ await api('/api/orchestrator/tick',{method:'POST',body:JSON.stringify({max_actions:2,limit:100})}).catch(()=>null);
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
@@ -2023,10 +2023,12 @@ async function loadPaidJobs(){
  const applicationRows=humanRows.filter(j=>j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied');
  const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
  const center=await api('/api/application-center').catch(()=>({count:0,held_count:applicationRows.length,items:[]}));
- const shortlistCount=Number(center.count||0), heldApplicationCount=Number(center.held_count||0);
+ const shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0);
+ const safetyHeldCount=rows.filter(j=>j.manager_stage==='auto_held').length;
+ const heldApplicationCount=applicationHeldCount+safetyHeldCount;
  const actionableHumanCount=shortlistCount+otherHumanRows.length;
  const revenueExecutionCount=autoCount+shortlistCount+passiveRows.length+readyCount;
- const humanInbox=actionableHumanCount?'<div class="notice"><b>👆 지금 사람이 할 일 '+actionableHumanCount+'건</b><br><span class="sub">실제로 개입할 항목만 표시합니다. 지원후보 '+heldApplicationCount+'건은 Manager가 자동보류 중입니다.</span>'+(shortlistCount?'<div class="decisions"><button id="openApplicationCenter">📨 우선지원 '+shortlistCount+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다.</span></div>';
+ const humanInbox=actionableHumanCount?'<div class="notice"><b>👆 지금 사람이 할 일 '+actionableHumanCount+'건</b><br><span class="sub">실제로 개입할 항목만 표시합니다. 지원/안전게이트 '+heldApplicationCount+'건은 Manager가 자동보류 중입니다.</span>'+(shortlistCount?'<div class="decisions"><button id="openApplicationCenter">📨 우선지원 '+shortlistCount+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다.</span></div>';
  const platformBox='<div class="notice" id="platformConnectionCenter"><b>🔌 플랫폼 연결센터</b><br><span class="sub">Freelancer 연결 상태 확인 중…</span></div>';
   const summary='<div class="notice"><b>💰 수익 실행 대시보드</b><br>수익진행 <b>'+revenueExecutionCount+'</b> · 내부자동 '+autoCount+' · 사람확인 '+actionableHumanCount+' · 자동보류 '+heldApplicationCount+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">Money Scout는 뒤에서 계속 탐색합니다. 여기에는 지금 돈으로 연결되는 실행 항목을 먼저 표시합니다.</span></div>'+humanInbox;
  el.innerHTML=platformBox+summary+'<details class="jobDetails" style="margin-top:14px"><summary>📦 전체 유료 일감 '+rows.length+'개 보기</summary><div class="sub" style="margin:10px 0">평소에는 열어볼 필요 없습니다. Manager가 우선지원·계약·제작·납품 단계가 되면 위 실행 영역으로 올립니다.</div>'+rows.map(j=>{
@@ -2446,7 +2448,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.44.0"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.45.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
