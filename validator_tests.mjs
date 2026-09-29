@@ -598,3 +598,12 @@ assert.ok(buildRuntimeQcV1.includes("external_side_effects_blocked"));
 assert.ok(buildRuntimeQcV1.includes("preflight_pass"));
 assert.ok(buildRuntimeQcV1.includes("📦 Build Runtime"));
 assert.ok(buildRuntimeQcV1.includes("🧪 QC"));
+
+// v0.13.0 Artifact Generator v1 contract
+const artifactGeneratorV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(artifactGeneratorV1.includes("artifact-generator-v1"));
+assert.ok(artifactGeneratorV1.includes("deterministic_internal_drafts"));
+assert.ok(artifactGeneratorV1.includes("generated_internal_draft"));
+assert.ok(artifactGeneratorV1.includes("internal_artifacts_generated"));
+assert.ok(artifactGeneratorV1.includes("External account actions require user approval"));
+assert.ok(artifactGeneratorV1.includes("🛠 Artifact Generator"));
