@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.15.0";
+const APP_VERSION = "0.16.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -76,6 +76,18 @@ async function ensureSchema(env) {
       errors_json TEXT NOT NULL DEFAULT '[]'
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_scout_runs_started ON scout_runs(started_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS sandbox_runs (
+      run_id TEXT PRIMARY KEY,
+      opportunity_id TEXT NOT NULL,
+      bundle_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'created',
+      conclusion TEXT NOT NULL DEFAULT '',
+      log_summary TEXT NOT NULL DEFAULT '',
+      github_run_id TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_sandbox_runs_opportunity ON sandbox_runs(opportunity_id, created_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
       opportunity_id TEXT NOT NULL,
       evidence_key TEXT NOT NULL,
@@ -623,6 +635,31 @@ function codeWorker(plan) {
 }
 
 
+function sandboxBundle(opportunityId, plan) {
+  const cw=plan?.code_worker||codeWorker(plan);
+  const files=(cw.files||[]).map(f=>({path:String(f.path||"").replace(/^project\//,""),content:String(f.content||"")}));
+  return {bundle_version:"job-sandbox-bundle-v1",opportunity_id:opportunityId,project_kind:cw.project_kind||"",test_command:cw.test_command||"npm test",files,external_actions_allowed:false};
+}
+
+async function dispatchSandbox(request, env, opportunityId) {
+  const row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(opportunityId).first();
+  if(!row) return json({ok:false,error:"Paid job not found"},404);
+  let bd={};try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+  if(!bd.actionable_paid_job||!bd.factory_fulfillable) return json({ok:false,error:"Factory-ready paid job only"},400);
+  const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan);
+  if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for sandbox"},400);
+  const runId="sbx_"+crypto.randomUUID(), bundle=sandboxBundle(opportunityId,plan), now=nowIso();
+  await env.DB.prepare("INSERT INTO sandbox_runs(run_id,opportunity_id,bundle_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?)").bind(runId,opportunityId,JSON.stringify(bundle),"created",now,now).run();
+  if(!env.GITHUB_ACTIONS_TOKEN||!env.PUBLIC_BASE_URL) return json({ok:true,run_id:runId,status:"config_required",required_secrets:["GITHUB_ACTIONS_TOKEN","SANDBOX_CALLBACK_TOKEN"],required_setting:"PUBLIC_BASE_URL",note:"Bundle created safely; dispatch is blocked until runtime secrets are configured."},202);
+  const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
+  const bundleUrl=env.PUBLIC_BASE_URL.replace(/\/$/,"")+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
+  const callbackUrl=env.PUBLIC_BASE_URL.replace(/\/$/,"")+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
+  await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
+  return json({ok:true,run_id:runId,status:"dispatched"},202);
+}
+
 function qcPlan(plan) {
   const rt=plan?.build_runtime||buildRuntime(plan), gen=plan?.artifact_generator||artifactGenerator(plan), cw=plan?.code_worker||codeWorker(plan), spec=plan?.build_spec||{};
   const checks=[
@@ -700,7 +737,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.15.0 · Sandbox Runner v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.16.0 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -855,6 +892,27 @@ export default {
       if (path === "/api/pipeline/run" && request.method === "POST") {
         const denied = requireAdmin(request, env); if (denied) return denied;
         return json(await runMoneyPipeline(env));
+      }
+
+      const sandboxBundleMatch=path.match(/^\/api\/sandbox-runs\/([^/]+)\/bundle$/);
+      if(sandboxBundleMatch&&request.method==="GET"){
+        const r=await env.DB.prepare("SELECT bundle_json,status FROM sandbox_runs WHERE run_id=?").bind(decodeURIComponent(sandboxBundleMatch[1])).first();
+        if(!r)return json({ok:false,error:"Sandbox run not found"},404);
+        return json(JSON.parse(r.bundle_json||"{}"));
+      }
+      const sandboxResultMatch=path.match(/^\/api\/sandbox-runs\/([^/]+)\/result$/);
+      if(sandboxResultMatch&&request.method==="POST"){
+        if(!env.SANDBOX_CALLBACK_TOKEN||request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN)return json({ok:false,error:"Unauthorized"},401);
+        const body=await request.json(); const conclusion=body.conclusion==="success"?"success":"failure";
+        await env.DB.prepare("UPDATE sandbox_runs SET status='completed',conclusion=?,log_summary=?,github_run_id=?,updated_at=? WHERE run_id=?").bind(conclusion,String(body.log_summary||"").slice(0,2000),String(body.github_run_id||""),nowIso(),decodeURIComponent(sandboxResultMatch[1])).run();
+        return json({ok:true});
+      }
+      const sandboxStartMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/sandbox$/);
+      if(sandboxStartMatch&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;return dispatchSandbox(request,env,decodeURIComponent(sandboxStartMatch[1]));}
+      const sandboxStatusMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/sandbox$/);
+      if(sandboxStatusMatch&&request.method==="GET"){
+        const r=await env.DB.prepare("SELECT run_id,status,conclusion,log_summary,github_run_id,created_at,updated_at FROM sandbox_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(sandboxStatusMatch[1])).first();
+        return json(r||{status:"not_run"});
       }
 
       const paidPlanMatch = path.startsWith("/api/paid-jobs/") && path.endsWith("/plan") ? { 1: path.slice("/api/paid-jobs/".length, -"/plan".length) } : null;
