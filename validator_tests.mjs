@@ -633,3 +633,6 @@ assert.ok(dynamicWorkflow.includes('secrets.SANDBOX_CALLBACK_TOKEN'));
 assert.ok(dynamicWorkflow.includes('Authorization: Bearer $BUNDLE_TOKEN'));
 assert.ok(dynamicSandbox.includes('!env.GITHUB_ACTIONS_TOKEN||!env.SANDBOX_CALLBACK_TOKEN||!env.PUBLIC_BASE_URL'));
 assert.ok(dynamicSandbox.includes('request.headers.get("authorization")!=="Bearer "+env.SANDBOX_CALLBACK_TOKEN'));
+assert.ok(dynamicSandbox.includes('sandboxRunBtn'));
+assert.ok(dynamicSandbox.includes("method:'POST'"));
+assert.ok(dynamicSandbox.includes('샌드박스 테스트 성공'));
