@@ -923,5 +923,5 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
   assert.match(workerSource, /async function approveDelivery/);
   assert.match(workerSource, /awaiting_delivery_approval/);
   assert.match(workerSource, /external_actions_allowed:false/);
-  assert.match(workerSource, /paid-jobs\\\/\\(\\[\\^\\/\\]\\+\\)\\\/delivery/);
+  assert.ok(workerSource.includes("const deliveryMatch=path.match(/^\\/api\\/paid-jobs\\/([^/]+)\\/delivery$/);"));
 }
