@@ -1023,7 +1023,7 @@ async function runProduction(btn){
       if(p.status==='completed'){
         const ok=p.conclusion==='success', sm=p.summary||{};
         const gate=sm.next_gate==='client_access_required'?'고객 계정·권한 연결 대기':'납품 검토 가능';
-        el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
+        el.innerHTML='<b>'+(ok?'✅ 제작 패키지 생성·QC 테스트 통과':'❌ 제작 패키지 테스트 실패')+'</b><br>GitHub run '+esc(p.github_run_id||'')+' · 파일 '+esc(sm.file_count||0)+'개 · QC '+esc(sm.qc_status||'')+' · '+esc(gate)+(ok?'<br><button class="productionPackageBtn" data-job-id="'+esc(id)+'">📦 결과물 파일 보기</button><button class="productionDownloadBtn" data-job-id="'+esc(id)+'">⬇ ZIP 다운로드</button>':'')+'<div id="production-package-'+esc(id)+'"></div>';
         return;
       }
       if(p.status==='dispatch_failed'){el.textContent='실제 제작 dispatch 실패: '+esc(p.log_summary||'');return;}
@@ -1033,6 +1033,18 @@ async function runProduction(btn){
   }catch(err){el.textContent='실제 제작 실패: '+esc(err.message);}
   finally{btn.disabled=false;btn.textContent=old;}
 }
+
+async function downloadProduction(btn){
+  const id=btn.dataset.jobId; btn.disabled=true; const old=btn.textContent; btn.textContent='ZIP 준비 중…';
+  try{
+    const r=await fetch('/api/paid-jobs/'+encodeURIComponent(id)+'/production/download',{headers:headers()});
+    if(!r.ok){const j=await r.json().catch(()=>({error:'다운로드 실패'}));throw new Error(j.error||('HTTP '+r.status));}
+    const blob=await r.blob(), a=document.createElement('a'), url=URL.createObjectURL(blob);
+    a.href=url; a.download='automation-factory-deliverable.zip'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }catch(err){alert('ZIP 다운로드 실패: '+err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+
 async function showProductionPackage(btn){
   const id=btn.dataset.jobId, target=document.getElementById('production-package-'+id); if(!target)return;
   btn.disabled=true;
@@ -1062,6 +1074,7 @@ async function showManagerPlan(btn){
 }
 
 document.addEventListener('click',async e=>{
+ const downloadBtn=e.target.closest('.productionDownloadBtn'); if(downloadBtn){await downloadProduction(downloadBtn);return;}
  const packageBtn=e.target.closest('.productionPackageBtn'); if(packageBtn){await showProductionPackage(packageBtn);return;}
  const production=e.target.closest('.productionRunBtn'); if(production){await runProduction(production);return;}
  const sandbox=e.target.closest('.sandboxRunBtn'); if(sandbox){await runSandbox(sandbox);return;}
@@ -1151,6 +1164,23 @@ export default {
         let summary={};try{summary=JSON.parse(r.package_summary_json||"{}")}catch{}
         return json({...r,summary});
       }
+      const productionDownloadMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production\/download$/);
+      if(productionDownloadMatch&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
+        const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
+        if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.17.1"};
+        const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
+        if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
+        const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
+        if(!artifact)return json({ok:false,error:"Production ZIP is not available yet. Try again shortly."},404);
+        const zr=await fetch(artifact.archive_download_url,{headers:ghHeaders,redirect:"follow"});
+        if(!zr.ok)return json({ok:false,error:"GitHub artifact download failed",detail:(await zr.text()).slice(0,500)},502);
+        const h=new Headers(zr.headers);h.set("content-type","application/zip");h.set("content-disposition",'attachment; filename="automation-factory-'+r.run_id+'.zip"');h.set("cache-control","no-store");
+        return new Response(zr.body,{status:200,headers:h});
+      }
+
       const productionPackageMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/production\/package$/);
       if(productionPackageMatch&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
