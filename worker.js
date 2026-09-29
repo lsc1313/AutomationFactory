@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.20.1";
+const APP_VERSION = "0.21.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -725,7 +725,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.20.1",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.21.0",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -920,6 +920,40 @@ function paidJobPlan(row) {
   return {manager_version:"paid-job-manager-v2.0",input_diagnostics:inputDiagnostics,status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:risks,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
 }
 
+
+function applicationDraft(row) {
+  const plan=paidJobPlan(row), source=String(row.source||""), currency=String(row.currency||"USD");
+  const min=Number(row.budget_min||0), max=Number(row.budget_max||0);
+  const midpoint=min&&max?Math.round((min+max)/2):max||min||null;
+  const bidAmount=midpoint;
+  const hours=Number(plan.estimated_build_hours||4);
+  const deliveryDays=Math.max(1,Math.ceil(hours/6));
+  const platform=contractPaymentProfile(row);
+  const questions=(plan.clarification_questions||[]).slice(0,3);
+  return {
+    opportunity_id:row.opportunity_id,title:row.title||"",source,platform:platform.platform,
+    application_url:row.url||"",proposal:plan.proposal_draft||"",
+    bid_amount:bidAmount,currency,delivery_days:deliveryDays,
+    questions,estimated_build_hours:hours,
+    submission_mode:source==="freelancer_projects"?"manual_platform_submit":"platform_specific",
+    auto_submit_supported:false,
+    requires_human_submit:true,
+    safety_note:"Prepared automatically. Final submission remains a human action until an authorized, policy-compatible submission adapter is connected."
+  };
+}
+
+async function applicationCenterRows(env) {
+  const rows=(await env.DB.prepare(\`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,
+    g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
+    FROM opportunities o
+    JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
+    LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
+    WHERE o.user_state!='reject' AND m.stage='waiting_contract_payment' AND COALESCE(g.application_status,'not_applied')='not_applied'
+    AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
+    ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50\`).all()).results||[];
+  return rows.map(row=>({row,draft:applicationDraft(row)}));
+}
+
 function factoryBuilder(plan) {
   const req=plan?.build_spec?.functional_requirements||[], joined=req.join(" ").toLowerCase();
   const tasks=[]; let n=0;
@@ -1112,7 +1146,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.21.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1174,7 +1208,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.1"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.21.0"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1441,7 +1475,9 @@ async function loadPaidJobs(){
  const exceptionCount=rows.filter(j=>j.manager_stage==='needs_attention').length;
  const humanRows=waitingRows.filter(j=>(j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied')||j.manager_stage==='waiting_account_connections');
  const passiveRows=waitingRows.filter(j=>!humanRows.includes(j));
- const humanInbox=humanRows.length?'<div class="notice"><b>👆 지금 사람이 할 일 '+humanRows.length+'건</b><br><span class="sub">아래 항목만 확인하면 됩니다. 나머지 카드는 열 필요 없습니다.</span><div class="decisions">'+humanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다. 카드별 버튼을 확인할 필요가 없습니다.</span></div>';
+ const applicationRows=humanRows.filter(j=>j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied');
+ const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
+ const humanInbox=humanRows.length?'<div class="notice"><b>👆 지금 사람이 할 일 '+humanRows.length+'건</b><br><span class="sub">개별 카드를 열 필요 없습니다. 지원 건은 Manager가 제안문·입찰금액·납기를 미리 준비합니다.</span>'+(applicationRows.length?'<div class="decisions"><button id="openApplicationCenter">📨 지원센터 '+applicationRows.length+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다. 카드별 버튼을 확인할 필요가 없습니다.</span></div>';
  const summary='<div class="notice"><b>🏭 자동공장 ON</b> · 자동처리 '+autoCount+' · 사람확인 '+humanRows.length+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">사람확인에 잡힌 항목만 개입하세요. 외부응답대기는 고객/플랫폼 상태가 바뀔 때까지 대기하는 항목입니다.</span></div>'+humanInbox;
  el.innerHTML=summary+'<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>{
    const state=j.manager_status_label||'🤖 Manager 분석 대기';
@@ -1461,6 +1497,17 @@ async function loadPaidJobs(){
      '</details>'+
    '</div>';
  }).join('');
+ const appBtn=document.getElementById('openApplicationCenter');
+ if(appBtn)appBtn.onclick=async()=>{
+   const box=document.getElementById('applicationCenter'); appBtn.disabled=true;appBtn.textContent='지원서 준비 중…';
+   try{
+     const d=await api('/api/application-center');
+     box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 준비 완료 '+d.count+'건</b><div class="intakeHelp">Manager가 초안을 준비했습니다. 현재 플랫폼 제출은 사람 확인이 필요한 단계라 자동 제출하지 않습니다.</div>'+
+       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="decisions"><a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">지원 페이지 열기</a></div></details>').join('')+
+       '</div>';
+   }catch(e){box.innerHTML='<div class="empty error">지원센터 조회 실패: '+esc(e.message)+'</div>';}
+   finally{appBtn.disabled=false;appBtn.textContent='📨 지원센터 다시 열기';}
+ };
 }
 async function runSandbox(btn){
   const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
@@ -1706,6 +1753,18 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      if(path==="/api/application-center"&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const items=await applicationCenterRows(env);
+        return json({ok:true,count:items.length,items:items.map(x=>x.draft)});
+      }
+      const appPrepareMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/application-draft$/);
+      if(appPrepareMatch&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(appPrepareMatch[1]),row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        return json({ok:true,draft:applicationDraft(row)});
+      }
       if(path==="/api/orchestrator/tick"&&request.method==="POST"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         let body={};try{body=await request.json()}catch{}
@@ -1812,7 +1871,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.20.1"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.21.0"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
