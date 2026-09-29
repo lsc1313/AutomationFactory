@@ -397,7 +397,7 @@ assert.match(clusterWorker, /market_candidates:marketCandidates/);
 
 const detailWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.match(detailWorker, /\/api\/market-candidates/);
-assert.match(detailWorker, /id="paidJobsBtn">💵 지금 지원 가능한 유료 일감/);
+assert.match(detailWorker, /id="paidJobsList"/);
 assert.match(detailWorker, /독립수요/);
 assert.match(detailWorker, /가격근거/);
 assert.match(detailWorker, /GitHub 수요 근거/);
