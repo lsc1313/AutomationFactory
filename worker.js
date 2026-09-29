@@ -1156,6 +1156,8 @@ async function dispatchProduction(request, env, opportunityId) {
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
   const intake=await getClientIntake(env,row,plan), accountConnections=await getAccountConnections(env,row);
+  if(intake.status!=="ready_for_build") return json({ok:true,status:"client_intake_required",completion:intake.completion,request_message:intake.request_message},202);
+  if(!accountConnections.progress.ready) return json({ok:true,status:"account_connection_required",connections:accountConnections.connections,progress:accountConnections.progress},202);
   plan.client_intake={status:intake.status,answers:intake.answers,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
   plan.account_connections=accountConnections;
   plan.contract_payment={ready:deal.ready,gate:deal.gate,profile:deal.profile};
