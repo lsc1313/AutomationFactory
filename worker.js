@@ -2029,7 +2029,7 @@ async function loadPaidJobs(){
  const holdDiagnostics={qualification:0,attachment:0,independent_delivery:0,complex_scope:0,delivery_risk:0,other:0};
  for(const j of rows){
    if(j.manager_stage!=='auto_held')continue;
-   const p=applicationPriority(j,applicationDraft(j));
+   const p=j.hold_priority||{reasons:[]};
    if(p.requires_human_qualification_review)holdDiagnostics.qualification++;
    if(p.requires_attachment_review)holdDiagnostics.attachment++;
    if(p.requires_independent_delivery_review)holdDiagnostics.independent_delivery++;
@@ -2529,7 +2529,8 @@ export default {
           LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
           WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
           ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all();
-        return json(rows.results || []);
+        const paidRows=rows.results||[];
+        return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
       }
       if (path === "/api/market-candidates") {
         const rows = await env.DB.prepare(`SELECT * FROM market_candidates ORDER BY CASE commercialization_status WHEN 'verified_money' THEN 0 ELSE 1 END, independent_repo_count DESC, raw_market_evidence_count DESC, fingerprint ASC LIMIT 100`).all();
