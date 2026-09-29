@@ -1059,3 +1059,11 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(workerSource.includes("<b>자동보류 진단</b>"));
  assert.ok(workerSource.includes("고객환경의존 '+holdDiagnostics.independent_delivery"));
 }
+
+// v0.47.0 regression: client hosting/domain and synchronous handover are hard-held; auto-bid rechecks safety.
+{
+ const workerSource=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
+ assert.ok(workerSource.includes('client_hosting_or_domain'), "client hosting/domain dependency gate missing");
+ assert.ok(workerSource.includes('synchronous_handover_required'), "synchronous handover gate missing");
+ assert.ok(workerSource.includes('prebid_safety_hold'), "pre-bid safety recheck missing");
+}
