@@ -566,3 +566,13 @@ assert.ok(briefDrivenManagerV2.includes("Create the Etsy listings"));
 assert.ok(briefDrivenManagerV2.includes("Connect Etsy to Prodigi"));
 assert.ok(briefDrivenManagerV2.includes("Squarespace → Etsy → Prodigi"));
 assert.ok(briefDrivenManagerV2.includes("US-targeted tax and shipping"));
+
+// v0.10.0 Factory Builder v1 contract
+const factoryBuilderV1 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+assert.ok(factoryBuilderV1.includes("factory-builder-v1"));
+assert.ok(factoryBuilderV1.includes("blocked_by_client_access"));
+assert.ok(factoryBuilderV1.includes("user_approval_required_before_external_actions"));
+assert.ok(factoryBuilderV1.includes("data-migration-worker"));
+assert.ok(factoryBuilderV1.includes("commerce-integration-worker"));
+assert.ok(factoryBuilderV1.includes("integration-test-worker"));
+assert.ok(factoryBuilderV1.includes("🏭 Factory Builder"));
