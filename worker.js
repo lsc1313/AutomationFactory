@@ -1417,6 +1417,31 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
+      if(path==="/oauth/etsy/callback"&&request.method==="GET")return finishEtsyOAuth(request,env);
+
+      const connectionsMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections$/);
+      if(connectionsMatch&&request.method==="GET"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(connectionsMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        return json({ok:true,...await getAccountConnections(env,row)});
+      }
+      const connectionActionMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections\/(squarespace|prodigi)$/);
+      if(connectionActionMatch&&request.method==="POST"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(connectionActionMatch[1]), provider=connectionActionMatch[2], row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        const body=await request.json().catch(()=>({}));
+        const out=provider==="squarespace"?await connectSquarespace(env,row,body.api_key):await connectProdigi(env,row,body.api_key,body.mode||"sandbox");
+        return json(out,out.ok?200:400);
+      }
+      const etsyStartMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/connections\/etsy\/start$/);
+      if(etsyStartMatch&&request.method==="POST"){
+        const denied=requireAdmin(request,env);if(denied)return denied;
+        const id=decodeURIComponent(etsyStartMatch[1]), row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();
+        if(!row)return json({ok:false,error:"Paid job not found"},404);
+        const out=await startEtsyOAuth(request,env,row); return json(out,out.ok?200:400);
+      }
       const intakeMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/intake$/);
       if(intakeMatch&&(request.method==="GET"||request.method==="POST")){
         const denied=requireAdmin(request,env);if(denied)return denied;
