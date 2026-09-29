@@ -955,7 +955,7 @@ async function dispatchProduction(request, env, opportunityId) {
   if(!sandbox) return json({ok:true,status:"sandbox_required",note:"Run and pass the sandbox test before starting production."});
   const plan=paidJobPlan(row); plan.factory_builder=factoryBuilder(plan); plan.worker_execution=workerExecutionPlan(plan); plan.build_runtime=buildRuntime(plan); plan.artifact_generator=artifactGenerator(plan); plan.code_worker=codeWorker(plan); plan.qc=qcPlan(plan);
   const intake=await getClientIntake(env,row,plan);
-  plan.client_intake={status:intake.status,answers:intake.answers,secret_present:intake.secret_present,completion:intake.completion,request_message:intake.request_message};
+  plan.client_intake={status:intake.status,answers:intake.answers,secret_present:intake.secret_present,completion:intake.completion,request_message:intake.request_message,discovery_plan:intake.discovery_plan||[]};
   if(plan.qc.status!=="preflight_pass") return json({ok:false,error:"QC preflight blocked",qc:plan.qc},400);
   if(plan.code_worker.status!=="source_generated") return json({ok:false,error:"No generated code for production"},400);
   const runId="prd_"+crypto.randomUUID(), bundle=productionBundle(opportunityId,plan), now=nowIso();
@@ -1050,7 +1050,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v${APP_VERSION} · Client Intake v1 · 수집→질문→보안입력→재제작→QC</div>
+  <div class="footer">v${APP_VERSION} · Smart Intake v2 · 수집→최소질문→자동발견→재제작→QC</div>
 </div>
 <script>
 let grade='all';
