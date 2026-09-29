@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.18.4";
+const APP_VERSION = "0.18.5";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -685,7 +685,7 @@ async function getAccountConnections(env,row) {
   const byProvider=new Map(rows.map(r=>[r.provider,r]));
   const connections=spec.map(p=>{
     const r=byProvider.get(p.provider); let metadata={}; try{metadata=JSON.parse(r?.metadata_json||"{}")}catch{}
-    return {...p,status:r?.status||"disconnected",metadata,updated_at:r?.updated_at||null,app_configured:p.provider!=="etsy"||Boolean(env.ETSY_CLIENT_ID&&env.ETSY_SHARED_SECRET)};
+    return {...p,status:r?.status||"disconnected",metadata,updated_at:r?.updated_at||null,app_configured:p.provider!=="etsy"||Boolean((env.ETSY_KEYSTRING||env.ETSY_CLIENT_ID)&&env.ETSY_SHARED_SECRET)};
   });
   const required=connections.filter(x=>x.required).length, connected=connections.filter(x=>x.required&&x.status==="connected_verified").length;
   return {connections,progress:{required,connected,ready:required===connected}};
@@ -693,7 +693,7 @@ async function getAccountConnections(env,row) {
 
 async function connectSquarespace(env,row,apiKey) {
   const key=String(apiKey||"").trim(); if(!key)return {ok:false,error:"Squarespace API key is required"};
-  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.18.4",Accept:"application/json"}});
+  const r=await fetch("https://api.squarespace.com/1.0/authorization/website",{headers:{Authorization:"Bearer "+key,"User-Agent":"AutomationFactory-MoneyScout/0.18.5",Accept:"application/json"}});
   const text=await r.text(); let body={}; try{body=text?JSON.parse(text):{}}catch{body={raw:text}}
   if(!r.ok)return {ok:false,error:"Squarespace verification failed",status:r.status,detail:String(body?.message||body?.raw||"").slice(0,300)};
   const metadata={website_id:body.id||"",site_id:body.siteId||"",title:body.title||"",url:body.url||"",currency:body.currency||""};
@@ -713,8 +713,8 @@ async function connectProdigi(env,row,apiKey,mode="sandbox") {
 }
 
 async function startEtsyOAuth(request,env,row) {
-  const clientId=String(env.ETSY_CLIENT_ID||"").trim(), sharedSecret=String(env.ETSY_SHARED_SECRET||"").trim();
-  const missing=[]; if(!clientId)missing.push("ETSY_CLIENT_ID"); if(!sharedSecret)missing.push("ETSY_SHARED_SECRET");
+  const clientId=String(env.ETSY_KEYSTRING||env.ETSY_CLIENT_ID||"").trim(), sharedSecret=String(env.ETSY_SHARED_SECRET||"").trim();
+  const missing=[]; if(!clientId)missing.push("ETSY_KEYSTRING"); if(!sharedSecret)missing.push("ETSY_SHARED_SECRET");
   if(missing.length)return {ok:false,status:"config_required",missing_configuration:missing,note:"Money Scout Etsy app registration is required once; customers should not provide the app API key or shared secret."};
   const publicBase=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,""), redirectUri=String(env.ETSY_REDIRECT_URI||publicBase+"/oauth/etsy/callback");
   const verifier=base64UrlBytes(crypto.getRandomValues(new Uint8Array(48)));
@@ -737,11 +737,15 @@ async function finishEtsyOAuth(request,env) {
   if(Date.parse(st.expires_at)<Date.now()){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();return html("<h2>Etsy 연결 실패</h2><p>연결 요청이 만료되었습니다. Money Scout에서 다시 연결해주세요.</p>",400)}
   if(oauthError||!code){await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();const msg=String(url.searchParams.get("error_description")||oauthError||"Authorization was not completed.").replace(/[<>&\"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));return html("<h2>Etsy 연결 취소</h2><p>"+msg+"</p>",400)}
   const verifierObj=await decryptClientSecrets(env,st.verifier_enc||""), verifier=verifierObj.code_verifier;
-  const form=new URLSearchParams({grant_type:"authorization_code",client_id:String(env.ETSY_CLIENT_ID||""),redirect_uri:st.redirect_uri,code,code_verifier:verifier});
+  const keystring=String(env.ETSY_KEYSTRING||env.ETSY_CLIENT_ID||"").trim(), sharedSecret=String(env.ETSY_SHARED_SECRET||"").trim();
+  const form=new URLSearchParams({grant_type:"authorization_code",client_id:keystring,redirect_uri:st.redirect_uri,code,code_verifier:verifier});
   const tokenResp=await fetch("https://api.etsy.com/v3/public/oauth/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:form});
   const txt=await tokenResp.text(); let token={}; try{token=txt?JSON.parse(txt):{}}catch{token={raw:txt}}
   if(!tokenResp.ok||!token.access_token){return html("<h2>Etsy 연결 실패</h2><p>토큰 교환에 실패했습니다. Money Scout에서 다시 시도해주세요.</p>",502)}
-  const metadata={token_type:token.token_type||"Bearer",expires_in:Number(token.expires_in||3600),connected_at:nowIso(),scope:String(env.ETSY_SCOPES||"shops_r listings_r listings_w profile_r")};
+  const verifyResp=await fetch("https://api.etsy.com/v3/application/users/me",{headers:{"x-api-key":keystring+":"+sharedSecret,Authorization:"Bearer "+token.access_token,Accept:"application/json"}});
+  const verifyText=await verifyResp.text(); let me={}; try{me=verifyText?JSON.parse(verifyText):{}}catch{me={raw:verifyText}}
+  if(!verifyResp.ok){return html("<h2>Etsy 연결 실패</h2><p>OAuth 토큰은 발급됐지만 Etsy API 검증에 실패했습니다. 앱 승인 상태와 키 설정을 확인해주세요.</p>",502)}
+  const metadata={token_type:token.token_type||"Bearer",expires_in:Number(token.expires_in||3600),connected_at:nowIso(),scope:String(env.ETSY_SCOPES||"shops_r listings_r listings_w profile_r"),user_id:String(me.user_id||token.access_token.split(".")[0]||"")};
   await upsertAccountConnection(env,st.opportunity_id,"etsy","connected_verified","oauth_pkce",metadata,{access_token:token.access_token,refresh_token:token.refresh_token||"",expires_in:token.expires_in||3600});
   await env.DB.prepare("DELETE FROM oauth_states WHERE state=?").bind(state).run();
   return html("<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\"><body style=\"font-family:system-ui;background:#08101d;color:white;padding:28px\"><h2>✅ Etsy 연결 완료</h2><p>승인 토큰은 암호화 저장되며 납품 ZIP에는 포함되지 않습니다.</p><p><a style=\"color:#8db9ff\" href=\"/\">Money Scout로 돌아가기</a></p></body>");
@@ -959,16 +963,16 @@ function codeWorker(plan) {
         "const approved=o=>{if(o?.allowExternalActions!==true)throw new Error('External action blocked: explicit approval required')};",
         "async function readJson(r){const text=await r.text();let body;try{body=text?JSON.parse(text):{}}catch{body={raw:text}}if(!r.ok)throw new Error('HTTP '+r.status+': '+JSON.stringify(body).slice(0,500));return body}",
         "export async function fetchSquarespaceProducts({token,userAgent='AutomationFactory-Deliverable/1.0',fetchImpl=fetch,cursor=null}={}){need(token,'Squarespace token');const u=new URL(endpoints.squarespaceProducts);if(cursor)u.searchParams.set('cursor',cursor);const r=await fetchImpl(u,{headers:{Authorization:'Bearer '+token,'User-Agent':userAgent,Accept:'application/json'}});return readJson(r)}",
-        "export async function createEtsyDraft({shopId,token,apiKey,listing,allowExternalActions=false,fetchImpl=fetch}={}){approved({allowExternalActions});need(shopId,'Etsy shop id');need(token,'Etsy OAuth token');need(apiKey,'Etsy API key');const body=new URLSearchParams();const src={quantity:listing?.quantity,title:listing?.title,description:listing?.description,price:listing?.price,who_made:listing?.whoMade,when_made:listing?.whenMade,taxonomy_id:listing?.taxonomyId,shipping_profile_id:listing?.shippingProfileId,readiness_state_id:listing?.readinessStateId};for(const [k,v] of Object.entries(src))if(v!=null&&v!=='')body.set(k,String(v));for(const tag of listing?.tags||[])body.append('tags[]',tag);const r=await fetchImpl(endpoints.etsyListings(shopId),{method:'POST',headers:{Authorization:'Bearer '+token,'x-api-key':apiKey,'Content-Type':'application/x-www-form-urlencoded'},body});return readJson(r)}",
+        "export async function createEtsyDraft({shopId,token,keystring,sharedSecret,listing,allowExternalActions=false,fetchImpl=fetch}={}){approved({allowExternalActions});need(shopId,'Etsy shop id');need(token,'Etsy OAuth token');need(keystring,'Etsy API keystring');need(sharedSecret,'Etsy shared secret');const body=new URLSearchParams();const src={quantity:listing?.quantity,title:listing?.title,description:listing?.description,price:listing?.price,who_made:listing?.whoMade,when_made:listing?.whenMade,taxonomy_id:listing?.taxonomyId,shipping_profile_id:listing?.shippingProfileId,readiness_state_id:listing?.readinessStateId};for(const [k,v] of Object.entries(src))if(v!=null&&v!=='')body.set(k,String(v));for(const tag of listing?.tags||[])body.append('tags[]',tag);const r=await fetchImpl(endpoints.etsyListings(shopId),{method:'POST',headers:{Authorization:'Bearer '+token,'x-api-key':keystring+':'+sharedSecret,'Content-Type':'application/x-www-form-urlencoded'},body});return readJson(r)}",
         "export async function getProdigiProduct({sku,apiKey,sandbox=true,fetchImpl=fetch}={}){need(sku,'Prodigi SKU');need(apiKey,'Prodigi API key');const r=await fetchImpl(endpoints.prodigiProduct(sku,sandbox),{headers:{'X-API-Key':apiKey,Accept:'application/json'}});return readJson(r)}",
         "export async function createProdigiOrder({order,apiKey,sandbox=true,allowExternalActions=false,fetchImpl=fetch}={}){approved({allowExternalActions});need(apiKey,'Prodigi API key');if(sandbox!==true)throw new Error('Live Prodigi orders require a separate production approval step');const r=await fetchImpl(endpoints.prodigiOrders(true),{method:'POST',headers:{'X-API-Key':apiKey,'Content-Type':'application/json'},body:JSON.stringify(order||{})});return readJson(r)}"
       ].join("\n")},
       {path:"project/test/live-connectors.test.js",language:"javascript",content:[
         "import test from 'node:test';import assert from 'node:assert/strict';import {endpoints,createEtsyDraft,createProdigiOrder} from '../src/live-connectors.js';",
         "test('official API endpoints are wired',()=>{assert.equal(endpoints.squarespaceProducts,'https://api.squarespace.com/v2/commerce/products');assert.match(endpoints.etsyListings('123'),/openapi\\.etsy\\.com\\/v3\\/application\\/shops\\/123\\/listings/);assert.match(endpoints.prodigiProduct('SKU',true),/api\\.sandbox\\.prodigi\\.com\\/v4\\.0\\/products\\/SKU/)});",
-        "test('write operations require explicit approval',async()=>{await assert.rejects(()=>createEtsyDraft({shopId:'1',token:'t',apiKey:'k',listing:{}}),/explicit approval/);await assert.rejects(()=>createProdigiOrder({order:{},apiKey:'k'}),/explicit approval/)})"
+        "test('write operations require explicit approval',async()=>{await assert.rejects(()=>createEtsyDraft({shopId:'1',token:'t',keystring:'k',sharedSecret:'s',listing:{}}),/explicit approval/);await assert.rejects(()=>createProdigiOrder({order:{},apiKey:'k'}),/explicit approval/)})"
       ].join("\n")},
-      {path:"project/.env.example",language:"text",content:["SQUARESPACE_TOKEN=","ETSY_SHOP_ID=","ETSY_OAUTH_TOKEN=","ETSY_API_KEY=","PRODIGI_SANDBOX_API_KEY=","# Live credentials are intentionally not enabled by default."].join("\n")},
+      {path:"project/.env.example",language:"text",content:["SQUARESPACE_TOKEN=","ETSY_SHOP_ID=","ETSY_OAUTH_TOKEN=","ETSY_KEYSTRING=","ETSY_SHARED_SECRET=","PRODIGI_SANDBOX_API_KEY=","# Live credentials are intentionally not enabled by default."].join("\n")},
       {path:"project/LIVE_RUNBOOK.md",language:"markdown",content:["# Live connector runbook","","The package includes real connector functions for Squarespace Products API v2, Etsy Open API v3 draft listings, and Prodigi Print API v4 sandbox.","","## Safety model","- Read operations can be used after credentials are supplied.","- Etsy write calls require allowExternalActions=true.","- Prodigi order creation is restricted to the Sandbox host in the generated connector.","- Prodigi Live order submission remains blocked until a separate production approval step is implemented.","","## Required Etsy fields","Before creating physical draft listings, provide quantity, title, description, price, whoMade, whenMade, taxonomyId, shippingProfileId and readinessStateId.","","## Acceptance","Run npm test, create one Etsy draft in an authorized shop, verify SKU/variant mapping, then create one Prodigi Sandbox order before any live rollout."].join("\n")},
 
       {path:"project/README.md",language:"markdown",content:["# Squarespace → Etsy → Prodigi delivery package","","Implements the repeatable transformation layer without touching external accounts.","","## Implemented","- Normalize Squarespace-style product JSON, variants, images and tags.","- Produce Etsy listing drafts with title/tag/price/variant constraints.","- Map variant SKUs to client-supplied Prodigi product/template settings.","- Validate missing titles, invalid prices and missing Prodigi mappings.","- Run deterministic tests with npm test.","","## Run","1. Replace fixtures/squarespace-products.json with the authorized client export.","2. Fill config/example.json with approved Etsy profile IDs and Prodigi SKU mappings.","3. Run npm test.","4. Run node src/cli.js <products.json> <config.json> delivery-output.json.","","External publishing is intentionally disabled. Credentials are never embedded."].join("\n")},
@@ -1005,7 +1009,7 @@ async function dispatchSandbox(request, env, opportunityId) {
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/bundle";
   const callbackUrl=publicBaseUrl+"/api/sandbox-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.4"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.5"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE sandbox_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE sandbox_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched"},202);
@@ -1062,7 +1066,7 @@ async function dispatchProduction(request, env, opportunityId) {
   const api="https://api.github.com/repos/lsc1313/AutomationFactory/actions/workflows/sandbox-runner.yml/dispatches";
   const publicBaseUrl=String(env.PUBLIC_BASE_URL||new URL(request.url).origin).replace(/\/$/,"");
   const bundleUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/bundle", callbackUrl=publicBaseUrl+"/api/production-runs/"+encodeURIComponent(runId)+"/result";
-  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.4"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
+  const gh=await fetch(api,{method:"POST",headers:{"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","content-type":"application/json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.5"},body:JSON.stringify({ref:"main",inputs:{run_id:runId,bundle_url:bundleUrl,callback_url:callbackUrl}})});
   if(!gh.ok){const msg=(await gh.text()).slice(0,500);await env.DB.prepare("UPDATE production_runs SET status='dispatch_failed',log_summary=?,updated_at=? WHERE run_id=?").bind(msg,nowIso(),runId).run();return json({ok:false,run_id:runId,error:"GitHub production dispatch failed",detail:msg},502);}
   await env.DB.prepare("UPDATE production_runs SET status='dispatched',updated_at=? WHERE run_id=?").bind(nowIso(),runId).run();
   return json({ok:true,run_id:runId,status:"dispatched",summary},202);
@@ -1531,7 +1535,7 @@ export default {
         if(!env.GITHUB_ACTIONS_TOKEN)return json({ok:false,error:"GITHUB_ACTIONS_TOKEN missing"},500);
         const r=await env.DB.prepare("SELECT run_id,github_run_id,status,conclusion FROM production_runs WHERE opportunity_id=? ORDER BY created_at DESC LIMIT 1").bind(decodeURIComponent(productionDownloadMatch[1])).first();
         if(!r||r.status!=="completed"||r.conclusion!=="success"||!r.github_run_id)return json({ok:false,error:"Completed production artifact not found"},404);
-        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.4"};
+        const ghHeaders={"authorization":"Bearer "+env.GITHUB_ACTIONS_TOKEN,"accept":"application/vnd.github+json","x-github-api-version":"2022-11-28","user-agent":"AutomationFactory-MoneyScout/0.18.5"};
         const ar=await fetch("https://api.github.com/repos/lsc1313/AutomationFactory/actions/runs/"+encodeURIComponent(r.github_run_id)+"/artifacts",{headers:ghHeaders});
         if(!ar.ok)return json({ok:false,error:"GitHub artifact lookup failed",detail:(await ar.text()).slice(0,500)},502);
         const data=await ar.json(), expected="job-package-"+r.run_id, artifact=(data.artifacts||[]).find(a=>a.name===expected&&!a.expired);
