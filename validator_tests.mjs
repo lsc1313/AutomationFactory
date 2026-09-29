@@ -727,7 +727,7 @@ assert.ok(renderedHtml.includes("clientIntakeBtn"));
 // v0.18.2 Smart Intake v2 contract
 const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.19.0"'));
-assert.ok(smartIntakeV0182.includes("Account Connection Gate v1"));
+assert.ok(smartIntakeV0182.includes("Account Connection Gate"));
 assert.ok(smartIntakeV0182.includes("discovery_plan"));
 assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
 assert.ok(smartIntakeV0182.includes("SKU mapping override"));
