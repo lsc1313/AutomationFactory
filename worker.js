@@ -2029,7 +2029,7 @@ async function loadPaidJobs(){
  const holdDiagnostics={qualification:0,attachment:0,independent_delivery:0,complex_scope:0,delivery_risk:0,other:0};
  for(const j of rows){
    if(j.manager_stage!=='auto_held')continue;
-   const p=applicationPriority(j,applicationDraft(j));
+   const p=j.hold_priority||{reasons:[]};
    if(p.requires_human_qualification_review)holdDiagnostics.qualification++;
    if(p.requires_attachment_review)holdDiagnostics.attachment++;
    if(p.requires_independent_delivery_review)holdDiagnostics.independent_delivery++;
@@ -2322,7 +2322,7 @@ export default {
       if (evidenceMatch && request.method === "GET") {
         const id = decodeURIComponent(evidenceMatch[1]);
         const rows = await env.DB.prepare(`SELECT evidence_key AS evidence_id,source,app_id,app_name,evidence_kind,evidence_quality,complaint_bearing,rating,text,url,posted_at FROM opportunity_evidence WHERE opportunity_id=? ORDER BY complaint_bearing DESC, rating ASC LIMIT 20`).bind(id).all();
-        return json(rows.results || []);
+        const paidRows=rows.results||[];\n        return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
       }
       if (path === "/api/pipeline/run" && request.method === "POST") {
         const denied = requireAdmin(request, env); if (denied) return denied;
