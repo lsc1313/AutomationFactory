@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.17.1";
+const APP_VERSION = "0.18.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -101,6 +101,15 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_production_runs_opportunity ON production_runs(opportunity_id, created_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_intakes (
+      opportunity_id TEXT PRIMARY KEY,
+      public_answers_json TEXT NOT NULL DEFAULT '{}',
+      secret_answers_enc TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'not_started',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_client_intakes_status ON client_intakes(status, updated_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_evidence (
       opportunity_id TEXT NOT NULL,
       evidence_key TEXT NOT NULL,
