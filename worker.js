@@ -897,6 +897,16 @@ function productionBundle(opportunityId, plan) {
   const intake=plan?.client_intake||{status:"not_started",answers:{},secret_present:{},completion:{missing:[]}};
   const safeIntake={intake_version:"client-intake-v1",status:intake.status||"not_started",answers:intake.answers||{},secret_present:intake.secret_present||{},completion:intake.completion||{},note:"Secret values are intentionally excluded from this package."};
   files.push({path:"client/CLIENT_INPUT.json",content:JSON.stringify(safeIntake,null,2)});
+  const ia=safeIntake.answers||{};
+  let parsedSkuMap={}; try{const x=JSON.parse(ia.prodigi_sku_mapping||"{}");if(x&&typeof x==="object"&&!Array.isArray(x))parsedSkuMap=x}catch{}
+  const clientConfig={
+    etsy:{shopId:ia.etsy_shop_id||"",taxonomyId:ia.etsy_taxonomy_id||"",shippingProfileId:ia.etsy_shipping_profile_id||"",readinessStateId:ia.etsy_readiness_state_id||"",sectionId:ia.etsy_section_id||""},
+    prodigi:{mode:ia.prodigi_mode||"sandbox",skuMap:parsedSkuMap,skuMappingRaw:ia.prodigi_sku_mapping||""},
+    scope:{productScope:ia.product_scope||"",shippingRegions:ia.shipping_regions||"",shippingPolicy:ia.shipping_policy||"",taxPolicy:ia.tax_policy||"",deliveryDate:ia.delivery_date||""},
+    credentialsPresent:safeIntake.secret_present||{},
+    externalActionsAllowed:false
+  };
+  files.push({path:"config/client.json",content:JSON.stringify(clientConfig,null,2)});
   const missing=(safeIntake.completion?.missing||[]);
   const accessLines=Object.entries(safeIntake.secret_present||{}).map(([k,v])=>"- "+k+": "+(v?"stored in encrypted vault":"missing"));
   files.push({path:"client/ACCESS_STATUS.md",content:["# Client intake/access status","","Intake status: "+safeIntake.status,"Missing required fields: "+(missing.length?missing.join(", "):"none"),"","## Secure credentials",...(accessLines.length?accessLines:["- none required"]), "", "Secret values are not exported to GitHub Actions artifacts or delivery ZIP files."].join("\n")});
