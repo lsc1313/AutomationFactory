@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.16.1";
+const APP_VERSION = "0.16.2";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -737,7 +737,7 @@ function appHtml() {
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="paidJobsList"></div>\n  <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
-  <div class="footer">v0.16.0 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
+  <div class="footer">v0.16.2 · Dynamic Job Sandbox v1 · 수집→검증→후보 자동화</div>
 </div>
 <script>
 let grade='all';
@@ -833,8 +833,31 @@ async function loadPaidJobs(){
  const rows=await api('/api/paid-jobs');
  const el=document.getElementById('paidJobsList');
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
- el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div></div>').join('');
+ el.innerHTML='<div class="sub" style="margin:14px 0 8px">💵 제작·납품 가능한 유료 일감 '+rows.length+'개</div>'+rows.map(j=>'<div class="card"><div class="title">'+esc(j.title)+'</div><div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div><div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div><div class="decisions"><button class="managerPlanBtn" data-job-id="'+esc(j.opportunity_id)+'">🧭 작업계획 보기</button><button class="sandboxRunBtn" data-job-id="'+esc(j.opportunity_id)+'">🧪 샌드박스 테스트</button> <a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">원문/지원 페이지</a></div><div class="managerPlan" id="plan-'+esc(j.opportunity_id)+'"></div><div class="reason" id="sandbox-'+esc(j.opportunity_id)+'"></div></div>').join('');
 }
+async function runSandbox(btn){
+  const id=btn.dataset.jobId, el=document.getElementById('sandbox-'+id); if(!el)return;
+  btn.disabled=true; const old=btn.textContent; btn.textContent='실행 요청 중…'; el.textContent='GitHub Actions 샌드박스 실행을 요청하고 있습니다.';
+  try{
+    const start=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/sandbox',{method:'POST'});
+    if(start.status!=='dispatched'){el.textContent='샌드박스 상태: '+esc(start.status||'unknown');return;}
+    el.textContent='샌드박스 실행됨 · run '+esc(start.run_id)+' · 결과 확인 중…';
+    for(let i=0;i<30;i++){
+      await new Promise(r=>setTimeout(r,2000));
+      const s=await api('/api/paid-jobs/'+encodeURIComponent(id)+'/sandbox');
+      if(s.status==='completed'){
+        const ok=s.conclusion==='success';
+        el.innerHTML='<b>'+(ok?'✅ 샌드박스 테스트 성공':'❌ 샌드박스 테스트 실패')+'</b><br>GitHub run '+esc(s.github_run_id||'')+' · '+esc(s.log_summary||'');
+        return;
+      }
+      if(s.status==='dispatch_failed'){el.textContent='샌드박스 dispatch 실패: '+esc(s.log_summary||'');return;}
+      el.textContent='샌드박스 상태: '+esc(s.status||'running')+' · 결과 확인 중…';
+    }
+    el.textContent='샌드박스가 아직 실행 중입니다. 잠시 후 버튼을 다시 눌러 상태를 확인하세요.';
+  }catch(err){el.textContent='샌드박스 실행 실패: '+esc(err.message);}
+  finally{btn.disabled=false;btn.textContent=old;}
+}
+
 async function showManagerPlan(btn){
  const id=btn.dataset.jobId, el=document.getElementById('plan-'+id); if(!el)return;
  btn.disabled=true; const old=btn.textContent; btn.textContent='분석 중…';
@@ -853,7 +876,8 @@ async function showManagerPlan(btn){
 }
 
 document.addEventListener('click',async e=>{
- const plan=e.target.closest('.managerPlanBtn'); if(plan){await showManagerPlan(plan);return;}
+ const sandbox=e.target.closest('.sandboxRunBtn'); if(sandbox){await runSandbox(sandbox);return;}
+  const plan=e.target.closest('.managerPlanBtn'); if(plan){await showManagerPlan(plan);return;}
  const paid=e.target.closest('#paidJobsBtn'); if(paid){paid.disabled=true;try{await loadPaidJobs()}catch(err){alert(err.message)}finally{paid.disabled=false}return;}\n const b=e.target.closest('#candidateBtn'); if(!b)return;
  e.preventDefault(); b.disabled=true; const old=b.textContent; b.textContent='시장후보 불러오는 중…';
  const el=document.getElementById('candidateList'); el.innerHTML='<div class="empty">시장후보 불러오는 중…</div>';
