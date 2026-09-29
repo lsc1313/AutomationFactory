@@ -655,7 +655,7 @@ assert.ok(productionV017.includes("production-pipeline-v4"));
 assert.ok(productionV017.includes("job-production-bundle-v4"));
 assert.ok(productionV017.includes("dispatchProduction"));
 assert.ok(productionV017.includes("productionRunBtn"));
-assert.ok(productionV017.includes("🏭 실제 제작"));
+assert.ok(productionV017.includes("🏭 제작"));
 assert.ok(productionV017.includes("제작 패키지 생성·QC 테스트 통과"));
 assert.ok(productionV017.includes("runnable_job_specific_package"));
 assert.ok(productionV017.includes("normalizeSquarespaceExport"));
