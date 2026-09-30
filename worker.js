@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.50.1";
+const APP_VERSION = "0.51.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1411,8 +1411,8 @@ async function platformConnectionCenter(env) {
     provider:"kmong",label:"크몽",account_status:"manual_channel",api_status:"manual",connected:false,auth_method:"",
     next_action:"표준화 서비스 판매 채널로 운영",capabilities:{seller_service:true,scout:false},write_actions_enabled:false,automation_policy:"비공식 크롤링/자동게시 금지. 내부에서 상품 초안만 생성."
   },{
-    provider:"wishket",label:"위시켓",account_status:"manual_review",api_status:"manual",connected:false,auth_method:"",
-    next_action:"프로젝트별 사람 검토 후 지원",capabilities:{scout:false},write_actions_enabled:false,automation_policy:"공식 지원 경로가 검증되기 전 자동지원 비활성."
+    provider:"wishket",label:"위시켓",account_status:"public_readonly",api_status:"readonly",connected:true,auth_method:"public_page",
+    next_action:"공개 프로젝트 자동 탐색 · 지원은 사람 확인",capabilities:{scout:true,application:false},write_actions_enabled:false,automation_policy:"공개 프로젝트 읽기만 자동화. 로그인 우회·자동지원·외부 쓰기 비활성."
   },{
     provider:"soomgo",label:"숨고",account_status:"paid_quote_manual",api_status:"manual",connected:false,auth_method:"",
     next_action:"견적 비용/수익성 확인 후 수동 지원",capabilities:{scout:false},write_actions_enabled:false,automation_policy:"유료 견적 채널. 자동 견적 발송 비활성."
