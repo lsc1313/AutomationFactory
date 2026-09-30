@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.51.0";
+const APP_VERSION = "0.51.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1094,6 +1094,8 @@ function applicationPriority(row,draft) {
   if(/zoho|salesforce|hubspot|zendesk|intercom|freshdesk|shopify|bigcommerce|woocommerce|squarespace|wix|webflow/i.test(text))externalWorkspaceSignals.push("managed_saas_workspace");
   if(/(?:inside|within|in) (?:our|my|the) (?:crm|account|workspace|store|shop|admin|dashboard|portal)|(?:configure|customize|set up|setup|modify|update|build).{0,100}(?:crm|account|workspace|admin|dashboard|zoho|salesforce|hubspot|shopify)/i.test(text))externalWorkspaceSignals.push("client_workspace_changes");
   if(/(?:custom fields|views|pipeline|lead management|workflow automation|document templates?|e-?signature|dashboards?|reporting|analytics).{0,120}(?:crm|zoho|salesforce|hubspot|account|workspace)?/i.test(text))externalWorkspaceSignals.push("workspace_configuration");
+  if(/(?:autotrader|ebay|gumtree|facebook marketplace|friday ad|drive mart)/i.test(text)&&/(?:post|publish|list|sync|integrat|connect|multiple|multi(?:site|[- ]site|platform|[- ]platform))/i.test(text))externalWorkspaceSignals.push("multi_platform_marketplace_posting");
+  if(/(?:crm|platform|system).{0,120}(?:multiple|several|multi(?:site|[- ]site|platform|[- ]platform)).{0,120}(?:website|marketplace|platform)|(?:multiple|several|multi(?:site|[- ]site|platform|[- ]platform)).{0,120}(?:website|marketplace|platform).{0,120}(?:crm|platform|system|post|publish|sync)/i.test(text))externalWorkspaceSignals.push("multi_platform_external_integration");
   const environmentDependencySignals=[];
   if(/(?:wordpress|cms|server|hosting|database|mysql|production environment|live environment|backend).{0,120}(?:access|credentials|login|admin|ssh|ftp|database|modify|optimi[sz]|tune|debug|profile|audit)/i.test(text)||/(?:access|credentials|login|admin|ssh|ftp).{0,120}(?:wordpress|cms|server|hosting|database|mysql|backend)/i.test(text))environmentDependencySignals.push("client_runtime_access");
   if(/(?:slow quer(?:y|ies)|query monitor|new relic|indexes?|wp_options|autoload|plugin performance|theme code|server response|backend processing)/i.test(text))environmentDependencySignals.push("live_runtime_diagnostics");
