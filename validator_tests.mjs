@@ -649,7 +649,7 @@ assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.46.0"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.48.0"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v4"));
 assert.ok(productionV017.includes("job-production-bundle-v4"));
