@@ -1075,3 +1075,13 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(workerSource.includes("preferred_freelancer_required"));
  assert.ok(workerSource.includes("selected_freelancer_restriction"));
 }
+
+// v0.48.0 factory-first discovery regression.
+{
+ const sourceText=fs.readFileSync(new URL("./sources.js", import.meta.url),"utf8");
+ const workerSource=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
+ assert.ok(sourceText.includes("const pages = 12"));
+ assert.ok(sourceText.includes("strategy:\"factory_first_v1\""));
+ assert.ok(sourceText.includes("discoveryScore"));
+ assert.ok(workerSource.includes('const APP_VERSION = "0.48.0"'));
+}
