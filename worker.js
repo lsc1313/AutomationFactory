@@ -1,7 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.1";
+const APP_VERSION = "0.52.2";
+const BUILD_ID = "v0.52.2-runtime-diagnostics-20260930";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -435,6 +436,7 @@ async function runScout(env, sourceNames = null) {
   `).bind(runId, started, names.length).run();
 
   const collected = await collectSources(names);
+  collected.errors.unshift({source:"runtime",diagnostic:{app_version:APP_VERSION,build_id:BUILD_ID,source_count:names.length,sources:names}});
   let found = 0;
   let saved = 0;
   let hot = 0;
@@ -491,7 +493,8 @@ async function runScout(env, sourceNames = null) {
     grades: { hot, watch, cold },
     errors: collected.errors,
     diagnostics: sourceDiagnostics,
-    subscription_mining
+    subscription_mining,
+    runtime: { app_version: APP_VERSION, build_id: BUILD_ID }
   };
 }
 
@@ -2028,7 +2031,7 @@ async function load(){
  let runMeta=''; try{const a=JSON.parse(lr?.errors_json||'[]'); const d=a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)?.diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
  document.getElementById('runinfo').textContent=lr?('마지막 스캔 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'아직 스캔 기록이 없습니다.';
  let diag=[];try{diag=JSON.parse(lr?.errors_json||'[]').filter(x=>x.diagnostic)}catch{}
- const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links??0)+' · 상세확인 '+(d.details_checked??0)+' · Micro 후보 '+(d.micro_matches??0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count??0)+' · 선별 '+(d.unique_count??0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
+ const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='runtime')return '실행코드 '+(d.app_version||'?')+' · 빌드 '+(d.build_id||'?');if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links??0)+' · 상세확인 '+(d.details_checked??0)+' · Micro 후보 '+(d.micro_matches??0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count??0)+' · 선별 '+(d.unique_count??0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
  document.getElementById('sourceDiagnostics').textContent=diagText?('플랫폼별 진단 · '+diagText):'플랫폼별 수집 진단은 다음 스캔부터 표시됩니다.';
  const re=document.getElementById('runerrors');
  let errs=[];try{errs=JSON.parse(lr?.errors_json||'[]').filter(x=>x.error)}catch{}
