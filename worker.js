@@ -2607,7 +2607,9 @@ export default {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
         const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'work-spec-gate-v0.7.8'`).first();
         if (Number(staleJudge?.c || 0) > 0) await rejudgeAll(env);
-        // Collection is cron-owned. Read-only dashboard requests must never create Scout runs.\n\n        const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at,
+        // Collection is cron-owned. Read-only dashboard requests must never create Scout runs.
+
+        const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at,
           g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
           FROM opportunities o LEFT JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
           LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
