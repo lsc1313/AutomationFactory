@@ -649,7 +649,7 @@ assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(productionV017.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v4"));
 assert.ok(productionV017.includes("job-production-bundle-v4"));
@@ -726,7 +726,7 @@ assert.ok(renderedHtml.includes("clientIntakeBtn"));
 
 // v0.18.2 Smart Intake v2 contract
 const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(smartIntakeV0182.includes("Account Connection Gate"));
 assert.ok(smartIntakeV0182.includes("discovery_plan"));
 assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
@@ -741,7 +741,7 @@ assert.ok(smartIntakeV0182.includes("config/client.json"));
 
 // v0.18.3 Account Connection Gate v1 contract
 const connectionV0183 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(connectionV0183.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(connectionV0183.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS account_connections"));
 assert.ok(connectionV0183.includes("CREATE TABLE IF NOT EXISTS oauth_states"));
 assert.ok(connectionV0183.includes("accountProviderSpec"));
@@ -768,7 +768,7 @@ assert.ok(!connectionV0183.includes('intakeField("prodigi_api_key"'));
 
 // v0.18.4 connection cleanup
 const connectionV0184 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(connectionV0184.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(connectionV0184.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(!connectionV0184.includes('intakeField("prodigi_mode"'));
 assert.ok(!connectionV0184.includes('Whether to validate through Prodigi Sandbox first'));
 assert.ok(connectionV0184.includes('prodigiConn?.metadata?.mode||"sandbox"'));
@@ -778,7 +778,7 @@ assert.ok(connectionV0184.includes("ETSY_SHARED_SECRET"));
 
 // v0.18.5 Etsy auth header + verified OAuth
 const etsyV0185 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(etsyV0185.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(etsyV0185.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(etsyV0185.includes("ETSY_KEYSTRING"));
 assert.ok(etsyV0185.includes("ETSY_SHARED_SECRET"));
 assert.ok(etsyV0185.includes('"x-api-key":keystring+":"+sharedSecret'));
@@ -790,7 +790,7 @@ assert.ok(etsyV0185.includes("ETSY_SHARED_SECRET="));
 
 // v0.19.0 Contract & Payment Gate v1 contract
 const dealV0190 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(dealV0190.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(dealV0190.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(dealV0190.includes("CREATE TABLE IF NOT EXISTS contract_payment_gates"));
 assert.ok(dealV0190.includes("contractPaymentProfile"));
 assert.ok(dealV0190.includes("contractPaymentReady"));
@@ -817,7 +817,7 @@ assert.ok(dealV0190.includes("계약·결제 Gate가 더 이상 준비 상태가
 
 // v0.19.1 deal amount semantics
 const dealV0191 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(dealV0191.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(dealV0191.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(dealV0191.includes("advertised_budget"));
 assert.ok(dealV0191.includes("원문에 표시된 예산"));
 assert.ok(dealV0191.includes("실제 합의 금액 / 통화 *"));
@@ -830,7 +830,7 @@ assert.ok(dealV0191.includes("Number(gate?.gross_amount)>0"));
 // v0.20.0 Manager Orchestrator v1
 const managerV0200 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
 const wranglerV0200 = fs.readFileSync(new URL("./wrangler.jsonc", import.meta.url), "utf8");
-assert.ok(managerV0200.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(managerV0200.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(managerV0200.includes("CREATE TABLE IF NOT EXISTS manager_job_states"));
 assert.ok(managerV0200.includes("managerEvaluateJob"));
 assert.ok(managerV0200.includes("runManagerOrchestrator"));
@@ -853,7 +853,7 @@ assert.ok(wranglerV0200.includes('"47 * * * *"'));
 
 // v0.20.1 universal sandbox acceptance harness
 const sandboxV0201 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(sandboxV0201.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(sandboxV0201.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(sandboxV0201.includes("acceptanceHarness:true"));
 assert.ok(sandboxV0201.includes("acceptance_harness"));
 assert.ok(sandboxV0201.includes("code-worker-v2.2"));
@@ -863,7 +863,7 @@ assert.ok(!sandboxV0201.includes('status:"not_applicable",files:[],test_executio
 
 // v0.21.0 consolidated application center
 const appCenterV0210=fs.readFileSync(new URL("./worker.js",import.meta.url),"utf8");
-assert.ok(appCenterV0210.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(appCenterV0210.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(appCenterV0210.includes("function applicationDraft"));
 assert.ok(appCenterV0210.includes("applicationCenterRows"));
 assert.ok(appCenterV0210.includes("/api/application-center"));
@@ -877,7 +877,7 @@ assert.ok(appCenterV0210.includes("지원 페이지 열기"));
 
 // v0.21.1 realistic application estimates
 const v0211=fs.readFileSync(new URL("./worker.js",import.meta.url),"utf8");
-assert.ok(v0211.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(v0211.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(v0211.includes("scopeMultiplier"));
 assert.ok(v0211.includes("effective_estimated_hours"));
 assert.ok(v0211.includes("externalBuffer"));
@@ -903,7 +903,7 @@ assert.ok(!v0221.includes('id="paidJobsBtn"'));
 
 // v0.22.2 focus dashboard
 const v0222 = workerSource;
-assert.ok(v0222.includes('const APP_VERSION = "0.52.3"'));
+assert.ok(v0222.includes('const APP_VERSION = "0.52.4"'));
 assert.ok(v0222.includes("📦 전체 유료 일감 '+rows.length+'개 보기"));
 assert.ok(v0222.includes("평소에는 열어볼 필요 없습니다."));
 
@@ -1083,7 +1083,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(sourceText.includes("const pages = 12"));
  assert.ok(sourceText.includes("strategy:\"realizable_revenue_v2\""));
  assert.ok(sourceText.includes("discoveryScore"));
- assert.ok(workerSource.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(workerSource.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.49.0 realizable-revenue scoring regression.
@@ -1129,7 +1129,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(worker.includes("signalCount<2"));
  assert.ok(worker.includes("repeatability*.55+autonomous*.45"));
  assert.ok(worker.includes("subscription_mining = await mineSubscriptionCandidates(env)"));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.50.1 multi-platform connection center.
@@ -1139,7 +1139,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(worker.includes("UPWORK_ACCESS_TOKEN"));
  assert.ok(worker.includes("공식 API 자격과 OAuth가 검증되기 전 검색·지원 자동화 비활성"));
  assert.ok(worker.includes("비공식 크롤링/자동게시 금지"));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.51.0 Wishket public read-only micro-job scout.
@@ -1150,7 +1150,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(sources.includes("wishket_public_micro_v1"));
  assert.ok(sources.includes("wishket_projects: collectWishketProjects"));
  assert.ok(sources.includes('write_actions:false'));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
  assert.ok(worker.includes("공개 프로젝트 읽기만 자동화"));
 }
 
@@ -1160,7 +1160,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(worker.includes("multi_platform_marketplace_posting"));
  assert.ok(worker.includes("multi_platform_external_integration"));
  assert.ok(worker.includes("autotrader|ebay|gumtree|facebook marketplace|friday ad|drive mart"));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.52.0 source diagnostics dashboard.
@@ -1170,7 +1170,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(worker.includes("위시켓 · 공개링크"));
  assert.ok(worker.includes("Micro 후보"));
  assert.ok(worker.includes('value="wishket_projects"'));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.52.1 Freelancer budget runtime regression.
@@ -1180,16 +1180,16 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(sources.includes("const b = x.budget || {};"));
  assert.ok(sources.includes("budget_min: num(b.minimum)"));
  assert.ok(sources.includes("budget_max: num(b.maximum)"));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.52.2 runtime/build diagnostics.
 {
  const worker=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
- assert.ok(worker.includes('const BUILD_ID = "v0.52.3-hourly-scout-20260930"'));
+ assert.ok(worker.includes('const BUILD_ID = "v0.52.4-scan-state-diagnostics-20261001"'));
  assert.ok(worker.includes('source:"runtime",diagnostic:{app_version:APP_VERSION,build_id:BUILD_ID'));
  assert.ok(worker.includes("실행코드 '+(d.app_version||'?')+' · 빌드"));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
 }
 
 // v0.52.3 hourly Money Scout cadence.
@@ -1199,5 +1199,17 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(cfg.includes('"17 * * * *"'));
  assert.ok(cfg.includes('"47 * * * *"'));
  assert.ok(!cfg.includes('"17 */6 * * *"'));
- assert.ok(worker.includes('const APP_VERSION = "0.52.3"'));
+ assert.ok(worker.includes('const APP_VERSION = "0.52.4"'));
+}
+
+// v0.52.4: dashboard reads must not launch Scout; unfinished runs must not masquerade as completed zero-result scans.
+{
+ const worker=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
+ assert.ok(worker.includes("WHERE finished_at<>'' ORDER BY started_at DESC LIMIT 1"));
+ assert.ok(worker.includes("WHERE finished_at='' ORDER BY started_at DESC LIMIT 1"));
+ assert.ok(worker.includes("Collection is cron-owned. Read-only dashboard requests must never create Scout runs."));
+ assert.ok(worker.includes("const runtimeDiagnostic="));
+ assert.ok(worker.includes("JSON.stringify([runtimeDiagnostic, ...collected.errors"));
+ assert.ok(!worker.includes("collected.errors.unshift({source:\"runtime\""));
+ assert.ok(worker.includes("Money Scout는 매시간 자동 수집됩니다."));
 }
