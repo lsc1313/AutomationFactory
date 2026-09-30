@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.3";
-const BUILD_ID = "v0.52.3-hourly-scout-20260930";
+const APP_VERSION = "0.52.4";
+const BUILD_ID = "v0.52.4-scan-state-diagnostics-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -436,7 +436,7 @@ async function runScout(env, sourceNames = null) {
   `).bind(runId, started, names.length).run();
 
   const collected = await collectSources(names);
-  collected.errors.unshift({source:"runtime",diagnostic:{app_version:APP_VERSION,build_id:BUILD_ID,source_count:names.length,sources:names}});
+  const runtimeDiagnostic={source:"runtime",diagnostic:{app_version:APP_VERSION,build_id:BUILD_ID,source_count:names.length,sources:names}};
   let found = 0;
   let saved = 0;
   let hot = 0;
@@ -478,7 +478,7 @@ async function runScout(env, sourceNames = null) {
     watch,
     cold,
     collected.errors.length,
-    JSON.stringify([...collected.errors, ...Object.entries(sourceDiagnostics).map(([source, d]) => ({ source, diagnostic: d }))]),
+    JSON.stringify([runtimeDiagnostic, ...collected.errors, ...Object.entries(sourceDiagnostics).map(([source, d]) => ({ source, diagnostic: d }))]),
     runId
   ).run();
 
@@ -662,7 +662,8 @@ async function getStats(env) {
   const total = await env.DB.prepare(`SELECT COUNT(*) c FROM opportunities`).first();
   const byGrade = await env.DB.prepare(`SELECT grade, COUNT(*) c FROM opportunities GROUP BY grade`).all();
   const byState = await env.DB.prepare(`SELECT user_state, COUNT(*) c FROM opportunities GROUP BY user_state`).all();
-  const lastRun = await env.DB.prepare(`SELECT * FROM scout_runs ORDER BY started_at DESC LIMIT 1`).first();
+  const lastRun = await env.DB.prepare(`SELECT * FROM scout_runs WHERE finished_at<>'' ORDER BY started_at DESC LIMIT 1`).first();
+  const activeRun = await env.DB.prepare(`SELECT run_id,started_at,source_count FROM scout_runs WHERE finished_at='' ORDER BY started_at DESC LIMIT 1`).first();
 
   const grades = { hot: 0, watch: 0, cold: 0 };
   for (const row of byGrade.results || []) grades[row.grade] = Number(row.c || 0);
@@ -673,7 +674,8 @@ async function getStats(env) {
     total: Number(total?.c || 0),
     ...grades,
     states,
-    last_run: lastRun || null
+    last_run: lastRun || null,
+    active_run: activeRun || null
   };
 }
 
@@ -2029,7 +2031,7 @@ async function load(){
  document.getElementById('s-proceed').textContent=stats.states?.proceed||0;
  const lr=stats.last_run;
  let runMeta=''; try{const a=JSON.parse(lr?.errors_json||'[]'); const d=a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)?.diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
- document.getElementById('runinfo').textContent=lr?('마지막 스캔 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'아직 스캔 기록이 없습니다.';
+ document.getElementById('runinfo').textContent=(stats.active_run?'자동 스캔 실행 중 · 시작 '+when(stats.active_run.started_at)+' | ':'')+(lr?('마지막 완료 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'완료된 스캔 기록이 없습니다.');
  let diag=[];try{diag=JSON.parse(lr?.errors_json||'[]').filter(x=>x.diagnostic)}catch{}
  const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='runtime')return '실행코드 '+(d.app_version||'?')+' · 빌드 '+(d.build_id||'?');if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links??0)+' · 상세확인 '+(d.details_checked??0)+' · Micro 후보 '+(d.micro_matches??0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count??0)+' · 선별 '+(d.unique_count??0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
  document.getElementById('sourceDiagnostics').textContent=diagText?('플랫폼별 진단 · '+diagText):'플랫폼별 수집 진단은 다음 스캔부터 표시됩니다.';
@@ -2038,7 +2040,7 @@ async function load(){
  if(errs.length){re.style.display='block';re.textContent='⚠ 최근 스캔 오류 상세\\n'+errs.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n');}else{re.style.display='none';re.textContent='';}
  const evidenceById={}; await Promise.all(jobs.map(async j=>{try{evidenceById[j.opportunity_id]=await api('/api/opportunities/'+encodeURIComponent(j.opportunity_id)+'/evidence')}catch{evidenceById[j.opportunity_id]=[]}}));
  const el=document.getElementById('list');
- if(!jobs.length){el.innerHTML='<div class="empty">표시할 수익 기회가 없습니다.<br>「지금 스캔」을 눌러 첫 수집을 실행하세요.</div>';return;}
+ if(!jobs.length){el.innerHTML='<div class="empty">현재 조건에 표시할 수익 기회가 없습니다.<br>Money Scout는 매시간 자동 수집됩니다.</div>';return;}
  el.innerHTML=jobs.map(j=>{
    const budget=money(j.budget_min,j.budget_max,j.currency);
    const bd=breakdown(j);
@@ -2605,15 +2607,7 @@ export default {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
         const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'work-spec-gate-v0.7.8'`).first();
         if (Number(staleJudge?.c || 0) > 0) await rejudgeAll(env);
-        const latestPaid = await env.DB.prepare(`SELECT MAX(last_seen_at) AS last_seen FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid')`).first();
-        const ageMs = latestPaid?.last_seen ? Date.now() - Date.parse(latestPaid.last_seen) : Infinity;
-        // Paid jobs are the fast-cash surface: refresh only these sources when stale.
-        // waitUntil keeps the UI responsive; the next poll receives the fresh rows.
-        if (ageMs > 30 * 60 * 1000 && paidSources.length) {
-          const refresh = runScout(env, paidSources).catch(() => null);
-          if (globalThis.__moneyScoutCtx?.waitUntil) globalThis.__moneyScoutCtx.waitUntil(refresh);
-          else await refresh;
-        }
+        // Collection is cron-owned. Read-only dashboard requests must never create Scout runs.
 
         const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at,
           g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
