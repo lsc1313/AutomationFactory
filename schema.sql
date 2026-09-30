@@ -162,3 +162,24 @@ CREATE TABLE IF NOT EXISTS manager_job_states (
 
 CREATE INDEX IF NOT EXISTS idx_manager_job_stage
 ON manager_job_states(stage, updated_at DESC);
+
+
+-- v0.50.0 Repeated-demand -> subscription product candidates
+CREATE TABLE IF NOT EXISTS subscription_candidates (
+  candidate_key TEXT PRIMARY KEY,
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  signal_count INTEGER NOT NULL DEFAULT 0,
+  source_count INTEGER NOT NULL DEFAULT 0,
+  sources_json TEXT NOT NULL DEFAULT '[]',
+  example_opportunities_json TEXT NOT NULL DEFAULT '[]',
+  repeatability_score INTEGER NOT NULL DEFAULT 0,
+  autonomous_fit_score INTEGER NOT NULL DEFAULT 0,
+  subscription_score INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'candidate',
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_candidates_score
+ON subscription_candidates(subscription_score DESC, signal_count DESC);
