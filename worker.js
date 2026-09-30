@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.49.0";
+const APP_VERSION = "0.50.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -246,6 +246,15 @@ async function ensureSchema(env) {
       updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_market_candidates_status ON market_candidates(commercialization_status, signal_count DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS subscription_candidates (
+      candidate_key TEXT PRIMARY KEY, category TEXT NOT NULL, title TEXT NOT NULL,
+      signal_count INTEGER NOT NULL DEFAULT 0, source_count INTEGER NOT NULL DEFAULT 0,
+      sources_json TEXT NOT NULL DEFAULT '[]', example_opportunities_json TEXT NOT NULL DEFAULT '[]',
+      repeatability_score INTEGER NOT NULL DEFAULT 0, autonomous_fit_score INTEGER NOT NULL DEFAULT 0,
+      subscription_score INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'candidate',
+      first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_subscription_candidates_score ON subscription_candidates(subscription_score DESC, signal_count DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS opportunity_outcomes (
       opportunity_id TEXT PRIMARY KEY,
       result TEXT NOT NULL DEFAULT '',
@@ -366,6 +375,52 @@ async function upsertOpportunity(env, raw) {
   return { opportunity_id: opportunityId, ...judged };
 }
 
+function subscriptionCategory(row) {
+  const text=(String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"")).toLowerCase();
+  const categories=[
+    ["sheet_reporting",/excel|spreadsheet|google sheet|csv|report|dashboard|엑셀|구글시트|보고서|대시보드/],
+    ["community_bot",/discord|telegram|community|attendance|member|디스코드|텔레그램|출석|길드|회원/],
+    ["booking_notification",/booking|reservation|appointment|reminder|notification|예약|알림|리마인드/],
+    ["data_pipeline",/scrap|crawl|extract|etl|data pipeline|data processing|크롤|스크랩|데이터 수집|데이터 처리/],
+    ["document_automation",/pdf|document|invoice|form|ocr|문서|송장|양식/],
+    ["commerce_ops",/order|inventory|shopify|woocommerce|commerce|주문|재고|쇼핑몰/]
+  ];
+  for(const [key,re] of categories) if(re.test(text)) return key;
+  return "";
+}
+
+async function mineSubscriptionCandidates(env) {
+  const rows=(await env.DB.prepare(`SELECT opportunity_id,source,title,description,skills,score,score_breakdown,first_seen_at,last_seen_at
+    FROM opportunities WHERE last_seen_at >= datetime('now','-30 day') ORDER BY last_seen_at DESC LIMIT 2000`).all()).results||[];
+  const groups=new Map();
+  for(const row of rows){
+    const category=subscriptionCategory(row); if(!category)continue;
+    let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
+    const automation=Number(bd.automation||bd.factory_fulfillment_score||0);
+    const g=groups.get(category)||{rows:[],sources:new Set(),auto:[]};
+    g.rows.push(row); g.sources.add(String(row.source||"")); g.auto.push(automation); groups.set(category,g);
+  }
+  const now=nowIso(); let promoted=0;
+  for(const [category,g] of groups){
+    const signalCount=g.rows.length, sourceCount=g.sources.size;
+    const repeatability=Math.min(100,signalCount*12+Math.max(0,sourceCount-1)*15);
+    const autonomous=Math.round(g.auto.reduce((a,b)=>a+b,0)/Math.max(1,g.auto.length));
+    const subscription=Math.min(100,Math.round(repeatability*.55+autonomous*.45));
+    if(signalCount<2)continue;
+    const title={sheet_reporting:"스프레드시트·정기보고 자동화",community_bot:"커뮤니티·출석 관리 봇",booking_notification:"예약·알림 자동화",data_pipeline:"데이터 수집·가공 자동화",document_automation:"문서·PDF 자동화",commerce_ops:"주문·재고 운영 자동화"}[category]||category;
+    const examples=g.rows.slice(0,5).map(r=>({opportunity_id:r.opportunity_id,title:r.title,source:r.source}));
+    await env.DB.prepare(`INSERT INTO subscription_candidates
+      (candidate_key,category,title,signal_count,source_count,sources_json,example_opportunities_json,repeatability_score,autonomous_fit_score,subscription_score,status,first_seen_at,last_seen_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,'candidate',?,?,?)
+      ON CONFLICT(candidate_key) DO UPDATE SET signal_count=excluded.signal_count,source_count=excluded.source_count,sources_json=excluded.sources_json,
+      example_opportunities_json=excluded.example_opportunities_json,repeatability_score=excluded.repeatability_score,autonomous_fit_score=excluded.autonomous_fit_score,
+      subscription_score=excluded.subscription_score,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`)
+      .bind(category,category,title,signalCount,sourceCount,JSON.stringify([...g.sources]),JSON.stringify(examples),repeatability,autonomous,subscription,g.rows.at(-1)?.first_seen_at||now,now,now).run();
+    promoted++;
+  }
+  return {groups:groups.size,promoted};
+}
+
 async function runScout(env, sourceNames = null) {
   await ensureSchema(env);
   const runId = crypto.randomUUID();
@@ -406,6 +461,7 @@ async function runScout(env, sourceNames = null) {
     }
   }
 
+  const subscription_mining = await mineSubscriptionCandidates(env);
   const finished = nowIso();
   await env.DB.prepare(`
     UPDATE scout_runs SET
@@ -434,7 +490,8 @@ async function runScout(env, sourceNames = null) {
     saved,
     grades: { hot, watch, cold },
     errors: collected.errors,
-    diagnostics: sourceDiagnostics
+    diagnostics: sourceDiagnostics,
+    subscription_mining
   };
 }
 
