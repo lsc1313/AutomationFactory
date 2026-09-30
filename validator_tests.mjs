@@ -1105,7 +1105,7 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(sourceText.includes("REVENUE_CHANNEL_REGISTRY"));
  assert.ok(sourceText.includes('upwork_marketplace: { mode:"request", automation:"official_api_auth_required"'));
  assert.ok(sourceText.includes('kmong_services: { mode:"seller_service", automation:"manual_official_channel", scout:false, scraping:false }'));
- assert.ok(sourceText.includes('wishket_projects: { mode:"request", automation:"manual_review_required"'));
+ assert.ok(sourceText.includes('wishket_projects: { mode:"request", automation:"public_readonly_scout_manual_apply", scout:true'));
  assert.ok(sourceText.includes('soomgo_requests: { mode:"request", automation:"paid_quote_manual_review"'));
  assert.ok(sourceText.includes("revenueChannelStatus"));
 }
