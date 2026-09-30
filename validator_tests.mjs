@@ -450,11 +450,7 @@ assert.match(sourceV073, /freelancer_projects: collectFreelancerProjects/);
 assert.match(sourceV073, /api\/projects\/0\.1\/projects\/active/);
 assert.match(sourceV073, /type: fixed \? "fixed_project" : "hourly_contract"/);
 
-// v0.7.4 stale paid-job auto refresh
-const autoRefreshWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.match(autoRefreshWorker, /paidSources = \["freelancer_projects","agent_bounties","github_paid"\]/);
-assert.match(autoRefreshWorker, /30 \* 60 \* 1000/);
-assert.match(autoRefreshWorker, /waitUntil\(refresh\)/);
+// v0.7.4 paid-job sources; v0.52.4 collection is cron-owned, not dashboard-triggered\nconst autoRefreshWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");\nassert.match(autoRefreshWorker, /paidSources = \\["freelancer_projects","agent_bounties","github_paid"\\]/);\nassert.match(autoRefreshWorker, /Collection is cron-owned/);\nassert.doesNotMatch(autoRefreshWorker, /const refresh = runScout\\(env, paidSources\\)/);
 
 // v0.7.5 Factory Fulfillment Gate
 const fulfillJudge = fs.readFileSync(new URL("./judge.js", import.meta.url), "utf8");
