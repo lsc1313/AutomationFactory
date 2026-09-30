@@ -138,6 +138,7 @@ export async function collectFreelancerProjects() {
     const id=String(x.id); if (seen.has(id)) return false; seen.add(id); return true;
   }).sort((a,b)=>discoveryScore(b)-discoveryScore(a)).slice(0,300).map(x => {
     const cur = x.currency || {};
+    const b = x.budget || {};
     const fixed = String(x.type || "").toLowerCase() === "fixed";
     const skills = Array.isArray(x.jobs) ? x.jobs.map(j => j?.name).filter(Boolean) : [];
     return {
