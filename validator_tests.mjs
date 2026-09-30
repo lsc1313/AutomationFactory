@@ -1109,3 +1109,14 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
  assert.ok(sourceText.includes('soomgo_requests: { mode:"request", automation:"paid_quote_manual_review"'));
  assert.ok(sourceText.includes("revenueChannelStatus"));
 }
+
+// v0.50.0 subscription candidate memory regression.
+{
+ const schema=fs.readFileSync(new URL("./schema.sql", import.meta.url),"utf8");
+ assert.ok(schema.includes("CREATE TABLE IF NOT EXISTS subscription_candidates"));
+ assert.ok(schema.includes("signal_count INTEGER NOT NULL DEFAULT 0"));
+ assert.ok(schema.includes("source_count INTEGER NOT NULL DEFAULT 0"));
+ assert.ok(schema.includes("repeatability_score INTEGER NOT NULL DEFAULT 0"));
+ assert.ok(schema.includes("autonomous_fit_score INTEGER NOT NULL DEFAULT 0"));
+ assert.ok(schema.includes("subscription_score INTEGER NOT NULL DEFAULT 0"));
+}
