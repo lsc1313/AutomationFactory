@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.51.1";
+const APP_VERSION = "0.52.0";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1988,7 +1988,7 @@ function appHtml() {
       <option value="reject">제외</option>
     </select>
     <select id="sourceFilter">
-      <option value="all">소스 전체</option>
+      <option value="all">소스 전체</option>\n      <option value="freelancer_projects">Freelancer Projects</option>\n      <option value="wishket_projects">Wishket 공개 프로젝트</option>
       <option value="agent_bounties">Agent Bounties (공식 claimable)</option>
       <option value="github_paid">GitHub Paid Discovery</option>
       <option value="github_demand">GitHub Product Demand</option>\n      <option value="marketplace_demand">Marketplace Demand</option>
@@ -2000,7 +2000,7 @@ function appHtml() {
     <input id="token" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
     <button id="saveToken">저장</button>
   </div>
-  <div id="runinfo" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
+  <div id="runinfo" class="runinfo"></div>\n  <div id="sourceDiagnostics" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
   </details>
   <div class="footer">v${APP_VERSION} · Manager Orchestrator v1 · 자동검증→외부대기→자동제작/QC→납품준비</div>
@@ -2027,6 +2027,9 @@ async function load(){
  const lr=stats.last_run;
  let runMeta=''; try{const a=JSON.parse(lr?.errors_json||'[]'); const d=a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)?.diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
  document.getElementById('runinfo').textContent=lr?('마지막 스캔 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'아직 스캔 기록이 없습니다.';
+ let diag=[];try{diag=JSON.parse(lr?.errors_json||'[]').filter(x=>x.diagnostic)}catch{}
+ const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links??0)+' · 상세확인 '+(d.details_checked??0)+' · Micro 후보 '+(d.micro_matches??0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count??0)+' · 선별 '+(d.unique_count??0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
+ document.getElementById('sourceDiagnostics').textContent=diagText?('플랫폼별 진단 · '+diagText):'플랫폼별 수집 진단은 다음 스캔부터 표시됩니다.';
  const re=document.getElementById('runerrors');
  let errs=[];try{errs=JSON.parse(lr?.errors_json||'[]').filter(x=>x.error)}catch{}
  if(errs.length){re.style.display='block';re.textContent='⚠ 최근 스캔 오류 상세\\n'+errs.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n');}else{re.style.display='none';re.textContent='';}
