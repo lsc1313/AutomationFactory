@@ -953,6 +953,22 @@ export async function collectMarketplaceDemand() {
   return marketplaceEvidenceToOpportunities(evidence);
 }
 
+export const REVENUE_CHANNEL_REGISTRY = {
+  freelancer_projects: { mode:"request", automation:"active", scout:true },
+  upwork_marketplace: { mode:"request", automation:"official_api_auth_required", scout:false, env:["UPWORK_ACCESS_TOKEN"] },
+  kmong_services: { mode:"seller_service", automation:"manual_official_channel", scout:false, scraping:false },
+  wishket_projects: { mode:"request", automation:"manual_review_required", scout:false },
+  soomgo_requests: { mode:"request", automation:"paid_quote_manual_review", scout:false }
+};
+
+export function revenueChannelStatus(env = {}) {
+  return Object.entries(REVENUE_CHANNEL_REGISTRY).map(([channel, cfg]) => ({
+    channel,
+    ...cfg,
+    configured: cfg.env ? cfg.env.every((key) => Boolean(env[key])) : cfg.automation === "active"
+  }));
+}
+
 export const SOURCE_REGISTRY = {
   marketplace_demand: collectMarketplaceDemand,
   freelancer_projects: collectFreelancerProjects,
