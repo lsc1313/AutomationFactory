@@ -581,15 +581,15 @@ export function judgeOpportunity(opportunity) {
   if (employmentHits.length && opportunityType !== "bounty") risk = Math.max(risk, 55);
 
   let score = Math.round(clamp(
-    payout.score * 0.30 +
-    automation * 0.20 +
-    speed * 0.15 +
-    scale * 0.15 +
-    sourceFit * 0.05 +
-    freshness * 0.05 +
-    payoutTrust * 0.10 -
-    risk * 0.15 -
-    competition * 0.08,
+    payout.score * 0.12 +
+    automation * 0.28 +
+    speed * 0.24 +
+    scale * 0.18 +
+    sourceFit * 0.06 +
+    freshness * 0.04 +
+    payoutTrust * 0.08 -
+    risk * 0.18 -
+    competition * 0.06,
     0, 100
   ));
 
@@ -600,7 +600,7 @@ export function judgeOpportunity(opportunity) {
     const paidVerified = source === "github_paid" && payout.kind === "fixed_total" && payout.trust === "text_reward_claim_path";
     hardCap = Math.min(hardCap, paidVerified ? 69 : 54);
   }
-  if (payout.status === "low" && !(automation >= 70 && speed >= 70)) hardCap = Math.min(hardCap, 44);
+  if (payout.status === "low" && !(automation >= 50 && speed >= 50)) hardCap = Math.min(hardCap, 64);
   score = Math.min(score, hardCap);
 
   let grade = score >= 70 ? "hot" : score >= 45 ? "watch" : "cold";
@@ -619,7 +619,7 @@ export function judgeOpportunity(opportunity) {
   const factoryFulfillable = hasWorkSpec && !humanExecution && nonSoftwareDomainHits.length === 0 && factoryFulfillmentScore >= 60;
   const fulfillmentStatus = factoryFulfillable ? "ready" : nonSoftwareDomainHits.length ? "non_software" : humanExecution ? "human_service" : softwareArtifactHits.length ? "needs_spec" : "not_factory_fit";
   const explicitPay = payout.usd != null && payout.usd > 0 && !payout.requiresPayCheck;
-  const actionablePaidJob = paidJob && explicitPay && factoryFulfillable && !["micro","very_low","no_reward"].includes(payout.status);
+  const actionablePaidJob = paidJob && explicitPay && factoryFulfillable && !["no_reward"].includes(payout.status);
   if (payout.requiresPayCheck && grade === "hot") grade = "watch";
   if (["micro","very_low","no_reward"].includes(payout.status)) grade = "cold";
   if (payout.kind === "token_fixed" && grade === "hot") grade = "watch";
