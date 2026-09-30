@@ -162,6 +162,38 @@ export async function collectFreelancerProjects() {
 
 }
 
+
+function wishketText(html) {
+  return stripHtml(String(html||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ")).replace(/\s+/g," ").trim();
+}
+
+export async function collectWishketProjects() {
+  // Public, read-only discovery only. No login bypass, application submission, or private endpoint use.
+  const listUrl="https://www.wishket.com/project/";
+  const res=await fetch(listUrl,{headers:{"accept":"text/html","user-agent":"AutomationFactory-MoneyScout/0.51.0"}});
+  if(!res.ok)throw new Error(`Wishket public projects HTTP ${res.status}`);
+  const html=await res.text();
+  const links=[...html.matchAll(/href=["'](\/project\/(\d+)\/?)["']/gi)];
+  const ids=[...new Set(links.map(m=>m[2]))].slice(0,80);
+  const micro=/엑셀|excel|vba|매크로|csv|pdf|문서|데이터\s*(정리|가공|처리|변환|분석)|스크래핑|크롤링|api|업무\s*자동화|rpa|파이썬|python|스크립트|리서치/i;
+  const hostile=/워드프레스|wordpress|쇼피파이|shopify|호스팅|도메인|서버\s*(설정|이전|배포)|기존\s*(사이트|웹사이트)|운영중인\s*(사이트|서비스)|대면|상주/i;
+  const items=[];
+  for(const id of ids.slice(0,30)){
+    try{
+      const url=`https://www.wishket.com/project/${id}/`,r=await fetch(url,{headers:{"accept":"text/html","user-agent":"AutomationFactory-MoneyScout/0.51.0"}});
+      if(!r.ok)continue;
+      const page=await r.text(),text=wishketText(page);
+      const title=(page.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||`Wishket project ${id}`).replace(/\s*[-|].*위시켓.*$/i,"").trim();
+      if(!micro.test(text)||hostile.test(text))continue;
+      const won=text.match(/(?:예상\s*금액|프로젝트\s*금액|예산)[^0-9]{0,30}([0-9][0-9,]{3,})\s*원/i);
+      const days=text.match(/(?:예상\s*기간|프로젝트\s*기간)[^0-9]{0,20}([0-9]{1,3})\s*일/i);
+      items.push({source:"wishket_projects",source_item_id:id,type:"fixed_project",title:wishketText(title).slice(0,240),description:text.slice(0,3000),budget_min:won?Number(won[1].replace(/,/g,"")):null,budget_max:won?Number(won[1].replace(/,/g,"")):null,currency:won?"KRW":"",location:"Online",skills:"",posted_at:"",deadline:days?`${days[1]} days`:"",competition:null,url});
+    }catch{}
+  }
+  items.diagnostics={public_links:ids.length,details_checked:Math.min(ids.length,30),micro_matches:items.length,strategy:"wishket_public_micro_v1",write_actions:false};
+  return items;
+}
+
 export async function collectAgentBounties() {
   const url = "https://api.agentbounties.app/v1/base/autonomous-bounties/feed?network=base-mainnet&claimable_only=true";
   const res = await fetch(url, {
@@ -957,7 +989,7 @@ export const REVENUE_CHANNEL_REGISTRY = {
   freelancer_projects: { mode:"request", automation:"active", scout:true },
   upwork_marketplace: { mode:"request", automation:"official_api_auth_required", scout:false, env:["UPWORK_ACCESS_TOKEN"] },
   kmong_services: { mode:"seller_service", automation:"manual_official_channel", scout:false, scraping:false },
-  wishket_projects: { mode:"request", automation:"manual_review_required", scout:false },
+  wishket_projects: { mode:"request", automation:"public_readonly_scout_manual_apply", scout:true },
   soomgo_requests: { mode:"request", automation:"paid_quote_manual_review", scout:false }
 };
 
@@ -972,6 +1004,7 @@ export function revenueChannelStatus(env = {}) {
 export const SOURCE_REGISTRY = {
   marketplace_demand: collectMarketplaceDemand,
   freelancer_projects: collectFreelancerProjects,
+  wishket_projects: collectWishketProjects,
   agent_bounties: collectAgentBounties,
   github_paid: collectGitHubPaidDiscovery,
   github_demand: collectGitHubDemandSignals,
