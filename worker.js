@@ -376,7 +376,7 @@ async function upsertOpportunity(env, raw) {
 }
 
 function subscriptionCategory(row) {
-  const text=(String(row.title||"")+" "+String(row.description||"")+" "+String(row.skills||"")).toLowerCase();
+  const text=[row.title,row.description,row.skills].map(v=>String(v||"")).join(" ").toLowerCase();
   const categories=[
     ["sheet_reporting",/excel|spreadsheet|google sheet|csv|report|dashboard|엑셀|구글시트|보고서|대시보드/],
     ["community_bot",/discord|telegram|community|attendance|member|디스코드|텔레그램|출석|길드|회원/],
