@@ -133,7 +133,7 @@ export async function collectFreelancerProjects() {
     return score;
   };
   const seen = new Set();
-  const candidates = all.filter(x => {
+  const items = all.filter(x => {
     if (!x || !x.id || !x.title || String(x.status || "active") === "closed") return false;
     const id=String(x.id); if (seen.has(id)) return false; seen.add(id); return true;
   }).sort((a,b)=>discoveryScore(b)-discoveryScore(a)).slice(0,300).map(x => {
@@ -157,7 +157,7 @@ export async function collectFreelancerProjects() {
       url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).split("/").filter(Boolean).join("/") : "https://www.freelancer.com/projects/" + x.id
     };
   });
-  items.diagnostics = { pages_requested: pagesRequested, pages_succeeded: pagesSucceeded, raw_count: all.length, unique_count: items.length, strategy:"factory_first_v1" };
+  items.diagnostics = { pages_requested: pagesRequested, pages_succeeded: pagesSucceeded, raw_count: all.length, unique_count: items.length, strategy:"realizable_revenue_v2" };
   return items;
 
 }
