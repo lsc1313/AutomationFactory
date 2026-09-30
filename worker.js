@@ -1,7 +1,7 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.50.0";
+const APP_VERSION = "0.50.1";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1396,11 +1396,26 @@ async function freelancerCapabilityProbe(env) {
 async function platformConnectionCenter(env) {
   let freelancer=await getPlatformConnection(env,"freelancer");
   if(freelancer.account_status==="ready"&&freelancer.api_status!=="connected"&&env.FREELANCER_ACCESS_TOKEN){await verifyFreelancerConnection(env);freelancer=await getPlatformConnection(env,"freelancer");}
+  const upworkConfigured=Boolean(String(env.UPWORK_ACCESS_TOKEN||"").trim());
   return {ok:true,providers:[{
     provider:"freelancer",label:"Freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status,
     connected:freelancer.api_status==="connected",auth_method:freelancer.auth_method||"",
     next_action:freelancer.api_status==="connected"?"연결 완료":freelancer.account_status==="ready"?"Personal Access Token 연결 확인 필요":"Freelancer 계정 준비 확인",
     capabilities:freelancer.metadata?.capabilities||{},write_actions_enabled:true,automation_policy:"공식 API/승인된 연동만 사용. Manager 선별·Preflight·중복방지 게이트를 통과한 Freelancer 입찰만 자동 제출. 메시지·마일스톤 쓰기는 별도 검증 전 비활성."
+  },{
+    provider:"upwork",label:"Upwork",account_status:upworkConfigured?"credential_present":"api_access_required",api_status:upworkConfigured?"credential_present":"disconnected",
+    connected:false,auth_method:upworkConfigured?"oauth_access_token_present":"",
+    next_action:upworkConfigured?"공식 API 검증 구현 대기":"Upwork 공식 API 키/OAuth 승인 필요",
+    capabilities:{scout:false,application:false},write_actions_enabled:false,automation_policy:"공식 API 자격과 OAuth가 검증되기 전 검색·지원 자동화 비활성."
+  },{
+    provider:"kmong",label:"크몽",account_status:"manual_channel",api_status:"manual",connected:false,auth_method:"",
+    next_action:"표준화 서비스 판매 채널로 운영",capabilities:{seller_service:true,scout:false},write_actions_enabled:false,automation_policy:"비공식 크롤링/자동게시 금지. 내부에서 상품 초안만 생성."
+  },{
+    provider:"wishket",label:"위시켓",account_status:"manual_review",api_status:"manual",connected:false,auth_method:"",
+    next_action:"프로젝트별 사람 검토 후 지원",capabilities:{scout:false},write_actions_enabled:false,automation_policy:"공식 지원 경로가 검증되기 전 자동지원 비활성."
+  },{
+    provider:"soomgo",label:"숨고",account_status:"paid_quote_manual",api_status:"manual",connected:false,auth_method:"",
+    next_action:"견적 비용/수익성 확인 후 수동 지원",capabilities:{scout:false},write_actions_enabled:false,automation_policy:"유료 견적 채널. 자동 견적 발송 비활성."
   }]};
 }
 
@@ -2133,12 +2148,11 @@ async function loadPaidJobs(){
  const pcb=document.getElementById('platformConnectionCenter');
  if(pcb){
    api('/api/platform-connections').then(d=>{
-     const f=(d.providers||[]).find(x=>x.provider==='freelancer')||{};
-     const account=f.account_status==='ready'?'계정 준비됨':'계정 준비 확인 필요';
-     const apiState=f.connected?'공식 연결됨':'API 미연결';
-     pcb.innerHTML='<b>🔌 플랫폼 연결센터</b><br><b>Freelancer</b> · '+esc(account)+' · '+esc(apiState)+'<br><span class="sub">'+esc(f.next_action||'')+'</span>'+
+     const providers=d.providers||[],f=providers.find(x=>x.provider==='freelancer')||{};
+     const rows=providers.map(p=>'<div style="margin-top:8px"><b>'+esc(p.label||p.provider)+'</b> · '+esc(p.connected?'공식 연결됨':(p.api_status==='manual'?'수동채널':p.api_status==='credential_present'?'인증정보 있음 · 검증대기':'미연결'))+'<br><span class="sub">'+esc(p.next_action||'')+'</span></div>').join('');
+     pcb.innerHTML='<b>🔌 플랫폼 연결센터</b>'+rows+
        (f.account_status!=='ready'?'<div class="decisions"><button id="markFreelancerReady">방금 만든 Freelancer 계정 준비 완료</button></div>':'')+
-       (!f.connected?'<div class="reason">⚠️ 공식 API 연결 전에는 Freelancer 일감의 자동지원·메시지·수주 확인을 실행하지 않습니다.</div>':'');
+       (!f.connected?'<div class="reason">⚠️ 공식 연결이 검증되지 않은 플랫폼은 자동지원·외부 쓰기를 실행하지 않습니다.</div>':'');
      const b=document.getElementById('markFreelancerReady'); if(b)b.onclick=async()=>{b.disabled=true;await api('/api/platform-connections/freelancer/account-ready',{method:'POST',body:JSON.stringify({ready:true})});await loadPaidJobs();};
    }).catch(e=>{pcb.innerHTML='<b>🔌 플랫폼 연결센터</b><br><span class="sub">연결 상태 조회 실패: '+esc(e.message)+'</span>';});
  }
