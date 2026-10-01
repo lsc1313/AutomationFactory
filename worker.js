@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.8";
-const BUILD_ID = "v0.52.8-application-transparency-20261001";
+const APP_VERSION = "0.52.9";
+const BUILD_ID = "v0.52.9-domain-proposals-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1001,6 +1001,14 @@ function paidJobPlan(row) {
   const text=raw.toLowerCase(), korean=(raw.match(/[가-힣]/g)||[]).length>20;
   const requirements=[]; const addReq=(test,en,ko)=>{if(test)requirements.push(korean?ko:en)};
   // Manager v2: domain/workflow requirements from the actual client brief, before generic technical support.
+  const isNumericNormalization=/excel|spreadsheet|workbook/.test(text)&&/(normaliz|normalis|z-score|min-max|numerical fields?|consistent scale)/.test(text);
+  if(isNumericNormalization){
+    requirements.push(korean?"Excel 통합문서를 읽어 숫자 열을 일관된 척도로 정규화":"Read each Excel workbook and normalize numerical columns to a consistent scale");
+    if(/z-score|min-max/.test(text)) requirements.push(korean?"요구사항에 맞춰 z-score 또는 min-max 정규화 방식을 적용":"Apply the requested z-score or min-max normalization method");
+    requirements.push(korean?"정규화 결과를 Excel 또는 CSV로 저장":"Save the normalized result back to Excel or CSV");
+    if(/before-and-after|before and after|summary report|statistics/.test(text)) requirements.push(korean?"변환 전후 통계를 요약한 검증 리포트 생성":"Produce a concise before-and-after statistics report");
+    if(/python|pandas|numpy|scikit/.test(text)) requirements.push(korean?"주석이 포함된 재실행 가능한 Python/pandas·NumPy 코드 제공":"Provide clean, well-commented, reproducible Python/pandas and NumPy code");
+  }
   addReq(/squarespace/.test(text)&&/(export|migrat|move|transfer|jump)/.test(text),"Export the selected products from Squarespace with existing copy, imagery, pricing and variants","Squarespace 선택 상품의 설명·이미지·가격·옵션을 함께 추출");
   addReq(/etsy/.test(text)&&/(listing|listings|shop)/.test(text),"Create the Etsy listings with required sections, shipping profiles and attributes","Etsy 상품 등록 및 섹션·배송 프로필·필수 속성 구성");
   addReq(/image/.test(text)&&/(dimension|optim|re-format|reformat)/.test(text),"Reformat and optimize product assets for Etsy image, title, tag and SEO requirements","Etsy 이미지·제목·태그·SEO 기준에 맞게 상품 자산 최적화");
@@ -1008,7 +1016,7 @@ function paidJobPlan(row) {
   addReq(/workflow/.test(text)&&/etsy/.test(text)&&/prodigi/.test(text),"Test the end-to-end Squarespace → Etsy → Prodigi order/fulfilment workflow","Squarespace → Etsy → Prodigi 전체 주문·이행 흐름 테스트");
   addReq(/tax/.test(text)&&/shipping/.test(text),"Configure and verify US-targeted tax and shipping settings within the supported platform options","지원 범위 내 미국 판매용 세금·배송 설정 구성 및 확인");
   addReq(/hand.?over|step-by-step guide|future updates/.test(text),"Provide concise hand-over instructions for editing products and adding future listings","향후 상품 수정·추가를 위한 인수인계 가이드 제공");
-  addReq(/csv|json|bulk migration|bulk upload/.test(text),"Use an appropriate bulk migration/import path (API, CSV or JSON) where it improves speed and accuracy","속도·정확도를 위해 적절한 대량 이전 방식(API/CSV/JSON) 적용");
+  addReq(!isNumericNormalization&&/csv|json|bulk migration|bulk upload/.test(text),"Use an appropriate bulk migration/import path (API, CSV or JSON) where it improves speed and accuracy","속도·정확도를 위해 적절한 대량 이전 방식(API/CSV/JSON) 적용");
   addReq(/slot|availability/.test(text)&&/(monitor|check|page)/.test(text),"Monitor the target slot/availability page at the requested interval","요청 주기로 슬롯/가용성 페이지 감시");
   addReq(/slot|availability/.test(text)&&/telegram/.test(text),"Send Telegram alerts immediately when the requested availability state changes","가용성 상태 변경 즉시 Telegram 알림");
   addReq(/retry|resilien|robust/.test(text),"Add retry, error handling and recovery for transient failures","일시 오류에 대한 재시도·오류처리·복구 구성");
@@ -1032,10 +1040,14 @@ function paidJobPlan(row) {
   const risks=[]; if(/credentials|api key|account|shop/.test(text))risks.push(korean?"외부 계정·권한 의존":"external account/access dependency"); if(/tax/.test(text))risks.push(korean?"세금 설정 범위 확인 필요":"tax configuration scope"); if(/bulk|11-50|\d+\s*(?:products|items)/.test(text))risks.push(korean?"대량 데이터 이전 검수":"bulk migration validation");
   const risk=risks.length>=2?"medium":risks.length?"low":"low";
   const scopeText=deliverables.slice(0,6).join(korean?" → ":"; ");
-  const proposal=korean?`안녕하세요. 의뢰문 기준으로 ${scopeText} 범위로 진행할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·이전·통합 테스트를 진행하고 검수 가능한 결과물과 인수인계 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 작업시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"원문상 별도 비용 없음":"사용 계정·서비스 조건 확인 후 확정"}입니다.`:`Hello, I can deliver the requested scope covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement/migrate the requested workflow, test the end-to-end result, and provide the completed deliverable with hand-over instructions. Based on the current brief, I estimate about ${hours} hours of work. External service cost will be confirmed from the actual account/service requirements.`;
+  const proposal=isNumericNormalization
+    ? (korean
+      ? `안녕하세요. Excel 수치 데이터 정규화 작업을 진행할 수 있습니다. 각 통합문서를 pandas로 읽고 수치 열에 z-score 또는 min-max 방식을 적용한 뒤 Excel/CSV 결과와 변환 전후 통계 요약을 제공하겠습니다. 코드는 주석을 포함해 로컬에서 그대로 재실행할 수 있게 구성하고 샘플 출력으로 정확성을 검증하겠습니다. 현재 명세 기준 예상 작업시간은 약 ${hours}시간입니다.`
+      : `Hello, I can handle this Excel numerical-data normalization task with a clean, reproducible Python workflow. I will load each workbook with pandas, apply an appropriate z-score or min-max transformation to the numerical fields, save the normalized output to Excel or CSV, and produce a concise before/after statistics report. The script will be well commented and structured so missing-value or duplicate-handling steps can be added later. I will also include a sample output so you can verify the transformation locally. Based on the current brief, I estimate about ${hours} hours of work.`)
+    : korean?`안녕하세요. 의뢰문 기준으로 ${scopeText} 범위로 진행할 수 있습니다. 시작 전에는 ${questions.join(" ")} 를 확인하겠습니다. 범위 확정 후 구현·이전·통합 테스트를 진행하고 검수 가능한 결과물과 인수인계 안내를 함께 납품하겠습니다. 현재 명세 기준 예상 작업시간은 약 ${hours}시간이며 외부 서비스 비용은 ${externalCostKnown?"원문상 별도 비용 없음":"사용 계정·서비스 조건 확인 후 확정"}입니다.`:`Hello, I can deliver the requested scope covering: ${scopeText}. Before starting, I would confirm: ${questions.join(" ")} After scope confirmation, I will implement/migrate the requested workflow, test the end-to-end result, and provide the completed deliverable with hand-over instructions. Based on the current brief, I estimate about ${hours} hours of work. External service cost will be confirmed from the actual account/service requirements.`;
   const buildSpec={spec_version:"factory-build-spec-v2",job_id:row.opportunity_id,title:row.title||"",language:korean?"ko":"en",objective:deliverables[0],functional_requirements:deliverables,open_questions:questions,acceptance_criteria:deliverables.slice(0,Math.min(6,deliverables.length)),target_runtime:null,estimated_build_hours:hours,external_cost_status:externalCostStatus,external_cost:externalCost,risk_level:risk,risk_factors:risks,source_url:row.url||""};
   const inputDiagnostics={title:String(row.title||""),description:desc,description_length:desc.length,skills:String(row.skills||""),url:String(row.url||""),analysis_text_length:raw.length,analysis_preview:raw.slice(0,700)};
-  return {manager_version:"paid-job-manager-v2.0",input_diagnostics:inputDiagnostics,status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:risks,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
+  return {manager_version:"paid-job-manager-v2.1",input_diagnostics:inputDiagnostics,status:"needs_user_approval",detected_language:korean?"ko":"en",implementation_plan:deliverables,deliverables,requested_functions:deliverables,clarification_questions:questions,estimated_build_hours:hours,estimated_external_cost:externalCost,external_cost_status:externalCostStatus,delivery_risk:risk,risk_factors:risks,build_spec:buildSpec,proposal_draft:proposal,application_url:row.url||""};
 }
 
 
