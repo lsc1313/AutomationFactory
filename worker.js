@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.7";
-const BUILD_ID = "v0.52.7-application-economics-20261001";
+const APP_VERSION = "0.52.8";
+const BUILD_ID = "v0.52.8-application-transparency-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1064,10 +1064,11 @@ function applicationDraft(row) {
     bid_amount:bidAmount,currency,delivery_days:deliveryDays,
     questions,estimated_build_hours:hours,effective_estimated_hours:effectiveHours,
     estimate_basis:"Manager hours + scope complexity + external account/integration buffer",
-    submission_mode:source==="freelancer_projects"?"manual_platform_submit":"platform_specific",
-    auto_submit_supported:false,
-    requires_human_submit:true,
-    safety_note:"Prepared automatically. Freelancer.com automated access/submission is not enabled without express permission and an authorized API path."
+    submission_mode:source==="freelancer_projects"?"official_api_with_user_approval":"platform_specific",
+    auto_submit_supported:source==="freelancer_projects",
+    requires_human_submit:false,
+    requires_user_approval:true,
+    safety_note:"Prepared automatically. Freelancer.com submission uses the connected official API path only after explicit user approval and preflight checks."
   };
 }
 
@@ -1454,7 +1455,21 @@ async function applicationCenterRows(env) {
     return {row,draft:{...draft,priority,platform_connection:needsFreelancer?{provider:"freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status}:null}}})
     .sort((a,b)=>b.draft.priority.points-a.draft.priority.points||Number(b.row.score||0)-Number(a.row.score||0));
   const selected=ranked.filter(x=>x.draft.priority.points>=4&&!x.draft.priority.hard_hold).slice(0,3);
-  return {selected,held:ranked.filter(x=>!selected.includes(x))};
+  return {
+    selected:selected.map(x=>({...x,decision_summary:{
+      competition_count:x.draft.priority.competition_count,
+      gross_bid:x.draft.priority.gross_bid,
+      estimated_platform_fee:x.draft.priority.estimated_platform_fee,
+      estimated_net:x.draft.priority.estimated_net,
+      fee_rate_assumption:x.draft.priority.fee_rate_assumption,
+      effective_estimated_hours:x.draft.effective_estimated_hours,
+      value_per_hour:x.draft.priority.value_per_hour,
+      automation_completion_ratio:x.draft.priority.automation_completion_ratio,
+      delivery_risk:x.draft.priority.delivery_risk,
+      reasons:x.draft.priority.reasons
+    }})),
+    held:ranked.filter(x=>!selected.includes(x))
+  };
 }
 
 function factoryBuilder(plan) {
