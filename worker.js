@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.0";
-const BUILD_ID = "v0.53.0-clear-factory-states-20261001";
+const APP_VERSION = "0.53.1";
+const BUILD_ID = "v0.53.1-approved-bid-flow-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1914,7 +1914,9 @@ async function managerEvaluateJob(request,env,row,{autoActions=false,actionBudge
     }
     if(!deal.ready){
       const canAutoBid=String(row.source||"")==="freelancer_projects"&&String(deal.gate?.application_status||"not_applied")==="not_applied";
-      if(canAutoBid&&autoActions&&consume()){
+      // External bid writes require an explicit user approval from Application Center.
+      // The orchestrator may prepare/rank applications, but never submit a new bid by itself.
+      if(false&&canAutoBid&&autoActions&&consume()){
         const preBidDraft=applicationDraft(row), preBidPriority=applicationPriority(row,preBidDraft);
         if(preBidPriority.hard_hold)return managerSaveState(env,id,{stage:"auto_held",status_label:"⏸️ 자동보류 · 입찰 직전 안전 게이트",next_action:"최신 원문/조건 기준으로 자동입찰 차단",last_action:"prebid_safety_hold"});
         const center=await applicationCenterRows(env);
@@ -2218,8 +2220,24 @@ async function loadPaidJobs(){
    try{
      const d=await api('/api/application-center');
      box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. Freelancer 공식 API 제출은 사용자 승인 후 Preflight를 통과한 지원서만 실행합니다.</div>'+
-       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="decisions"><a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">지원 페이지 열기</a></div></details>').join('')+
+       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="reason"><b>판단근거</b><br>경쟁 '+esc(x.decision_summary?.competition_count??0)+'명 · 제안 '+esc(x.currency)+' '+esc(x.decision_summary?.gross_bid??x.bid_amount??0)+' · 예상 순수익 '+esc(x.currency)+' '+esc(x.decision_summary?.estimated_net??'확인중')+' · 예상 작업 '+esc(x.decision_summary?.effective_estimated_hours??'확인중')+'시간 · 시간당 가치 '+esc(x.currency)+' '+esc(x.decision_summary?.value_per_hour??'확인중')+' · 자동완결 '+esc(x.decision_summary?.automation_completion_ratio??0)+'%</div><div class="decisions"><button class="approveBidBtn" data-job-id="'+esc(x.opportunity_id)+'">✅ 지원 승인 · Preflight</button> <a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">원문 열기</a></div><div class="sub" id="bid-status-'+esc(x.opportunity_id)+'"></div></details>').join('')+
        '</div>';
+     box.querySelectorAll('.approveBidBtn').forEach(btn=>btn.onclick=async()=>{
+       const id=btn.dataset.jobId,status=document.getElementById('bid-status-'+id);
+       btn.disabled=true;status.textContent='Preflight 확인 중…';
+       try{
+         const pre=await api('/api/freelancer/bid-preflight',{method:'POST',body:JSON.stringify({opportunity_id:id})});
+         if(!pre.ok||!pre.eligible){status.textContent='⛔ 지원 차단: '+esc(pre.reason||'preflight_failed');return;}
+         const amount=pre.draft?.bid_amount??'',period=pre.draft?.delivery_days??'';
+         const ok=confirm('Freelancer에 실제 입찰을 제출합니다.\n금액: '+amount+' '+(pre.budget?.currency||'')+'\n기간: '+period+'일\n\n제출 후 취소가 제한될 수 있습니다. 계속할까요?');
+         if(!ok){status.textContent='승인이 취소되었습니다.';return;}
+         status.textContent='공식 API로 입찰 제출 중…';
+         const out=await api('/api/freelancer/bid-submit',{method:'POST',body:JSON.stringify({opportunity_id:id,approved:true})});
+         status.textContent=out.ok&&out.submitted?'✅ 입찰 완료 · Bid ID '+esc(out.bid_id||''):'⛔ 제출 실패: '+esc(out.reason||('HTTP '+(out.status||'')));
+         if(out.ok&&out.submitted)setTimeout(()=>loadPaidJobs(),1200);
+       }catch(e){status.textContent='⛔ 처리 실패: '+esc(e.message);}
+       finally{btn.disabled=false;}
+     });
    }catch(e){box.innerHTML='<div class="empty error">지원센터 조회 실패: '+esc(e.message)+'</div>';}
    finally{appBtn.disabled=false;appBtn.textContent='📨 지원센터 다시 열기';}
  };
@@ -2469,7 +2487,7 @@ export default {
         return json(await runMoneyPipeline(env));
       }
 
-      if(path==="/api/freelancer/bid-submit"&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;const body=await request.json().catch(()=>({}));const id=String(body.opportunity_id||"");const row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();return json(await submitFreelancerBid(env,row));}
+      if(path==="/api/freelancer/bid-submit"&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;const body=await request.json().catch(()=>({}));if(body.approved!==true)return json({ok:false,submitted:false,reason:"explicit_user_approval_required"},400);const id=String(body.opportunity_id||"");const row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();return json(await submitFreelancerBid(env,row));}
       if(path==="/api/freelancer/bid-preflight"&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;const body=await request.json().catch(()=>({}));const id=String(body.opportunity_id||"");const row=await env.DB.prepare("SELECT * FROM opportunities WHERE opportunity_id=?").bind(id).first();return json(await freelancerBidPreflight(env,row));}
       if(path==="/api/platform-connections/freelancer/capabilities"&&request.method==="POST"){const denied=requireAdmin(request,env);if(denied)return denied;return json(await freelancerCapabilityProbe(env));}
       if(path==="/api/platform-connections"&&request.method==="GET"){
@@ -2484,7 +2502,7 @@ export default {
       if(path==="/api/application-center"&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const center=await applicationCenterRows(env);
-        return json({ok:true,count:center.selected.length,held_count:center.held.length,items:center.selected.map(x=>x.draft)});
+        return json({ok:true,count:center.selected.length,held_count:center.held.length,items:center.selected.map(x=>({...x.draft,opportunity_id:x.row.opportunity_id,decision_summary:x.decision_summary}))});
       }
       const appPrepareMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/application-draft$/);
       if(appPrepareMatch&&request.method==="GET"){
