@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.9";
-const BUILD_ID = "v0.52.9-domain-proposals-20261001";
+const APP_VERSION = "0.53.0";
+const BUILD_ID = "v0.53.0-clear-factory-states-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2177,11 +2177,20 @@ async function loadPaidJobs(){
  el.innerHTML=platformBox+summary+'<details class="jobDetails" style="margin-top:14px"><summary>📦 전체 유료 일감 '+rows.length+'개 보기</summary><div class="sub" style="margin:10px 0">평소에는 열어볼 필요 없습니다. Manager가 우선지원·계약·제작·납품 단계가 되면 위 실행 영역으로 올립니다.</div>'+rows.map(j=>{
    const state=j.manager_status_label||'🤖 Manager 분석 대기';
    const next=j.manager_next_action||'자동공장이 다음 단계를 판단합니다.';
-   const auto=j.manager_autopilot==='on'?'자동공장 ON':'자동공장 상태 확인 중';
+   const p=j.hold_priority||{reasons:[]};
+   const holdReasons=[];
+   if(p.requires_human_qualification_review)holdReasons.push('자격/포트폴리오 확인');
+   if(p.requires_attachment_review)holdReasons.push('첨부파일 검증');
+   if(p.requires_independent_delivery_review)holdReasons.push('고객환경 의존');
+   if(p.requires_complex_scope_review)holdReasons.push('복합범위');
+   if((p.reasons||[]).includes('delivery_risk_gate'))holdReasons.push('납기/위험');
+   const isHeld=j.manager_stage==='auto_held';
+   const buildLabel=j.manager_autopilot==='on'?'제작가능 ✓':'제작가능성 확인 중';
+   const applyLabel=isHeld?'지원보류'+(holdReasons.length?' — '+holdReasons.join(' · '):' — 안전게이트'):'지원단계 진행가능';
    return '<div class="card">'+
      '<div class="title">'+esc(j.title)+'</div>'+
      '<div class="meta">'+esc([j.source,j.type,money(j),j.deadline?('마감 '+j.deadline):''].filter(Boolean).join(' · '))+'</div>'+
-     '<div class="factoryState"><span class="autoOn">🤖 '+esc(auto)+'</span><b>'+esc(state)+'</b><div class="factoryNext">다음: '+esc(next)+'</div></div>'+
+     '<div class="factoryState"><span class="autoOn">🏭 '+esc(buildLabel)+'</span><b>'+esc(applyLabel)+'</b><div class="sub">'+esc(state)+'</div><div class="factoryNext">다음: '+esc(next)+'</div></div>'+
      '<details class="jobDetails"><summary>상세보기</summary>'+
        '<div class="desc">'+esc(j.description||'')+'</div><div class="reason">'+esc(j.judge_reason||'')+'</div>'+
        '<div class="meta">'+(j.manager_last_error?('⚠ '+esc(j.manager_last_error)+'<br>'):'')+'Manager 갱신 '+esc(when(j.manager_updated_at)||'대기')+'</div>'+
@@ -2208,7 +2217,7 @@ async function loadPaidJobs(){
    const box=document.getElementById('applicationCenter'); appBtn.disabled=true;appBtn.textContent='지원서 준비 중…';
    try{
      const d=await api('/api/application-center');
-     box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. 현재 플랫폼 제출은 사람 확인이 필요한 단계라 자동 제출하지 않습니다.</div>'+
+     box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. Freelancer 공식 API 제출은 사용자 승인 후 Preflight를 통과한 지원서만 실행합니다.</div>'+
        d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="decisions"><a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">지원 페이지 열기</a></div></details>').join('')+
        '</div>';
    }catch(e){box.innerHTML='<div class="empty error">지원센터 조회 실패: '+esc(e.message)+'</div>';}
