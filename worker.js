@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.6";
-const BUILD_ID = "v0.52.6-deploy-rejudge-20261001";
+const APP_VERSION = "0.52.7";
+const BUILD_ID = "v0.52.7-application-economics-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1075,8 +1075,18 @@ function applicationDraft(row) {
 function applicationPriority(row,draft) {
   let bd={}; try{bd=JSON.parse(row.score_breakdown||"{}")}catch{}
   const reasons=[]; let points=0;
-  const net=Number(draft.bid_amount||0), hours=Math.max(1,Number(draft.effective_estimated_hours||1));
-  const valuePerHour=net/hours;
+  const gross=Number(draft.bid_amount||0), hours=Math.max(1,Number(draft.effective_estimated_hours||1));
+  const competitionCount=Math.max(0,Number(row.competition||0));
+  // Conservative planning estimate only. Actual platform fees can vary by account/project,
+  // so the UI must not present this as a guaranteed payout.
+  const feeRate=String(row.source||"")==="freelancer_projects"?0.10:0;
+  const estimatedPlatformFee=Math.round(gross*feeRate*100)/100;
+  const estimatedNet=Math.max(0,Math.round((gross-estimatedPlatformFee)*100)/100);
+  const valuePerHour=estimatedNet/hours;
+  if(competitionCount>=100){points-=5;reasons.push("very_high_competition")}
+  else if(competitionCount>=50){points-=3;reasons.push("high_competition")}
+  else if(competitionCount>=25){points-=1;reasons.push("moderate_competition")}
+  else if(competitionCount>0&&competitionCount<=10){points+=2;reasons.push("low_competition")}
   if(valuePerHour>=100){points+=4;reasons.push("high_value_per_hour")}
   else if(valuePerHour>=50){points+=3;reasons.push("good_value_per_hour")}
   else if(valuePerHour>=25){points+=1;reasons.push("acceptable_value_per_hour")}
@@ -1137,7 +1147,7 @@ function applicationPriority(row,draft) {
   if(independentDeliveryHardHold){points-=100;deliveryRisk+=4;reasons.push("external_workspace_not_independently_deliverable")}
   const hardHold=qualificationHardHold||attachmentHardHold||independentDeliveryHardHold||complexScope||(deliveryRisk>=5&&draft.delivery_days<=3);
   if(hardHold){reasons.push(qualificationHardHold?"qualification_evidence_gate":attachmentHardHold?"attachment_review_gate":independentDeliveryHardHold?"independent_delivery_gate":complexScope?"complex_scope_review_gate":"delivery_risk_gate")}
-  return {points,reasons,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold,proof_requirements:proofRequirements,integration_dependencies:integrationDependencies,external_workspace_signals:externalWorkspaceSignals,environment_dependency_signals:environmentDependencySignals,scope_signals:scopeSignals,attachment_signals:attachmentSignals,requires_human_qualification_review:qualificationHardHold,requires_attachment_review:attachmentHardHold,requires_independent_delivery_review:independentDeliveryHardHold,requires_client_environment_review:environmentDependencySignals.length>0,requires_complex_scope_review:complexScope};
+  return {points,reasons,gross_bid:gross,estimated_platform_fee:estimatedPlatformFee,estimated_net:estimatedNet,fee_rate_assumption:feeRate,competition_count:competitionCount,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold,proof_requirements:proofRequirements,integration_dependencies:integrationDependencies,external_workspace_signals:externalWorkspaceSignals,environment_dependency_signals:environmentDependencySignals,scope_signals:scopeSignals,attachment_signals:attachmentSignals,requires_human_qualification_review:qualificationHardHold,requires_attachment_review:attachmentHardHold,requires_independent_delivery_review:independentDeliveryHardHold,requires_client_environment_review:environmentDependencySignals.length>0,requires_complex_scope_review:complexScope};
 }
 
 async function getPlatformConnection(env, provider) {
