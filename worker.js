@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.5";
-const BUILD_ID = "v0.52.5-execution-gate-20261001";
+const APP_VERSION = "0.52.6";
+const BUILD_ID = "v0.52.6-deploy-rejudge-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2605,7 +2605,7 @@ export default {
       }
       if (path === "/api/paid-jobs") {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
-        const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'work-spec-gate-v0.7.8'`).first();
+        const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'execution-gate-v0.8.0'`).first();
         if (Number(staleJudge?.c || 0) > 0) await rejudgeAll(env);
         // Collection is cron-owned. Read-only dashboard requests must never create Scout runs.
 
@@ -2613,7 +2613,7 @@ export default {
           g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
           FROM opportunities o LEFT JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
           LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
-          WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='work-spec-gate-v0.7.8' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
+          WHERE o.user_state!='reject' AND json_extract(o.score_breakdown,'$.judge_version')='execution-gate-v0.8.0' AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
           ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all();
         const paidRows=rows.results||[];
         return json(paidRows.map(row=>({...row,hold_priority:row.manager_stage==="auto_held"?applicationPriority(row,applicationDraft(row)):null})));
