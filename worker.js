@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.52.4";
-const BUILD_ID = "v0.52.4-scan-state-diagnostics-20261001";
+const APP_VERSION = "0.52.5";
+const BUILD_ID = "v0.52.5-execution-gate-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
