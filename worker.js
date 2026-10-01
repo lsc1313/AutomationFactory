@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.1";
-const BUILD_ID = "v0.53.1-approved-bid-flow-20261001";
+const APP_VERSION = "0.53.2";
+const BUILD_ID = "v0.53.2-nonblocking-dashboard-load-20261001";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2142,10 +2142,15 @@ async function loadMarketCandidates(){
    }catch(e){target.textContent='상세 조회 실패: '+e.message;}finally{b.disabled=false;}
  });
 }
-async function loadPaidJobs(){
- await api('/api/orchestrator/tick',{method:'POST',body:JSON.stringify({max_actions:2,limit:100})}).catch(()=>null);
- const rows=await api('/api/paid-jobs');
+async function loadPaidJobs(runManager=true){
  const el=document.getElementById('paidJobsList');
+ // Never block first paint on Manager orchestration. Mobile browsers can otherwise
+ // sit on "loading" while a long external/API action is still running.
+ let rows;
+ try{rows=await api('/api/paid-jobs');}
+ catch(e){el.innerHTML='<div class="notice error"><b>수익 실행 현황을 불러오지 못했습니다.</b><br>'+esc(e.message)+'<div class="decisions"><button id="retryPaidJobs">다시 불러오기</button></div></div>';const rb=document.getElementById('retryPaidJobs');if(rb)rb.onclick=loadPaidJobs;return;}
+ // Run Manager after the dashboard is already able to render; refresh once when done.
+ if(runManager)setTimeout(()=>api('/api/orchestrator/tick',{method:'POST',body:JSON.stringify({max_actions:2,limit:100})}).then(()=>setTimeout(()=>loadPaidJobs(false),300)).catch(()=>null),0);
  const money=j=>j.budget_min||j.budget_max?((j.currency||'')+' '+Number(j.budget_min||j.budget_max).toLocaleString()+(j.budget_max&&j.budget_max!==j.budget_min?' ~ '+Number(j.budget_max).toLocaleString():'')):'';
  const autoCount=rows.filter(j=>['sandbox_running','sandbox_queued','production_running','production_queued'].includes(j.manager_stage)).length;
  const waitingRows=rows.filter(j=>['waiting_contract_payment','waiting_client_answers','waiting_account_connections'].includes(j.manager_stage));
