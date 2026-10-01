@@ -86,6 +86,65 @@ const HIGH_RISK_WORDS = [
   "상주","파견","출근","6개월","1년","시민권","보안인가"
 ];
 
+// v0.52.5: execution feasibility is a gate, not an automation-keyword bonus.
+// These phrases describe projects whose scope/acceptance depends on substantial
+// product reconstruction, customer environments, or ongoing human decisions.
+const LARGE_SCOPE_WORDS = [
+  "full rebuild","full, like-for-like rebuild","like-for-like rebuild","clone website","clone site",
+  "clone platform","entire platform","whole platform","all features","every feature",
+  "from scratch","end-to-end platform","complete saas","full saas","white-label platform",
+  "marketplace platform","multi-tenant","multiple user roles","mobile app and web app",
+  "전체 재구축","그대로 복제","모든 기능","전체 플랫폼","처음부터 개발","완전한 saas"
+];
+
+const CUSTOMER_ENV_WORDS = [
+  "access to our","access to my","our server","our servers","our account","our accounts",
+  "client server","client environment","production environment","staging environment",
+  "existing codebase","existing system","existing application","existing app",
+  "credentials","api key","api keys","login credentials","admin access","remote access",
+  "deploy to our","deploy on our","install on our","work in our",
+  "고객 서버","운영 서버","기존 코드","기존 시스템","계정 접근","관리자 접근","로그인 정보","api 키"
+];
+
+const ONGOING_DECISION_WORDS = [
+  "ongoing support","ongoing maintenance","long-term","long term","weekly meeting","daily meeting",
+  "regular meetings","work closely with","collaborate with our team","multiple revisions",
+  "unlimited revisions","until satisfied","ongoing development","continuous development",
+  "장기 유지보수","지속적인 유지보수","정기 미팅","주간 미팅","지속 개발","무제한 수정"
+];
+
+const FACTORY_FRIENDLY_OUTPUT_WORDS = [
+  "csv","json","xlsx","excel","spreadsheet","report","export","data extraction","scrape","scraping",
+  "scraper","crawler","script","python script","javascript script","automation script","webhook",
+  "api integration","discord bot","telegram bot","cli","github action","data cleanup","data conversion",
+  "file conversion","database migration","bug fix","fix bug","small fix","simple script",
+  "데이터 추출","데이터 정리","데이터 변환","파일 변환","스크립트","크롤링","스크래핑","엑셀","csv",
+  "간단 수정","버그 수정","api 연동","웹훅","디스코드 봇","텔레그램 봇"
+];
+
+function executionGate(text) {
+  const largeScopeHits = hits(text, LARGE_SCOPE_WORDS);
+  const customerEnvHits = hits(text, CUSTOMER_ENV_WORDS);
+  const ongoingDecisionHits = hits(text, ONGOING_DECISION_WORDS);
+  const friendlyOutputHits = hits(text, FACTORY_FRIENDLY_OUTPUT_WORDS);
+
+  const blockers = [];
+  if (largeScopeHits.length) blockers.push("large_scope");
+  if (customerEnvHits.length) blockers.push("customer_environment");
+  if (ongoingDecisionHits.length) blockers.push("ongoing_human_decisions");
+
+  const ready = blockers.length === 0;
+  return {
+    ready,
+    status: ready ? (friendlyOutputHits.length ? "factory_ready" : "needs_scope_check") : "blocked",
+    blockers,
+    large_scope_hits: largeScopeHits.slice(0, 6),
+    customer_environment_hits: customerEnvHits.slice(0, 6),
+    ongoing_decision_hits: ongoingDecisionHits.slice(0, 6),
+    friendly_output_hits: friendlyOutputHits.slice(0, 8)
+  };
+}
+
 function textOf(o) {
   return `${o.title || ""} ${o.description || ""} ${o.skills || ""} ${o.type || ""}`
     .toLowerCase().replace(/\s+/g, " ").trim();
@@ -562,13 +621,18 @@ export function judgeOpportunity(opportunity) {
   const payout = normalizePayout(opportunity, opportunityType, text);
 
   const autoHits = hits(text, AUTOMATION_WORDS);
+  const gate = executionGate(text);
   const repeatHits = hits(text, REPEAT_WORDS);
   const fastHits = hits(text, FAST_WORDS);
   const riskHits = hits(text, HIGH_RISK_WORDS);
   const employmentHits = hits(text, EMPLOYMENT_WORDS);
 
-  const automation = hitScore(autoHits.length, [32, 50, 65, 78, 88, 95, 100]);
-  const speed = hitScore(fastHits.length, [30, 48, 65, 78, 88, 96, 100]);
+  const keywordAutomation = hitScore(autoHits.length, [32, 50, 65, 78, 88, 95, 100]);
+  const keywordSpeed = hitScore(fastHits.length, [30, 48, 65, 78, 88, 96, 100]);
+  // AUTO/SPEED mean factory execution feasibility, not merely the presence of
+  // automation vocabulary in the customer's request.
+  const automation = gate.ready ? keywordAutomation : Math.min(keywordAutomation, 24);
+  const speed = gate.ready ? keywordSpeed : Math.min(keywordSpeed, 24);
   const scale = hitScore(repeatHits.length, [30, 52, 70, 84, 94, 100]);
   const freshness = freshnessScore(opportunity.posted_at);
   const sourceFit = sourceFitScore(opportunity, opportunityType);
@@ -616,14 +680,18 @@ export function judgeOpportunity(opportunity) {
   const hasWorkSpec = hasConcreteArtifact && specDetailHits.length > 0;
   const humanExecution = humanServiceHits.length > 0 || humanExecutionHits.length > 0;
   const factoryFulfillmentScore = clamp((softwareArtifactHits.length * 30) + (buildActionHits.length * 15) + (specDetailHits.length * 10) - (humanServiceHits.length * 50) - (humanExecutionHits.length * 60) - (nonSoftwareDomainHits.length * 70), 0, 100);
-  const factoryFulfillable = hasWorkSpec && !humanExecution && nonSoftwareDomainHits.length === 0 && factoryFulfillmentScore >= 60;
-  const fulfillmentStatus = factoryFulfillable ? "ready" : nonSoftwareDomainHits.length ? "non_software" : humanExecution ? "human_service" : softwareArtifactHits.length ? "needs_spec" : "not_factory_fit";
+  const factoryFulfillable = gate.ready && hasWorkSpec && !humanExecution && nonSoftwareDomainHits.length === 0 && factoryFulfillmentScore >= 60;
+  const fulfillmentStatus = !gate.ready ? gate.status : factoryFulfillable ? "ready" : nonSoftwareDomainHits.length ? "non_software" : humanExecution ? "human_service" : softwareArtifactHits.length ? "needs_spec" : "not_factory_fit";
   const explicitPay = payout.usd != null && payout.usd > 0 && !payout.requiresPayCheck;
   const actionablePaidJob = paidJob && explicitPay && factoryFulfillable && !["no_reward"].includes(payout.status);
   if (payout.requiresPayCheck && grade === "hot") grade = "watch";
   if (["micro","very_low","no_reward"].includes(payout.status)) grade = "cold";
   if (payout.kind === "token_fixed" && grade === "hot") grade = "watch";
   if (["employment","hourly_contract"].includes(opportunityType)) grade = "cold";
+  // Execution blockers are a hard gate: money/keywords cannot promote a
+  // non-autonomous project to HOT.
+  if (!gate.ready && grade === "hot") grade = "watch";
+  if (!gate.ready) score = Math.min(score, 59);
 
   const reasons = [];
   reasons.push(`TYPE ${opportunityType}`);
@@ -641,6 +709,7 @@ export function judgeOpportunity(opportunity) {
   if (payout.status === "micro") reasons.push("초소액 → 자동 COLD");
   else if (payout.status === "very_low") reasons.push("저보상 → 자동 COLD");
   else if (payout.status === "low") reasons.push("$30~99 → 매우 빠른 자동처리일 때만 WATCH");
+  if (!gate.ready) reasons.push(`EXECUTION GATE 차단: ${gate.blockers.join(", ")}`);
   if (autoHits.length) reasons.push(`AUTO ${automation}: ${autoHits.slice(0, 4).join(", ")}`);
   if (fastHits.length) reasons.push(`SPEED ${speed}: ${fastHits.slice(0, 3).join(", ")}`);
   if (repeatHits.length) reasons.push(`SCALE ${scale}: ${repeatHits.slice(0, 3).join(", ")}`);
@@ -654,9 +723,18 @@ export function judgeOpportunity(opportunity) {
     grade,
     reason: reasons.join(" · "),
     breakdown: {
-      judge_version: "work-spec-gate-v0.7.8",
+      judge_version: "execution-gate-v0.8.0",
       judge_mode: "paid",
       paid_job: paidJob,
+      execution_gate_ready: gate.ready,
+      execution_gate_status: gate.status,
+      execution_blockers: gate.blockers,
+      large_scope_hits: gate.large_scope_hits,
+      customer_environment_hits: gate.customer_environment_hits,
+      ongoing_decision_hits: gate.ongoing_decision_hits,
+      factory_friendly_output_hits: gate.friendly_output_hits,
+      keyword_automation: keywordAutomation,
+      keyword_speed: keywordSpeed,
       explicit_pay: explicitPay,
       actionable_paid_job: actionablePaidJob,
       factory_fulfillable: factoryFulfillable,
