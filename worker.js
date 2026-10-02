@@ -2,7 +2,7 @@ import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
 const APP_VERSION = "0.53.2";
-const BUILD_ID = "v0.53.2-nonblocking-dashboard-load-20261001";
+const BUILD_ID = "v0.53.2-nonblocking-dashboard-load-redeploy-20261002";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
