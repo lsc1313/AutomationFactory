@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.6";
-const BUILD_ID = "v0.55.6-learned-bid-constraint-20261003";
+const APP_VERSION = "0.55.7";
+const BUILD_ID = "v0.55.7-zero-capital-channel-priority-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -432,7 +432,7 @@ async function mineSubscriptionCandidates(env) {
 }
 
 const SCOUT_GROUPS = {
-  revenue_core: ["freelancer_projects","wishket_projects"],
+  revenue_core: ["wishket_projects","agent_bounties","github_paid","freelancer_projects"],
   secondary: ["marketplace_demand","agent_bounties"],
   github: ["github_paid","github_demand"],
   jobs: ["remoteok"]
