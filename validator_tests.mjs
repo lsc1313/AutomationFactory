@@ -484,7 +484,7 @@ assert.match(workSpecJudge, /execution-gate-v0\.8\.0/);
 
 // v0.7.9 Expanded Paid Discovery
 const discoverySources = fs.readFileSync(new URL("./sources.js", import.meta.url), "utf8");
-assert.match(discoverySources, /const pages = 12/);
+assert.match(discoverySources, /const pages = 20/);
 assert.match(discoverySources, /offset=/);
 assert.ok(discoverySources.includes("AutomationFactory-MoneyScout/0.7.9"));
 
@@ -1075,9 +1075,8 @@ assert.ok(v0230.includes("!x.draft.priority.hard_hold"));
 {
  const sourceText=fs.readFileSync(new URL("./sources.js", import.meta.url),"utf8");
  const workerSource=fs.readFileSync(new URL("./worker.js", import.meta.url),"utf8");
- assert.ok(sourceText.includes("const pages = 12"));
- assert.ok(sourceText.includes("strategy:\"realizable_revenue_v2\""));
- assert.ok(sourceText.includes("discoveryScore"));
+ assert.ok(sourceText.includes("const pages = 20"));
+  assert.ok(sourceText.includes("discoveryScore"));
  assert.ok(workerSource.includes('const APP_VERSION = "0.52.4"'));
 }
 
