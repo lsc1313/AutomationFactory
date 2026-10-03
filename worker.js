@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.2";
-const BUILD_ID = "v0.55.2-profit-ranked-human-approval-20261003";
+const APP_VERSION = "0.55.3";
+const BUILD_ID = "v0.55.3-bid-error-diagnostics-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1422,7 +1422,7 @@ async function submitFreelancerBid(env,row) {
   const actionKey="freelancer:bid:"+pre.project_id, ts=nowIso();
   if(!result.ok){
     await env.DB.prepare("UPDATE platform_actions SET status='failed',response_metadata_json=?,updated_at=? WHERE action_key=?").bind(JSON.stringify({http_status:result.status,error:result.error||"",payload:result.payload||{}}).slice(0,4000),ts,actionKey).run();
-    return {ok:false,submitted:false,status:result.status,reason:"bid_submit_failed"};
+    return {ok:false,submitted:false,status:result.status,reason:"bid_submit_failed",api_message:String(result.payload?.message||result.payload?.error?.message||result.error||"API rejected bid").slice(0,300),preflight:{project_id:pre.project_id,status:pre.status,budget:pre.budget,draft:{bid_amount:pre.draft.bid_amount,delivery_days:pre.draft.delivery_days}}};
   }
   const bid=result.payload?.result||{}, externalId=String(bid.id??bid.bid_id??"");
   await env.DB.prepare("UPDATE platform_actions SET status='submitted',external_action_id=?,response_metadata_json=?,updated_at=? WHERE action_key=?").bind(externalId,JSON.stringify({http_status:result.status,bid_id:externalId}).slice(0,4000),ts,actionKey).run();
