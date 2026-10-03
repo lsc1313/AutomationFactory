@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.2";
-const BUILD_ID = "v0.53.2-nonblocking-dashboard-load-redeploy-20261002";
+const APP_VERSION = "0.53.3";
+const BUILD_ID = "v0.53.3-paid-jobs-readonly-fast-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2674,9 +2674,9 @@ export default {
       }
       if (path === "/api/paid-jobs") {
         const paidSources = ["freelancer_projects","agent_bounties","github_paid"].filter(x => SOURCE_REGISTRY[x]);
-        const staleJudge = await env.DB.prepare(`SELECT COUNT(*) AS c FROM opportunities WHERE source IN ('freelancer_projects','agent_bounties','github_paid') AND COALESCE(json_extract(score_breakdown,'$.judge_version'),'') != 'execution-gate-v0.8.0'`).first();
-        if (Number(staleJudge?.c || 0) > 0) await rejudgeAll(env);
-        // Collection is cron-owned. Read-only dashboard requests must never create Scout runs.
+        // Keep this endpoint strictly read-only and fast. Rejudging the whole database here
+        // can exceed a mobile/browser request timeout and leave the dashboard on "loading".
+        // Rejudging belongs to Scout/deploy maintenance, never the dashboard GET path.
 
         const rows = await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,m.autopilot AS manager_autopilot,m.last_action AS manager_last_action,m.last_error AS manager_last_error,m.updated_at AS manager_updated_at,
           g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
