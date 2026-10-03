@@ -868,7 +868,8 @@ assert.ok(appCenterV0210.includes("bid_amount:bidAmount"));
 assert.ok(appCenterV0210.includes("delivery_days:deliveryDays"));
 assert.ok(appCenterV0210.includes("auto_submit_supported:source===\"freelancer_projects\""));
 assert.ok(appCenterV0210.includes("requires_human_submit:false"));
-assert.ok(appCenterV0210.includes("지원 페이지 열기"));
+assert.ok(appCenterV0210.includes("지원 승인 · Preflight"));
+assert.ok(appCenterV0210.includes("원문 열기"));
 
 // v0.21.1 realistic application estimates
 const v0211=fs.readFileSync(new URL("./worker.js",import.meta.url),"utf8");
