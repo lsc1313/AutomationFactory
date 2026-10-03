@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.8";
-const BUILD_ID = "v0.55.8-multisource-revenue-scan-20261003";
+const APP_VERSION = "0.55.9";
+const BUILD_ID = "v0.55.9-async-revenue-scan-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2136,7 +2136,7 @@ async function api(url,opt={}){
   if(!r.ok){const detail=j.detail?(' · '+String(j.detail).slice(0,300)):'';throw new Error((j.error||('HTTP '+r.status))+detail);}
   return j;
  }catch(e){
-  if(e&&e.name==='AbortError')throw new Error('응답 시간 초과 ('+Math.round(timeoutMs/1000)+'초)');
+  if(e&&e.name==='AbortError')throw new Error('응답 시간 초과 ('+Math.round(timeoutMs/1000)+'초) · 서버 스캔은 계속될 수 있으니 잠시 후 현황을 새로고침하세요.');
   throw e;
  }finally{clearTimeout(timer);}
 }
@@ -2216,7 +2216,7 @@ if(revenueBtn)revenueBtn.onclick=async()=>{
   revenueBtn.textContent='💰 스캔 시작 중…';
   document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… 위시켓 · Agent Bounties · GitHub Paid · Freelancer';
   try{
-    const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:45000});
+    const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:120000});
     const sd=(d.scan&&d.scan.diagnostics)||{}, errs=(d.scan&&d.scan.errors)||[];
     const src=((d.scan&&d.scan.sources)||[]).map(s=>{const x=sd[s]||{};let detail='';if(s==='freelancer_projects')detail='원본 '+(x.raw_count||0)+' / 선별 '+(x.unique_count||0);else if(s==='wishket_projects')detail='링크 '+(x.public_links||0)+' / 후보 '+(x.micro_matches||0);else detail='수집완료';const er=errs.find(e=>e.source===s);return s+' ['+(er?'오류: '+er.error:detail)+']';}).join(' · ');
     document.getElementById('runinfo').textContent='수익형 스캔 완료 · 발견 '+((d.scan&&d.scan.found)||0)+' · 저장 '+((d.scan&&d.scan.saved)||0)+' · '+src;
