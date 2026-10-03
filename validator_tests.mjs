@@ -645,7 +645,7 @@ assert.ok(dynamicSandbox.includes('"user-agent":"AutomationFactory-MoneyScout/0.
 
 // v0.17.0 Production Pipeline v1 contract
 const productionV017 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(productionV017.includes('const APP_VERSION = "0.52.4"'));
+assert.match(productionV017, /const APP_VERSION = "0\.56\.\d+"/);
 assert.ok(productionV017.includes("CREATE TABLE IF NOT EXISTS production_runs"));
 assert.ok(productionV017.includes("production-pipeline-v4"));
 assert.ok(productionV017.includes("job-production-bundle-v4"));
@@ -722,7 +722,7 @@ assert.ok(renderedHtml.includes("clientIntakeBtn"));
 
 // v0.18.2 Smart Intake v2 contract
 const smartIntakeV0182 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(smartIntakeV0182.includes('const APP_VERSION = "0.52.4"'));
+assert.match(smartIntakeV0182, /const APP_VERSION = "0\.56\.\d+"/);
 assert.ok(smartIntakeV0182.includes("Account Connection Gate"));
 assert.ok(smartIntakeV0182.includes("discovery_plan"));
 assert.ok(smartIntakeV0182.includes("Etsy Shop ID override"));
