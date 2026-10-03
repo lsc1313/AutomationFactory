@@ -490,7 +490,7 @@ assert.ok(discoverySources.includes("AutomationFactory-MoneyScout/0.7.9"));
 
 // v0.8.1 Paid Job Manager
 const managerWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerWorker.includes("paid-job-manager-v2.0"));
+assert.ok(managerWorker.includes("paid-job-manager-v2.1"));
 assert.ok(managerWorker.includes("clarification_questions"));
 assert.ok(managerWorker.includes("proposal_draft"));
 assert.ok(managerWorker.includes('path.endsWith("/plan")'));
@@ -504,7 +504,7 @@ assert.ok(managerUi.includes("승인 전에는 자동 지원/전송하지 않음
 
 // Paid Job Manager current contract
 const managerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(managerV2.includes('paid-job-manager-v2.0'));
+assert.ok(managerV2.includes('paid-job-manager-v2.1'));
 assert.ok(managerV2.includes('detected_language'));
 assert.ok(managerV2.includes('const questions=[...new Set(q)].slice(0,4)'));
 assert.ok(managerV2.includes('factory-build-spec-v2'));
@@ -552,7 +552,7 @@ assert.ok(diagRender.includes("no external cost|no paid service|no paid api"));
 
 // v0.9.0 Manager v2: client-brief-driven requirements
 const briefDrivenManagerV2 = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.ok(briefDrivenManagerV2.includes("paid-job-manager-v2.0"));
+assert.ok(briefDrivenManagerV2.includes("paid-job-manager-v2.1"));
 assert.ok(briefDrivenManagerV2.includes("factory-build-spec-v2"));
 assert.ok(briefDrivenManagerV2.includes("Export the selected products from Squarespace"));
 assert.ok(briefDrivenManagerV2.includes("Create the Etsy listings"));
