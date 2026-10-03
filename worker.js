@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.6";
-const BUILD_ID = "v0.54.6-mobile-gate-audit-layout-20261003";
+const APP_VERSION = "0.54.7";
+const BUILD_ID = "v0.54.7-mobile-controls-grid-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2056,10 +2056,13 @@ function appHtml() {
       <option value="github_bounty">Legacy GitHub Bounty</option>
     </select>
   </div>
-  <div class="token">
-    <input id="token" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
-    <button id="saveToken">저장</button><button id="runRevenueScout" style="margin-left:8px">💰 수익형 즉시 스캔</button><button id="gateAuditBtn" style="width:100%;margin-top:10px">🧪 HOT 탈락진단</button><div id="gateAuditBox" class="card" style="display:none;margin-top:10px;clear:both;width:auto;max-width:100%;overflow-wrap:anywhere"></div>
+  <div class="token" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center">
+    <input id="token" style="min-width:0;width:100%;box-sizing:border-box" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
+    <button id="saveToken">저장</button>
+    <button id="runRevenueScout" style="grid-column:1 / -1;width:100%;margin:0">💰 수익형 즉시 스캔</button>
+    <button id="gateAuditBtn" style="grid-column:1 / -1;width:100%;margin:0">🧪 HOT 탈락진단</button>
   </div>
+  <div id="gateAuditBox" class="card" style="display:none;margin-top:10px;width:100%;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word"></div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="sourceDiagnostics" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
   </details>
