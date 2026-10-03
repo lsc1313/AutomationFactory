@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.5";
-const BUILD_ID = "v0.55.5-freelancer-balance-preflight-20261003";
+const APP_VERSION = "0.55.6";
+const BUILD_ID = "v0.55.6-learned-bid-constraint-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1380,6 +1380,8 @@ async function freelancerBidPreflight(env,row) {
   if(!/^\d+$/.test(projectId))return {ok:false,eligible:false,reason:"invalid_project_id"};
   const connection=await getPlatformConnection(env,"freelancer");
   if(connection.api_status!=="connected")return {ok:false,eligible:false,reason:"platform_not_connected"};
+  const learnedMin=Number(connection.metadata?.bid_min_balance_usd||0);
+  if(learnedMin>0&&connection.metadata?.bid_balance_blocked===true)return {ok:true,eligible:false,project_id:projectId,status:"account_constraint",reason:"insufficient_account_balance_learned",required_balance_usd:learnedMin,learned_from_api:true,write_executed:false};
   const project=await freelancerApiRead(env,"/api/projects/0.1/projects/"+projectId+"/?full_description=true&job_details=true");
   if(!project.ok)return {ok:false,eligible:false,reason:"project_read_failed",status:project.status};
   const p=project.payload?.result||project.payload?.project||project.payload||{};
@@ -1436,6 +1438,13 @@ async function submitFreelancerBid(env,row) {
   const actionKey="freelancer:bid:"+pre.project_id, ts=nowIso();
   if(!result.ok){
     await env.DB.prepare("UPDATE platform_actions SET status='failed',response_metadata_json=?,updated_at=? WHERE action_key=?").bind(JSON.stringify({http_status:result.status,error:result.error||"",payload:result.payload||{}}).slice(0,4000),ts,actionKey).run();
+    const rejectionText=String(result.payload?.message||result.payload?.error?.message||result.error||"");
+    const minMatch=rejectionText.match(/at least\s*\$?\s*([0-9]+(?:\.[0-9]+)?)\s*USD/i);
+    if(Number(result.status)===422&&minMatch){
+      const latest=await getPlatformConnection(env,"freelancer"), minUsd=Number(minMatch[1]);
+      const metadata={...(latest.metadata||{}),bid_balance_blocked:true,bid_min_balance_usd:minUsd,bid_balance_constraint_learned_at:ts,bid_balance_constraint_source:"freelancer_api_422"};
+      await env.DB.prepare("UPDATE platform_connections SET metadata_json=?,updated_at=? WHERE provider='freelancer'").bind(JSON.stringify(metadata),ts).run();
+    }
     return {ok:false,submitted:false,status:result.status,reason:"bid_submit_failed",api_message:String(result.payload?.message||result.payload?.error?.message||result.error||"API rejected bid").slice(0,300),preflight:{project_id:pre.project_id,status:pre.status,budget:pre.budget,draft:{bid_amount:pre.draft.bid_amount,delivery_days:pre.draft.delivery_days}}};
   }
   const bid=result.payload?.result||{}, externalId=String(bid.id??bid.bid_id??"");
@@ -2358,7 +2367,7 @@ async function loadPaidJobs(runManager=true){
          }else{
            const pf=out.preflight||{}, dr=pf.draft||{}, bg=pf.budget||{};
            const parts=['⛔ 제출 실패'];
-           if(pf.reason==='insufficient_account_balance')parts.push('Freelancer 최소 잔액 '+esc(pf.required_balance_usd||19)+' USD 필요'+(pf.available_balance_usd!==undefined?' · 현재 '+esc(pf.available_balance_usd)+' USD':''));
+           if(pf.reason==='insufficient_account_balance'||pf.reason==='insufficient_account_balance_learned')parts.push('Freelancer 최소 잔액 '+esc(pf.required_balance_usd||19)+' USD 필요'+(pf.available_balance_usd!==undefined?' · 현재 '+esc(pf.available_balance_usd)+' USD':'')+(pf.learned_from_api?' · 이전 API 응답으로 사전차단':''));
            if(out.status!==undefined&&out.status!==null)parts.push('HTTP '+esc(out.status));
            if(out.api_message)parts.push(esc(out.api_message));
            if(dr.bid_amount!==undefined)parts.push('입찰 '+esc(dr.bid_amount)+(bg.currency?' '+esc(bg.currency):''));
