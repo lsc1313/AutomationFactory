@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.0";
-const BUILD_ID = "v0.54.0-factory-first-scout-20261003";
+const APP_VERSION = "0.54.1";
+const BUILD_ID = "v0.54.1-split-scout-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -430,6 +430,13 @@ async function mineSubscriptionCandidates(env) {
   }
   return {groups:groups.size,promoted};
 }
+
+const SCOUT_GROUPS = {
+  revenue_core: ["freelancer_projects","wishket_projects"],
+  secondary: ["marketplace_demand","agent_bounties"],
+  github: ["github_paid","github_demand"],
+  jobs: ["remoteok"]
+};
 
 async function runScout(env, sourceNames = null) {
   await ensureSchema(env);
@@ -2051,7 +2058,7 @@ function appHtml() {
   </div>
   <div class="token">
     <input id="token" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
-    <button id="saveToken">저장</button>
+    <button id="saveToken">저장</button><button id="runRevenueScout" style="margin-left:8px">💰 수익형 즉시 스캔</button>
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="sourceDiagnostics" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
@@ -2740,7 +2747,16 @@ export default {
         const denied = requireAdmin(request, env); if (denied) return denied;
         let body = {};
         try { body = await request.json(); } catch {}
-        return json(await runScout(env, Array.isArray(body.sources) ? body.sources : null));
+        const group=String(body.group||"");
+        const sources=Array.isArray(body.sources)?body.sources:(SCOUT_GROUPS[group]||null);
+        return json(await runScout(env, sources));
+      }
+
+      if (path === "/api/scout/revenue-core" && request.method === "POST") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        const scan=await runScout(env,SCOUT_GROUPS.revenue_core);
+        const rejudge=await rejudgeAll(env);
+        return json({ok:true,group:"revenue_core",scan,rejudge});
       }
 
       if (path.startsWith("/api/opportunities/") && path.endsWith("/decision") && request.method === "POST") {
