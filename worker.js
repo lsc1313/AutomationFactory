@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.6";
-const BUILD_ID = "v0.53.6-route-before-schema-20261003";
+const APP_VERSION = "0.53.7";
+const BUILD_ID = "v0.53.7-js-parse-fix-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2251,7 +2251,7 @@ async function loadPaidJobs(runManager=true){
    try{
      const d=await api('/api/application-center');
      box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. Freelancer 공식 API 제출은 사용자 승인 후 Preflight를 통과한 지원서만 실행합니다.</div>'+
-       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="reason"><b>판단근거</b><br>경쟁 '+esc(x.decision_summary?.competition_count??0)+'명 · 제안 '+esc(x.currency)+' '+esc(x.decision_summary?.gross_bid??x.bid_amount??0)+' · 예상 순수익 '+esc(x.currency)+' '+esc(x.decision_summary?.estimated_net??'확인중')+' · 예상 작업 '+esc(x.decision_summary?.effective_estimated_hours??'확인중')+'시간 · 시간당 가치 '+esc(x.currency)+' '+esc(x.decision_summary?.value_per_hour??'확인중')+' · 자동완결 '+esc(x.decision_summary?.automation_completion_ratio??0)+'%</div><div class="decisions"><button class="approveBidBtn" data-job-id="'+esc(x.opportunity_id)+'">✅ 지원 승인 · Preflight</button> <a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">원문 열기</a></div><div class="sub" id="bid-status-'+esc(x.opportunity_id)+'"></div></details>').join('')+
+       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="reason"><b>판단근거</b><br>경쟁 '+esc((x.decision_summary&&x.decision_summary.competition_count)??0)+'명 · 제안 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.gross_bid)??x.bid_amount??0)+' · 예상 순수익 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.estimated_net)??'확인중')+' · 예상 작업 '+esc((x.decision_summary&&x.decision_summary.effective_estimated_hours)??'확인중')+'시간 · 시간당 가치 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.value_per_hour)??'확인중')+' · 자동완결 '+esc((x.decision_summary&&x.decision_summary.automation_completion_ratio)??0)+'%</div><div class="decisions"><button class="approveBidBtn" data-job-id="'+esc(x.opportunity_id)+'">✅ 지원 승인 · Preflight</button> <a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">원문 열기</a></div><div class="sub" id="bid-status-'+esc(x.opportunity_id)+'"></div></details>').join('')+
        '</div>';
      box.querySelectorAll('.approveBidBtn').forEach(btn=>btn.onclick=async()=>{
        const id=btn.dataset.jobId,status=document.getElementById('bid-status-'+id);
@@ -2259,8 +2259,8 @@ async function loadPaidJobs(runManager=true){
        try{
          const pre=await api('/api/freelancer/bid-preflight',{method:'POST',body:JSON.stringify({opportunity_id:id})});
          if(!pre.ok||!pre.eligible){status.textContent='⛔ 지원 차단: '+esc(pre.reason||'preflight_failed');return;}
-         const amount=pre.draft?.bid_amount??'',period=pre.draft?.delivery_days??'';
-         const ok=confirm('Freelancer에 실제 입찰을 제출합니다.\n금액: '+amount+' '+(pre.budget?.currency||'')+'\n기간: '+period+'일\n\n제출 후 취소가 제한될 수 있습니다. 계속할까요?');
+         const amount=(pre.draft&&pre.draft.bid_amount)??'',period=(pre.draft&&pre.draft.delivery_days)??'';
+         const ok=confirm('Freelancer에 실제 입찰을 제출합니다.\n금액: '+amount+' '+((pre.budget&&pre.budget.currency)||'')+'\n기간: '+period+'일\n\n제출 후 취소가 제한될 수 있습니다. 계속할까요?');
          if(!ok){status.textContent='승인이 취소되었습니다.';return;}
          status.textContent='공식 API로 입찰 제출 중…';
          const out=await api('/api/freelancer/bid-submit',{method:'POST',body:JSON.stringify({opportunity_id:id,approved:true})});
