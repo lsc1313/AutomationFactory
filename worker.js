@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.7";
-const BUILD_ID = "v0.54.7-mobile-controls-grid-20261003";
+const APP_VERSION = "0.54.8";
+const BUILD_ID = "v0.54.8-client-access-bid-gate-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1173,10 +1173,12 @@ function applicationPriority(row,draft) {
   if((scopeSignals.length&&Number(draft.effective_estimated_hours||0)<=3)||complexScope){points-=complexScope?8:4;deliveryRisk+=complexScope?4:2;reasons.push("scope_time_underestimate")}
   if(qualificationHardHold){points-=100;reasons.push("qualification_proof_required")}
   if(attachmentHardHold){points-=100;reasons.push("attachment_not_verified")}
-  if(independentDeliveryHardHold){points-=100;deliveryRisk+=4;reasons.push("external_workspace_not_independently_deliverable")}
-  const hardHold=qualificationHardHold||attachmentHardHold||independentDeliveryHardHold||complexScope||(deliveryRisk>=5&&draft.delivery_days<=3);
-  if(hardHold){reasons.push(qualificationHardHold?"qualification_evidence_gate":attachmentHardHold?"attachment_review_gate":independentDeliveryHardHold?"independent_delivery_gate":complexScope?"complex_scope_review_gate":"delivery_risk_gate")}
-  return {points,reasons,gross_bid:gross,estimated_platform_fee:estimatedPlatformFee,estimated_net:estimatedNet,fee_rate_assumption:feeRate,competition_count:competitionCount,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold,proof_requirements:proofRequirements,integration_dependencies:integrationDependencies,external_workspace_signals:externalWorkspaceSignals,environment_dependency_signals:environmentDependencySignals,scope_signals:scopeSignals,attachment_signals:attachmentSignals,requires_human_qualification_review:qualificationHardHold,requires_attachment_review:attachmentHardHold,requires_independent_delivery_review:independentDeliveryHardHold,requires_client_environment_review:environmentDependencySignals.length>0,requires_complex_scope_review:complexScope};
+  // Client workspace/runtime access is normal for many paid implementation jobs.
+  // Block production until authorized access exists, but do not block the proposal itself.
+  if(independentDeliveryHardHold){points-=3;deliveryRisk+=2;reasons.push("client_access_required_after_contract")}
+  const hardHold=qualificationHardHold||attachmentHardHold||complexScope||(deliveryRisk>=5&&draft.delivery_days<=3);
+  if(hardHold){reasons.push(qualificationHardHold?"qualification_evidence_gate":attachmentHardHold?"attachment_review_gate":complexScope?"complex_scope_review_gate":"delivery_risk_gate")}
+  return {points,reasons,gross_bid:gross,estimated_platform_fee:estimatedPlatformFee,estimated_net:estimatedNet,fee_rate_assumption:feeRate,competition_count:competitionCount,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold,proof_requirements:proofRequirements,integration_dependencies:integrationDependencies,external_workspace_signals:externalWorkspaceSignals,environment_dependency_signals:environmentDependencySignals,scope_signals:scopeSignals,attachment_signals:attachmentSignals,requires_human_qualification_review:qualificationHardHold,requires_attachment_review:attachmentHardHold,requires_independent_delivery_review:false,requires_client_access_after_contract:independentDeliveryHardHold,requires_client_environment_review:environmentDependencySignals.length>0,requires_complex_scope_review:complexScope};
 }
 
 async function getPlatformConnection(env, provider) {
