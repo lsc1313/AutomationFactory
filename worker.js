@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.7";
-const BUILD_ID = "v0.55.7-zero-capital-channel-priority-20261003";
+const APP_VERSION = "0.55.8";
+const BUILD_ID = "v0.55.8-multisource-revenue-scan-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2214,10 +2214,12 @@ const revenueBtn=document.getElementById('runRevenueScout');
 if(revenueBtn)revenueBtn.onclick=async()=>{
   revenueBtn.disabled=true;
   revenueBtn.textContent='💰 스캔 시작 중…';
-  document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… Freelancer';
+  document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… 위시켓 · Agent Bounties · GitHub Paid · Freelancer';
   try{
     const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:45000});
-    document.getElementById('runinfo').textContent='수익형 스캔 완료 · 발견 '+((d.scan&&d.scan.found)||0)+' · 저장 '+((d.scan&&d.scan.saved)||0);
+    const sd=(d.scan&&d.scan.diagnostics)||{}, errs=(d.scan&&d.scan.errors)||[];
+    const src=((d.scan&&d.scan.sources)||[]).map(s=>{const x=sd[s]||{};let detail='';if(s==='freelancer_projects')detail='원본 '+(x.raw_count||0)+' / 선별 '+(x.unique_count||0);else if(s==='wishket_projects')detail='링크 '+(x.public_links||0)+' / 후보 '+(x.micro_matches||0);else detail='수집완료';const er=errs.find(e=>e.source===s);return s+' ['+(er?'오류: '+er.error:detail)+']';}).join(' · ');
+    document.getElementById('runinfo').textContent='수익형 스캔 완료 · 발견 '+((d.scan&&d.scan.found)||0)+' · 저장 '+((d.scan&&d.scan.saved)||0)+' · '+src;
     alert('수익형 스캔 완료');
     await load();
     await loadPaidJobs();
@@ -2887,13 +2889,14 @@ export default {
 
       if (path === "/api/scout/revenue-core" && request.method === "POST") {
         const denied = requireAdmin(request, env); if (denied) return denied;
-        // Keep the interactive request bounded: Freelancer is the connected revenue channel.
-        // Wishket is currently returning 403 and full 2,000-row rejudge is too heavy for a button click.
-        const scan=await runScout(env,["freelancer_projects"]);
+        // Interactive revenue scan must execute the configured revenue-core sources, not only Freelancer.
+        const revenueSources=SCOUT_GROUPS.revenue_core.filter(x=>SOURCE_REGISTRY[x]);
+        const scan=await runScout(env,revenueSources);
+        const placeholders=revenueSources.map(()=>"?").join(",");
         const recent=(await env.DB.prepare(`
           SELECT opportunity_id,source,source_item_id,type,title,description,budget_min,budget_max,currency,location,skills,posted_at,deadline,competition,url
-          FROM opportunities WHERE source='freelancer_projects' ORDER BY last_seen_at DESC LIMIT 400
-        `).all()).results||[];
+          FROM opportunities WHERE source IN (${placeholders}) ORDER BY last_seen_at DESC LIMIT 800
+        `).bind(...revenueSources).all()).results||[];
         let hot=0,watch=0,cold=0;
         const updates=[];
         for(const row of recent){
@@ -2901,7 +2904,7 @@ export default {
           updates.push(env.DB.prepare("UPDATE opportunities SET score=?,grade=?,score_breakdown=?,judge_reason=?,updated_at=? WHERE opportunity_id=?").bind(j.score,j.grade,JSON.stringify(j.breakdown),j.reason,nowIso(),row.opportunity_id));
         }
         for(let i=0;i<updates.length;i+=50)await env.DB.batch(updates.slice(i,i+50));
-        return json({ok:true,group:"revenue_core",scan,rejudge:{rejudged:recent.length,grades:{hot,watch,cold}},note:"interactive_freelancer_only"});
+        return json({ok:true,group:"revenue_core",scan,rejudge:{rejudged:recent.length,grades:{hot,watch,cold}},note:"interactive_revenue_core_multisource",sources:revenueSources});
       }
 
       if (path.startsWith("/api/opportunities/") && path.endsWith("/decision") && request.method === "POST") {
