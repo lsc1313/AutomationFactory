@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.9";
-const BUILD_ID = "v0.54.9-application-pool-link-20261003";
+const APP_VERSION = "0.55.0";
+const BUILD_ID = "v0.55.0-manager-hold-reconcile-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1501,7 +1501,8 @@ async function applicationCenterRows(env) {
       delivery_risk:x.draft.priority.delivery_risk,
       reasons:x.draft.priority.reasons
     }})),
-    held:ranked.filter(x=>!selected.includes(x))
+    held:ranked.filter(x=>!selected.includes(x)),
+    held_items:ranked.filter(x=>!selected.includes(x)).map(x=>({opportunity_id:x.row.opportunity_id,title:x.row.title,hard_hold:!!x.draft.priority.hard_hold,points:x.draft.priority.points,reasons:x.draft.priority.reasons||[]}))
   };
 }
 
@@ -2239,7 +2240,9 @@ async function loadPaidJobs(runManager=true){
  const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
  const center=await api('/api/application-center',{timeoutMs:5000}).catch(()=>({count:0,held_count:applicationRows.length,items:[],degraded:true}));
  const shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0);
- const safetyHeldCount=rows.filter(j=>j.manager_stage==='auto_held').length;
+ const centerHeldItems=Array.isArray(center.held_items)?center.held_items:[];
+ const centerHeldIds=new Set(centerHeldItems.map(x=>String(x.opportunity_id||'')));
+ const safetyHeldCount=rows.filter(j=>j.manager_stage==='auto_held'&&!centerHeldIds.has(String(j.opportunity_id||''))).length;
  const heldApplicationCount=applicationHeldCount+safetyHeldCount;
  const holdDiagnostics={qualification:0,attachment:0,independent_delivery:0,complex_scope:0,delivery_risk:0,other:0};
  for(const j of rows){
@@ -2590,7 +2593,7 @@ export default {
       if(path==="/api/application-center"&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const center=await applicationCenterRows(env);
-        return json({ok:true,count:center.selected.length,held_count:center.held.length,items:center.selected.map(x=>({...x.draft,opportunity_id:x.row.opportunity_id,decision_summary:x.decision_summary}))});
+        return json({ok:true,count:center.selected.length,held_count:center.held.length,held_items:center.held_items||[],items:center.selected.map(x=>({...x.draft,opportunity_id:x.row.opportunity_id,decision_summary:x.decision_summary}))});
       }
       const appPrepareMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/application-draft$/);
       if(appPrepareMatch&&request.method==="GET"){
