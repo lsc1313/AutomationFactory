@@ -100,7 +100,7 @@ export async function collectFreelancerProjects() {
   // Expand the official public Projects API across multiple pages. Work-Spec Gate remains
   // the authority on what is actually factory-deliverable; discovery should favor recall.
   const pageSize = 50;
-  const pages = 12;
+  const pages = 20;
   const all = [];
   let pagesRequested = 0;
   let pagesSucceeded = 0;
@@ -125,8 +125,13 @@ export async function collectFreelancerProjects() {
   const discoveryScore = x => {
     const text = stripHtml(String(x?.title||"")+" "+String(x?.description||x?.preview_description||"")+" "+(Array.isArray(x?.jobs)?x.jobs.map(j=>j?.name||"").join(" "):"")).toLowerCase();
     let score=0;
-    if(/excel|spreadsheet|csv|data clean|data conversion|data processing|pdf|document|research|web scraping|scraper|python script|automation script|javascript|node\.js|api script|report|template|dashboard file/i.test(text))score+=4;
-    if(/script|tool|utility|dataset|workbook|source code|code|file|document|report|template|prototype/i.test(text))score+=2;
+    // Strongly favor self-contained digital deliverables our factory can create and hand over.
+    if(/excel|spreadsheet|workbook|csv|xlsx|data clean|data cleansing|data conversion|data processing|data normalization|data entry automation|pdf (?:to|conversion)|document conversion|research report|web scraping|scraper|python script|automation script|javascript script|node\.js script|api script|report generation|template|dashboard file/i.test(text))score+=8;
+    if(/script|tool|utility|dataset|workbook|source code|code|file|document|report|template|prototype/i.test(text))score+=3;
+    if(/deliver(?:able|y).{0,80}(?:file|script|code|csv|excel|xlsx|report|dataset|document)|(?:file|script|code|csv|excel|xlsx|report|dataset|document).{0,80}deliver/i.test(text))score+=4;
+    if(/fixed(?:-| )price|fixed project/i.test(text))score+=1;
+    const bids=Number(x?.bid_stats?.bid_count ?? x?.bid_count ?? 0);
+    if(bids>0&&bids<=10)score+=4; else if(bids<=25)score+=2; else if(bids>=100)score-=4; else if(bids>=50)score-=2;
     if(/wordpress|shopify|woocommerce|bigcommerce|wix|webflow|squarespace|hosting|server|domain|dns|crm|salesforce|hubspot|zendesk/i.test(text))score-=5;
     if(/my website|our website|existing website|current website|my server|our server|my hosting|our hosting|screen share|video call|zoom call/i.test(text))score-=6;
     if(/full[- ]?stack|production[- ]ready|end[- ]?to[- ]?end|migrat|deploy to|integration with our|integrate with our/i.test(text))score-=3;
@@ -158,7 +163,7 @@ export async function collectFreelancerProjects() {
       url: x.seo_url ? "https://www.freelancer.com/projects/" + String(x.seo_url).split("/").filter(Boolean).join("/") : "https://www.freelancer.com/projects/" + x.id
     };
   });
-  items.diagnostics = { pages_requested: pagesRequested, pages_succeeded: pagesSucceeded, raw_count: all.length, unique_count: items.length, strategy:"realizable_revenue_v2" };
+  items.diagnostics = { pages_requested: pagesRequested, pages_succeeded: pagesSucceeded, raw_count: all.length, unique_count: items.length, strategy:"factory_first_microdeliverable_v3" };
   return items;
 
 }
