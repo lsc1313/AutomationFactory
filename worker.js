@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.2";
-const BUILD_ID = "v0.54.2-wire-revenue-scan-button-20261003";
+const APP_VERSION = "0.54.3";
+const BUILD_ID = "v0.54.3-fast-revenue-scan-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2144,9 +2144,9 @@ const revenueBtn=document.getElementById('runRevenueScout');
 if(revenueBtn)revenueBtn.onclick=async()=>{
   revenueBtn.disabled=true;
   revenueBtn.textContent='💰 스캔 시작 중…';
-  document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… Freelancer + 위시켓';
+  document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… Freelancer';
   try{
-    const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:120000});
+    const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:45000});
     document.getElementById('runinfo').textContent='수익형 스캔 완료 · 발견 '+((d.scan&&d.scan.found)||0)+' · 저장 '+((d.scan&&d.scan.saved)||0);
     alert('수익형 스캔 완료');
     await load();
@@ -2773,9 +2773,21 @@ export default {
 
       if (path === "/api/scout/revenue-core" && request.method === "POST") {
         const denied = requireAdmin(request, env); if (denied) return denied;
-        const scan=await runScout(env,SCOUT_GROUPS.revenue_core);
-        const rejudge=await rejudgeAll(env);
-        return json({ok:true,group:"revenue_core",scan,rejudge});
+        // Keep the interactive request bounded: Freelancer is the connected revenue channel.
+        // Wishket is currently returning 403 and full 2,000-row rejudge is too heavy for a button click.
+        const scan=await runScout(env,["freelancer_projects"]);
+        const recent=(await env.DB.prepare(`
+          SELECT opportunity_id,source,source_item_id,type,title,description,budget_min,budget_max,currency,location,skills,posted_at,deadline,competition,url
+          FROM opportunities WHERE source='freelancer_projects' ORDER BY last_seen_at DESC LIMIT 400
+        `).all()).results||[];
+        let hot=0,watch=0,cold=0;
+        const updates=[];
+        for(const row of recent){
+          const j=judgeOpportunity(row); if(j.grade==="hot")hot++; else if(j.grade==="watch")watch++; else cold++;
+          updates.push(env.DB.prepare("UPDATE opportunities SET score=?,grade=?,score_breakdown=?,judge_reason=?,updated_at=? WHERE opportunity_id=?").bind(j.score,j.grade,JSON.stringify(j.breakdown),j.reason,nowIso(),row.opportunity_id));
+        }
+        for(let i=0;i<updates.length;i+=50)await env.DB.batch(updates.slice(i,i+50));
+        return json({ok:true,group:"revenue_core",scan,rejudge:{rejudged:recent.length,grades:{hot,watch,cold}},note:"interactive_freelancer_only"});
       }
 
       if (path.startsWith("/api/opportunities/") && path.endsWith("/decision") && request.method === "POST") {
