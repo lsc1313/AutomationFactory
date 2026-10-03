@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.4";
-const BUILD_ID = "v0.54.4-gate-audit-20261003";
+const APP_VERSION = "0.54.5";
+const BUILD_ID = "v0.54.5-gate-audit-ui-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2058,7 +2058,7 @@ function appHtml() {
   </div>
   <div class="token">
     <input id="token" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
-    <button id="saveToken">저장</button><button id="runRevenueScout" style="margin-left:8px">💰 수익형 즉시 스캔</button>
+    <button id="saveToken">저장</button><button id="runRevenueScout" style="margin-left:8px">💰 수익형 즉시 스캔</button><button id="gateAuditBtn" style="margin-left:8px">🧪 HOT 탈락진단</button><div id="gateAuditBox" class="card" style="display:none;margin-top:10px"></div>
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="sourceDiagnostics" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
@@ -2140,6 +2140,22 @@ async function load(){
 document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-grade]').forEach(x=>x.classList.remove('active'));b.classList.add('active');grade=b.dataset.grade;load();});
 document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
 document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
+const auditBtn=document.getElementById('gateAuditBtn');
+if(auditBtn)auditBtn.onclick=async()=>{
+  const box=document.getElementById('gateAuditBox'); auditBtn.disabled=true; auditBtn.textContent='🧪 진단 중…';
+  box.style.display='block'; box.innerHTML='HOT → 제작가능 → 지원가능 게이트를 분석 중…';
+  try{
+    const d=await api('/api/scout/gate-audit',{timeoutMs:30000});
+    const c=d.counts||{}, bl=d.blockers||{}, near=d.near_misses||[];
+    const top=Object.entries(bl).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>esc(k)+' '+v+'건').join(' · ')||'없음';
+    box.innerHTML='<b>🧪 HOT 실행게이트 진단</b><div class="intakeHelp">최근 Freelancer '+esc(c.total||0)+'건 기준</div>'+
+      '<div class="reason">HOT '+esc(c.hot||0)+' → 게이트차단 '+esc(c.gate_blocked||0)+' · 제작가능 '+esc(c.ready||0)+' · 실제지원가능 '+esc(c.actionable||0)+'</div>'+
+      '<div class="reason"><b>주요 차단</b><br>'+top+'</div>'+
+      '<div class="reason"><b>통과에 가까운 후보</b><br>'+near.slice(0,10).map((x,i)=>(i+1)+'. '+esc(x.title)+' · '+esc(x.grade)+' '+esc(x.score)+' · '+esc((x.miss||[]).join(', ')||'조건충족')).join('<br>')+'</div>';
+  }catch(e){box.innerHTML='<b>진단 실패</b><div class="reason">'+esc(e.message)+'</div>'}
+  finally{auditBtn.disabled=false;auditBtn.textContent='🧪 HOT 탈락진단'}
+};
+
 const revenueBtn=document.getElementById('runRevenueScout');
 if(revenueBtn)revenueBtn.onclick=async()=>{
   revenueBtn.disabled=true;
