@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.1";
-const BUILD_ID = "v0.54.1-split-scout-20261003";
+const APP_VERSION = "0.54.2";
+const BUILD_ID = "v0.54.2-wire-revenue-scan-button-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2140,6 +2140,25 @@ async function load(){
 document.querySelectorAll('[data-grade]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-grade]').forEach(x=>x.classList.remove('active'));b.classList.add('active');grade=b.dataset.grade;load();});
 document.getElementById('stateFilter').onchange=load;document.getElementById('sourceFilter').onchange=load;
 document.getElementById('saveToken').onclick=()=>{localStorage.setItem('af_admin_token',tokenEl.value.trim());alert('이 휴대폰 브라우저에 관리키를 저장했습니다.');};
+const revenueBtn=document.getElementById('runRevenueScout');
+if(revenueBtn)revenueBtn.onclick=async()=>{
+  revenueBtn.disabled=true;
+  revenueBtn.textContent='💰 스캔 시작 중…';
+  document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… Freelancer + 위시켓';
+  try{
+    const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:120000});
+    document.getElementById('runinfo').textContent='수익형 스캔 완료 · 발견 '+((d.scan&&d.scan.found)||0)+' · 저장 '+((d.scan&&d.scan.saved)||0);
+    alert('수익형 스캔 완료');
+    await load();
+    await loadPaidJobs();
+  }catch(e){
+    document.getElementById('runinfo').textContent='수익형 스캔 실패 · '+e.message;
+    alert('수익형 스캔 실패: '+e.message);
+  }finally{
+    revenueBtn.disabled=false;
+    revenueBtn.textContent='💰 수익형 즉시 스캔';
+  }
+};
 async function loadMarketCandidates(){
  const rows=await api('/api/market-candidates');
  const el=document.getElementById('candidateList');
