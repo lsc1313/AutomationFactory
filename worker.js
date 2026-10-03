@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.5";
-const BUILD_ID = "v0.54.5-gate-audit-ui-20261003";
+const APP_VERSION = "0.54.6";
+const BUILD_ID = "v0.54.6-mobile-gate-audit-layout-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2058,7 +2058,7 @@ function appHtml() {
   </div>
   <div class="token">
     <input id="token" type="password" placeholder="관리키 (설정한 경우만 입력)" autocomplete="off" />
-    <button id="saveToken">저장</button><button id="runRevenueScout" style="margin-left:8px">💰 수익형 즉시 스캔</button><button id="gateAuditBtn" style="margin-left:8px">🧪 HOT 탈락진단</button><div id="gateAuditBox" class="card" style="display:none;margin-top:10px"></div>
+    <button id="saveToken">저장</button><button id="runRevenueScout" style="margin-left:8px">💰 수익형 즉시 스캔</button><button id="gateAuditBtn" style="width:100%;margin-top:10px">🧪 HOT 탈락진단</button><div id="gateAuditBox" class="card" style="display:none;margin-top:10px;clear:both;width:auto;max-width:100%;overflow-wrap:anywhere"></div>
   </div>
   <div id="runinfo" class="runinfo"></div>\n  <div id="sourceDiagnostics" class="runinfo"></div>\n  <div id="runerrors" class="runerrors"></div>
   <div id="candidateList"></div>\n  <div id="list"><div class="empty">불러오는 중…</div></div>
