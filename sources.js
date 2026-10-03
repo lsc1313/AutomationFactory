@@ -992,10 +992,10 @@ export async function collectMarketplaceDemand() {
 }
 
 export const REVENUE_CHANNEL_REGISTRY = {
-  freelancer_projects: { mode:"request", automation:"active", scout:true },
+  freelancer_projects: { mode:"request", automation:"active", scout:true, capital_gate:"account_balance_may_be_required" },
   upwork_marketplace: { mode:"request", automation:"official_api_auth_required", scout:false, env:["UPWORK_ACCESS_TOKEN"] },
   kmong_services: { mode:"seller_service", automation:"manual_official_channel", scout:false, scraping:false },
-  wishket_projects: { mode:"request", automation:"public_readonly_scout_manual_apply", scout:true },
+  wishket_projects: { mode:"request", automation:"public_readonly_scout_manual_apply", scout:true, capital_gate:"none_known" },
   soomgo_requests: { mode:"request", automation:"paid_quote_manual_review", scout:false }
 };
 
