@@ -867,7 +867,7 @@ assert.ok(appCenterV0210.includes("proposal:plan.proposal_draft"));
 assert.ok(appCenterV0210.includes("bid_amount:bidAmount"));
 assert.ok(appCenterV0210.includes("delivery_days:deliveryDays"));
 assert.ok(appCenterV0210.includes("auto_submit_supported:source===\"freelancer_projects\""));
-assert.ok(appCenterV0210.includes("requires_human_submit:true"));
+assert.ok(appCenterV0210.includes("requires_human_submit:false"));
 assert.ok(appCenterV0210.includes("지원 페이지 열기"));
 
 // v0.21.1 realistic application estimates
