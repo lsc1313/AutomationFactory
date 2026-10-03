@@ -530,7 +530,7 @@ const managerSourceFix = fs.readFileSync(new URL("./worker.js", import.meta.url)
 assert.ok(managerSourceFix.includes('String(row.title||"")+" "+String(row.description||"'));
 assert.ok(!managerSourceFix.includes('String(row.description||"")+" "+String(row.skills||"'));
 assert.ok(managerSourceFix.includes("Manager '+esc(p.manager_version)"));
-assert.ok(managerSourceFix.includes("p.build_spec?.spec_version"));
+assert.ok(managerSourceFix.includes("plan?.build_spec?.spec_version"));
 
 // v0.8.7 Manager input diagnostics
 const inputDiag = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
