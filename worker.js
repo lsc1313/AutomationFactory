@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.3";
-const BUILD_ID = "v0.55.3-bid-error-diagnostics-20261003";
+const APP_VERSION = "0.55.4";
+const BUILD_ID = "v0.55.4-bid-error-ui-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2339,7 +2339,18 @@ async function loadPaidJobs(runManager=true){
          if(!ok){status.textContent='승인이 취소되었습니다.';return;}
          status.textContent='공식 API로 입찰 제출 중…';
          const out=await api('/api/freelancer/bid-submit',{method:'POST',body:JSON.stringify({opportunity_id:id,approved:true})});
-         status.textContent=out.ok&&out.submitted?'✅ 입찰 완료 · Bid ID '+esc(out.bid_id||''):'⛔ 제출 실패: '+esc(out.reason||('HTTP '+(out.status||'')));
+         if(out.ok&&out.submitted){
+           status.textContent='✅ 입찰 완료 · Bid ID '+esc(out.bid_id||'');
+         }else{
+           const pf=out.preflight||{}, dr=pf.draft||{}, bg=pf.budget||{};
+           const parts=['⛔ 제출 실패'];
+           if(out.status!==undefined&&out.status!==null)parts.push('HTTP '+esc(out.status));
+           if(out.api_message)parts.push(esc(out.api_message));
+           if(dr.bid_amount!==undefined)parts.push('입찰 '+esc(dr.bid_amount)+(bg.currency?' '+esc(bg.currency):''));
+           if(dr.delivery_days!==undefined)parts.push('납기 '+esc(dr.delivery_days)+'일');
+           if(pf.status)parts.push('프로젝트 '+esc(pf.status));
+           status.innerHTML=parts.join(' · ');
+         }
          if(out.ok&&out.submitted)setTimeout(()=>loadPaidJobs(),1200);
        }catch(e){status.textContent='⛔ 처리 실패: '+esc(e.message);}
        finally{btn.disabled=false;}
