@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.8";
-const BUILD_ID = "v0.54.8-client-access-bid-gate-20261003";
+const APP_VERSION = "0.54.9";
+const BUILD_ID = "v0.54.9-application-pool-link-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1468,14 +1468,17 @@ async function platformConnectionCenter(env) {
 }
 
 async function applicationCenterRows(env) {
+  // Application Center must not depend on Manager having already visited a row.
+  // Gate-audit and application selection now read the same Judge-approved candidate pool.
+  // Manager state is optional display metadata; a missing state must never hide a valid bid candidate.
   const rows=(await env.DB.prepare(`SELECT o.*,m.stage AS manager_stage,m.status_label AS manager_status_label,m.next_action AS manager_next_action,
     g.application_status AS deal_application_status,g.contract_status AS deal_contract_status,g.payment_status AS deal_payment_status
     FROM opportunities o
-    JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
+    LEFT JOIN manager_job_states m ON m.opportunity_id=o.opportunity_id
     LEFT JOIN contract_payment_gates g ON g.opportunity_id=o.opportunity_id
-    WHERE o.user_state!='reject' AND m.stage='waiting_contract_payment' AND COALESCE(g.application_status,'not_applied')='not_applied'
+    WHERE o.user_state!='reject' AND COALESCE(g.application_status,'not_applied')='not_applied'
     AND json_extract(o.score_breakdown,'$.factory_fulfillable')=1 AND json_extract(o.score_breakdown,'$.actionable_paid_job')=1
-    ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 50`).all()).results||[];
+    ORDER BY o.score DESC,o.last_seen_at DESC LIMIT 400`).all()).results||[];
   const freelancer=await getPlatformConnection(env,"freelancer");
   const ranked=rows.map(row=>{const draft=applicationDraft(row),priority=applicationPriority(row,draft);
     const needsFreelancer=String(row.source||"")==="freelancer_projects";
