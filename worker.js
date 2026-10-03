@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.4";
-const BUILD_ID = "v0.53.4-mobile-api-timeout-20261003";
+const APP_VERSION = "0.53.5";
+const BUILD_ID = "v0.53.5-schema-init-cache-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -25,6 +25,15 @@ function nowIso() {
 
 function safeId(source, sourceItemId) {
   return `${source}:${sourceItemId}`.replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, 240);
+}
+
+let schemaReady = false;
+let schemaInitPromise = null;
+
+async function ensureSchemaOnce(env) {
+  if (schemaReady) return;
+  if (!schemaInitPromise) schemaInitPromise = ensureSchema(env).then(()=>{schemaReady=true;}).catch(err=>{schemaInitPromise=null;throw err;});
+  return schemaInitPromise;
 }
 
 async function ensureSchema(env) {
@@ -2481,7 +2490,7 @@ export default {
   async fetch(request, env, ctx) {
     globalThis.__moneyScoutCtx = ctx;
     try {
-      await ensureSchema(env);
+      await ensureSchemaOnce(env);
       const url = new URL(request.url);
       const path = url.pathname;
 
