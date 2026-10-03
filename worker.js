@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.0";
-const BUILD_ID = "v0.55.0-manager-hold-reconcile-20261003";
+const APP_VERSION = "0.55.1";
+const BUILD_ID = "v0.55.1-application-hold-diagnostics-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1502,7 +1502,27 @@ async function applicationCenterRows(env) {
       reasons:x.draft.priority.reasons
     }})),
     held:ranked.filter(x=>!selected.includes(x)),
-    held_items:ranked.filter(x=>!selected.includes(x)).map(x=>({opportunity_id:x.row.opportunity_id,title:x.row.title,hard_hold:!!x.draft.priority.hard_hold,points:x.draft.priority.points,reasons:x.draft.priority.reasons||[]}))
+    held_items:ranked.filter(x=>!selected.includes(x)).map(x=>({opportunity_id:x.row.opportunity_id,title:x.row.title,hard_hold:!!x.draft.priority.hard_hold,points:x.draft.priority.points,reasons:x.draft.priority.reasons||[]})),
+    diagnostics:(()=>{
+      const held=ranked.filter(x=>!selected.includes(x));
+      const counts={hard_hold:0,below_priority:0,capacity_limit:0,platform_not_connected:0,qualification:0,attachment:0,complex_scope:0,delivery_risk:0,low_value:0,competition:0,client_access:0,other:0};
+      for(const x of held){
+        const p=x.draft.priority||{}, rs=p.reasons||[];
+        if(p.hard_hold)counts.hard_hold++;
+        if(!p.hard_hold&&Number(p.points||0)<4)counts.below_priority++;
+        if(!p.hard_hold&&Number(p.points||0)>=4)counts.capacity_limit++;
+        if(rs.includes("platform_not_connected"))counts.platform_not_connected++;
+        if(rs.includes("qualification_evidence_gate"))counts.qualification++;
+        if(rs.includes("attachment_review_gate"))counts.attachment++;
+        if(rs.includes("complex_scope_review_gate"))counts.complex_scope++;
+        if(rs.includes("delivery_risk_gate"))counts.delivery_risk++;
+        if(rs.includes("low_value_per_hour"))counts.low_value++;
+        if(rs.includes("high_competition")||rs.includes("very_high_competition"))counts.competition++;
+        if(rs.includes("client_access_required_after_contract"))counts.client_access++;
+        if(!p.hard_hold&&Number(p.points||0)>=4&&selected.length>=3){} else if(!(rs.length))counts.other++;
+      }
+      return {candidate_count:ranked.length,selected_count:selected.length,held_count:held.length,selection_threshold:4,selection_capacity:3,counts};
+    })()
   };
 }
 
@@ -2239,7 +2259,7 @@ async function loadPaidJobs(runManager=true){
  const applicationRows=humanRows.filter(j=>j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied');
  const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
  const center=await api('/api/application-center',{timeoutMs:5000}).catch(()=>({count:0,held_count:applicationRows.length,items:[],degraded:true}));
- const shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0);
+ const shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0), appDiag=center.diagnostics||{};
  const centerHeldItems=Array.isArray(center.held_items)?center.held_items:[];
  const centerHeldIds=new Set(centerHeldItems.map(x=>String(x.opportunity_id||'')));
  const safetyHeldCount=rows.filter(j=>j.manager_stage==='auto_held'&&!centerHeldIds.has(String(j.opportunity_id||''))).length;
@@ -2259,7 +2279,7 @@ async function loadPaidJobs(runManager=true){
  const revenueExecutionCount=autoCount+shortlistCount+passiveRows.length+readyCount;
  const humanInbox=actionableHumanCount?'<div class="notice"><b>👆 지금 사람이 할 일 '+actionableHumanCount+'건</b><br><span class="sub">실제로 개입할 항목만 표시합니다. 지원/안전게이트 '+heldApplicationCount+'건은 Manager가 자동보류 중입니다.</span>'+(shortlistCount?'<div class="decisions"><button id="openApplicationCenter">📨 우선지원 '+shortlistCount+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다.</span></div>';
  const platformBox='<div class="notice" id="platformConnectionCenter"><b>🔌 플랫폼 연결센터</b><br><span class="sub">Freelancer 연결 상태 확인 중…</span></div>';
-  const summary='<div class="notice"><b>💰 수익 실행 대시보드</b><br>수익진행 <b>'+revenueExecutionCount+'</b> · 내부자동 '+autoCount+' · 사람확인 '+actionableHumanCount+' · 자동보류 '+heldApplicationCount+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">Money Scout는 뒤에서 계속 탐색합니다. 여기에는 지금 돈으로 연결되는 실행 항목을 먼저 표시합니다.</span>'+(heldApplicationCount?'<br><span class="sub"><b>자동보류 진단</b> · 자격/포트폴리오 '+holdDiagnostics.qualification+' · 첨부검증 '+holdDiagnostics.attachment+' · 고객환경의존 '+holdDiagnostics.independent_delivery+' · 복합범위 '+holdDiagnostics.complex_scope+' · 납기/위험 '+holdDiagnostics.delivery_risk+' · 기타 '+holdDiagnostics.other+'</span>':'')+'</div>'+humanInbox;
+  const summary='<div class="notice"><b>💰 수익 실행 대시보드</b><br>수익진행 <b>'+revenueExecutionCount+'</b> · 내부자동 '+autoCount+' · 사람확인 '+actionableHumanCount+' · 자동보류 '+heldApplicationCount+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">Money Scout는 뒤에서 계속 탐색합니다. 여기에는 지금 돈으로 연결되는 실행 항목을 먼저 표시합니다.</span>'+(heldApplicationCount?'<br><span class="sub"><b>자동보류 진단</b> · 자격/포트폴리오 '+holdDiagnostics.qualification+' · 첨부검증 '+holdDiagnostics.attachment+' · 고객환경의존 '+holdDiagnostics.independent_delivery+' · 복합범위 '+holdDiagnostics.complex_scope+' · 납기/위험 '+holdDiagnostics.delivery_risk+' · 기타 '+holdDiagnostics.other+'</span>':'')+(appDiag.held_count?'<br><span class="sub"><b>지원센터 탈락 '+esc(appDiag.held_count)+'</b> · 하드차단 '+esc((appDiag.counts||{}).hard_hold||0)+' · 우선점수미달 '+esc((appDiag.counts||{}).below_priority||0)+' · 상위3건 제한 '+esc((appDiag.counts||{}).capacity_limit||0)+' · 플랫폼미연결 '+esc((appDiag.counts||{}).platform_not_connected||0)+' · 저가치/시간 '+esc((appDiag.counts||{}).low_value||0)+' · 경쟁과다 '+esc((appDiag.counts||{}).competition||0)+' · 계약후 고객접근 '+esc((appDiag.counts||{}).client_access||0)+'</span>':'')+'</div>'+humanInbox;
  el.innerHTML=platformBox+summary+'<details class="jobDetails" style="margin-top:14px"><summary>📦 전체 유료 일감 '+rows.length+'개 보기</summary><div class="sub" style="margin:10px 0">평소에는 열어볼 필요 없습니다. Manager가 우선지원·계약·제작·납품 단계가 되면 위 실행 영역으로 올립니다.</div>'+rows.map(j=>{
    const state=j.manager_status_label||'🤖 Manager 분석 대기';
    const next=j.manager_next_action||'자동공장이 다음 단계를 판단합니다.';
@@ -2593,7 +2613,7 @@ export default {
       if(path==="/api/application-center"&&request.method==="GET"){
         const denied=requireAdmin(request,env);if(denied)return denied;
         const center=await applicationCenterRows(env);
-        return json({ok:true,count:center.selected.length,held_count:center.held.length,held_items:center.held_items||[],items:center.selected.map(x=>({...x.draft,opportunity_id:x.row.opportunity_id,decision_summary:x.decision_summary}))});
+        return json({ok:true,count:center.selected.length,held_count:center.held.length,held_items:center.held_items||[],diagnostics:center.diagnostics||{},items:center.selected.map(x=>({...x.draft,opportunity_id:x.row.opportunity_id,decision_summary:x.decision_summary}))});
       }
       const appPrepareMatch=path.match(/^\/api\/paid-jobs\/([^/]+)\/application-draft$/);
       if(appPrepareMatch&&request.method==="GET"){
