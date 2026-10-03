@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.5";
-const BUILD_ID = "v0.53.5-schema-init-cache-20261003";
+const APP_VERSION = "0.53.6";
+const BUILD_ID = "v0.53.6-route-before-schema-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2170,7 +2170,10 @@ async function loadPaidJobs(runManager=true){
  // Never block first paint on Manager orchestration. Mobile browsers can otherwise
  // sit on "loading" while a long external/API action is still running.
  let rows;
- try{rows=await api('/api/paid-jobs');}
+ el.innerHTML='<div class="empty">① 서버 연결 확인 중…</div>';
+ try{await api('/api/health',{timeoutMs:4000});}catch(e){el.innerHTML='<div class="notice error"><b>서버 연결 실패</b><br>'+esc(e.message)+'</div>';return;}
+ el.innerHTML='<div class="empty">② D1 유료 일감 조회 중…</div>';
+ try{rows=await api('/api/paid-jobs',{timeoutMs:8000});}
  catch(e){el.innerHTML='<div class="notice error"><b>수익 실행 현황을 불러오지 못했습니다.</b><br>'+esc(e.message)+'<div class="decisions"><button id="retryPaidJobs">다시 불러오기</button></div></div>';const rb=document.getElementById('retryPaidJobs');if(rb)rb.onclick=loadPaidJobs;return;}
  // Run Manager after the dashboard is already able to render; refresh once when done.
  if(runManager)setTimeout(()=>api('/api/orchestrator/tick',{method:'POST',body:JSON.stringify({max_actions:2,limit:100})}).then(()=>setTimeout(()=>loadPaidJobs(false),300)).catch(()=>null),0);
@@ -2490,9 +2493,12 @@ export default {
   async fetch(request, env, ctx) {
     globalThis.__moneyScoutCtx = ctx;
     try {
-      await ensureSchemaOnce(env);
       const url = new URL(request.url);
       const path = url.pathname;
+
+      // Render the shell and health check without waiting for D1 schema work.
+      // This keeps diagnostics reachable even when schema initialization is slow.
+      if (path === "/" || path === "") return html(appHtml());
 
       if (path === "/api/health") {
         return json({
@@ -2504,6 +2510,10 @@ export default {
           security_mode: env.ADMIN_TOKEN ? "관리키 보호" : "OPEN(테스트용)"
         });
       }
+
+      // DB-backed routes initialize schema only after routing lightweight endpoints.
+      await ensureSchemaOnce(env);
+
       const evidenceMatch = path.match(/^\/api\/opportunities\/([^/]+)\/evidence$/);
       if (evidenceMatch && request.method === "GET") {
         const id = decodeURIComponent(evidenceMatch[1]);
