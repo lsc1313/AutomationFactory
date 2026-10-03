@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.54.3";
-const BUILD_ID = "v0.54.3-fast-revenue-scan-20261003";
+const APP_VERSION = "0.54.4";
+const BUILD_ID = "v0.54.4-gate-audit-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2769,6 +2769,36 @@ export default {
         const group=String(body.group||"");
         const sources=Array.isArray(body.sources)?body.sources:(SCOUT_GROUPS[group]||null);
         return json(await runScout(env, sources));
+      }
+
+      if (path === "/api/scout/gate-audit" && request.method === "GET") {
+        const denied = requireAdmin(request, env); if (denied) return denied;
+        const rows=(await env.DB.prepare(`
+          SELECT opportunity_id,title,description,score,grade,score_breakdown,competition,budget_min,budget_max,currency,url,last_seen_at
+          FROM opportunities WHERE source='freelancer_projects'
+          ORDER BY CASE grade WHEN 'hot' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,score DESC,last_seen_at DESC LIMIT 400
+        `).all()).results||[];
+        const counts={total:rows.length,hot:0,gate_blocked:0,not_factory_fit:0,needs_spec:0,human_service:0,non_software:0,ready:0,actionable:0};
+        const blockers={};
+        const near=[];
+        for(const row of rows){
+          let b={};try{b=JSON.parse(row.score_breakdown||"{}")}catch{}
+          if(row.grade==="hot")counts.hot++;
+          if(!b.execution_gate_ready)counts.gate_blocked++;
+          if(b.fulfillment_status&&counts[b.fulfillment_status]!==undefined)counts[b.fulfillment_status]++;
+          if(b.factory_fulfillable)counts.ready++;
+          if(b.actionable_paid_job)counts.actionable++;
+          for(const x of (b.execution_blockers||[]))blockers[x]=(blockers[x]||0)+1;
+          const miss=[];
+          if(!b.execution_gate_ready)miss.push("execution:"+((b.execution_blockers||[]).join("+")||"blocked"));
+          if(!b.concrete_artifact)miss.push("artifact");
+          if(!b.work_spec_ready)miss.push("spec");
+          if(!b.explicit_pay)miss.push("pay");
+          if(b.fulfillment_status==="human_service")miss.push("human");
+          if(row.grade==="hot"||Number(row.score||0)>=55)near.push({id:row.opportunity_id,title:row.title,score:row.score,grade:row.grade,fulfillment_status:b.fulfillment_status,factory_score:b.factory_fulfillment_score,miss,artifact_hits:b.software_artifact_hits||[],spec_hits:b.spec_detail_hits||[],url:row.url});
+        }
+        near.sort((a,b)=>(a.miss.length-b.miss.length)||(b.score-a.score));
+        return json({ok:true,counts,blockers,near_misses:near.slice(0,30)});
       }
 
       if (path === "/api/scout/revenue-core" && request.method === "POST") {
