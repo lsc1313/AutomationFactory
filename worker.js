@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.56.3";
-const BUILD_ID = "v0.56.3-platform-eligibility-20261003";
+const APP_VERSION = "0.56.4";
+const BUILD_ID = "v0.56.4-platform-eligibility-fix-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2294,7 +2294,8 @@ async function loadPaidJobs(runManager=true){
  const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
  const center=await api('/api/application-center',{timeoutMs:5000}).catch(()=>({count:0,held_count:applicationRows.length,items:[],degraded:true}));
  let shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0), appDiag=center.diagnostics||{}, sourceFunnel=center.source_funnel||{};
- const freelancerConnection=await getPlatformConnection(env,"freelancer");
+ const connectionData=await api('/api/platform-connections',{timeoutMs:5000}).catch(()=>({providers:[]}));
+ const freelancerConnection=(connectionData.providers||[]).find(x=>x.provider==='freelancer')||{};
  const freelancerBalanceBlocked=freelancerConnection.metadata?.bid_balance_blocked===true;
  const freelancerRequiredBalance=Number(freelancerConnection.metadata?.bid_min_balance_usd||19);
  if(freelancerBalanceBlocked){
