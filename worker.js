@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.7";
-const BUILD_ID = "v0.53.7-js-parse-fix-20261003";
+const APP_VERSION = "0.53.8";
+const BUILD_ID = "v0.53.8-inline-script-compat-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2060,7 +2060,7 @@ function appHtml() {
 </div>
 <script>
 let grade='all';
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tokenEl=document.getElementById('token');
 tokenEl.value=localStorage.getItem('af_admin_token')||'';
 function headers(){const h={'content-type':'application/json'};const t=localStorage.getItem('af_admin_token')||'';if(t)h['x-admin-token']=t;return h;}
@@ -2090,15 +2090,15 @@ async function load(){
  ]);
  document.getElementById('notice').innerHTML='실데이터 소스: <b>'+esc(health.sources.join(', '))+'</b> · 보안: <b>'+esc(health.security_mode)+'</b>';
  ['total','hot','watch','cold'].forEach(k=>document.getElementById('s-'+k).textContent=stats[k]||0);
- document.getElementById('s-proceed').textContent=stats.states?.proceed||0;
+ document.getElementById('s-proceed').textContent=(stats.states&&stats.states.proceed)||0;
  const lr=stats.last_run;
- let runMeta=''; try{const a=JSON.parse(lr?.errors_json||'[]'); const d=a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)?.diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
+ let runMeta=''; try{const a=JSON.parse((lr&&lr.errors_json)||'[]'); const d=(a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)||{}).diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
  document.getElementById('runinfo').textContent=(stats.active_run?'자동 스캔 실행 중 · 시작 '+when(stats.active_run.started_at)+' | ':'')+(lr?('마지막 완료 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'완료된 스캔 기록이 없습니다.');
- let diag=[];try{diag=JSON.parse(lr?.errors_json||'[]').filter(x=>x.diagnostic)}catch{}
- const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='runtime')return '실행코드 '+(d.app_version||'?')+' · 빌드 '+(d.build_id||'?');if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links??0)+' · 상세확인 '+(d.details_checked??0)+' · Micro 후보 '+(d.micro_matches??0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count??0)+' · 선별 '+(d.unique_count??0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
+ let diag=[];try{diag=JSON.parse((lr&&lr.errors_json)||'[]').filter(x=>x.diagnostic)}catch{}
+ const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='runtime')return '실행코드 '+(d.app_version||'?')+' · 빌드 '+(d.build_id||'?');if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links||0)+' · 상세확인 '+(d.details_checked||0)+' · Micro 후보 '+(d.micro_matches||0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count||0)+' · 선별 '+(d.unique_count||0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
  document.getElementById('sourceDiagnostics').textContent=diagText?('플랫폼별 진단 · '+diagText):'플랫폼별 수집 진단은 다음 스캔부터 표시됩니다.';
  const re=document.getElementById('runerrors');
- let errs=[];try{errs=JSON.parse(lr?.errors_json||'[]').filter(x=>x.error)}catch{}
+ let errs=[];try{errs=JSON.parse((lr&&lr.errors_json)||'[]').filter(x=>x.error)}catch{}
  if(errs.length){re.style.display='block';re.textContent='⚠ 최근 스캔 오류 상세\\n'+errs.map((e,i)=>(i+1)+'. ['+(e.source||'unknown')+'] '+(e.error||'알 수 없는 오류')).join('\\n');}else{re.style.display='none';re.textContent='';}
  const evidenceById={}; await Promise.all(jobs.map(async j=>{try{evidenceById[j.opportunity_id]=await api('/api/opportunities/'+encodeURIComponent(j.opportunity_id)+'/evidence')}catch{evidenceById[j.opportunity_id]=[]}}));
  const el=document.getElementById('list');
@@ -2118,7 +2118,7 @@ async function load(){
      ? (bd.demand_status==='product_candidate'?'PRODUCT':bd.demand_status==='noise'?'NOISE':'SIGNAL')
      : (tokenCheck?'TOKEN CHECK':paycheck?'PAY CHECK':j.grade.toUpperCase());
    const pillClass=(paycheck||tokenCheck)?'paycheck':j.grade;
-   const metric=(icon,name,val)=>'<span class="metric">'+icon+' '+name+' '+esc(val??0)+'</span>';
+   const metric=(icon,name,val)=>'<span class="metric">'+icon+' '+name+' '+esc(val||0)+'</span>';
    const paidMetrics=metric('💰','MONEY',bd.money)+metric('🤖','AUTO',bd.automation)+metric('⚡','SPEED',bd.speed)+metric('📈','SCALE',bd.scale)+metric('🧭','TYPE',bd.opportunity_type||j.type);
    const evidenceMetrics=bd.opportunity_type==='business_opportunity'&&j.source==='marketplace_demand'
      ? metric('🗣','COMPLAINTS',bd.complaint_count)+metric('⭐','LOW STAR',bd.low_star_reviews)+metric('🧱','WEAK COMP',bd.weak_competitor_signals)+metric('🔎','EVIDENCE',bd.marketplace_evidence_ready?'READY':'WEAK')
@@ -2251,7 +2251,7 @@ async function loadPaidJobs(runManager=true){
    try{
      const d=await api('/api/application-center');
      box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. Freelancer 공식 API 제출은 사용자 승인 후 Preflight를 통과한 지원서만 실행합니다.</div>'+
-       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount??'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+(x.questions?.length?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="reason"><b>판단근거</b><br>경쟁 '+esc((x.decision_summary&&x.decision_summary.competition_count)??0)+'명 · 제안 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.gross_bid)??x.bid_amount??0)+' · 예상 순수익 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.estimated_net)??'확인중')+' · 예상 작업 '+esc((x.decision_summary&&x.decision_summary.effective_estimated_hours)??'확인중')+'시간 · 시간당 가치 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.value_per_hour)??'확인중')+' · 자동완결 '+esc((x.decision_summary&&x.decision_summary.automation_completion_ratio)??0)+'%</div><div class="decisions"><button class="approveBidBtn" data-job-id="'+esc(x.opportunity_id)+'">✅ 지원 승인 · Preflight</button> <a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">원문 열기</a></div><div class="sub" id="bid-status-'+esc(x.opportunity_id)+'"></div></details>').join('')+
+       d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount||'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+((x.questions&&x.questions.length)?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="reason"><b>판단근거</b><br>경쟁 '+esc((x.decision_summary&&x.decision_summary.competition_count)||0)+'명 · 제안 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.gross_bid)||x.bid_amount||0)+' · 예상 순수익 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.estimated_net)||'확인중')+' · 예상 작업 '+esc((x.decision_summary&&x.decision_summary.effective_estimated_hours)||'확인중')+'시간 · 시간당 가치 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.value_per_hour)||'확인중')+' · 자동완결 '+esc((x.decision_summary&&x.decision_summary.automation_completion_ratio)||0)+'%</div><div class="decisions"><button class="approveBidBtn" data-job-id="'+esc(x.opportunity_id)+'">✅ 지원 승인 · Preflight</button> <a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">원문 열기</a></div><div class="sub" id="bid-status-'+esc(x.opportunity_id)+'"></div></details>').join('')+
        '</div>';
      box.querySelectorAll('.approveBidBtn').forEach(btn=>btn.onclick=async()=>{
        const id=btn.dataset.jobId,status=document.getElementById('bid-status-'+id);
@@ -2259,7 +2259,7 @@ async function loadPaidJobs(runManager=true){
        try{
          const pre=await api('/api/freelancer/bid-preflight',{method:'POST',body:JSON.stringify({opportunity_id:id})});
          if(!pre.ok||!pre.eligible){status.textContent='⛔ 지원 차단: '+esc(pre.reason||'preflight_failed');return;}
-         const amount=(pre.draft&&pre.draft.bid_amount)??'',period=(pre.draft&&pre.draft.delivery_days)??'';
+         const amount=(pre.draft&&pre.draft.bid_amount)||'',period=(pre.draft&&pre.draft.delivery_days)||'';
          const ok=confirm('Freelancer에 실제 입찰을 제출합니다.\n금액: '+amount+' '+((pre.budget&&pre.budget.currency)||'')+'\n기간: '+period+'일\n\n제출 후 취소가 제한될 수 있습니다. 계속할까요?');
          if(!ok){status.textContent='승인이 취소되었습니다.';return;}
          status.textContent='공식 API로 입찰 제출 중…';
@@ -2309,7 +2309,7 @@ async function showDealGate(btn){
     const contract=sel('contract_status',g.contract_status,[['not_agreed','계약 전'],['negotiating','협의 중'],['accepted','계약/작업 합의 완료'],['cancelled','취소']]);
     const pay=sel('payment_status',g.payment_status,[['unsecured','결제 미확보'],['secured','결제 확보/에스크로·마일스톤 확인'],['prepaid','선결제 확인'],['paid','입금 완료'],['failed','결제 실패']]);
     const protect=sel('payment_protection',g.payment_protection,[['unknown','확인 필요'],['platform_escrow','플랫폼 에스크로'],['funded_milestone','펀딩된 마일스톤'],['onchain_or_bounty','온체인/바운티'],['direct_prepaid','직접 선결제'],['other','기타']]);
-    const input=(name,value,placeholder,type='text')=>'<input data-deal-field="'+name+'" type="'+type+'" value="'+esc(value??'')+'" placeholder="'+esc(placeholder)+'">';
+    const input=(name,value,placeholder,type='text')=>'<input data-deal-field="'+name+'" type="'+type+'" value="'+esc(value||'')+'" placeholder="'+esc(placeholder)+'">';
     const net=g.net_estimate==null?'미확정':Number(g.net_estimate).toLocaleString()+' '+esc(g.currency||'');
     const ab=g.advertised_budget||{}, advertised=(ab.min==null&&ab.max==null)?'원문 예산 정보 없음':((ab.currency||'')+' '+(ab.min==null?'?':Number(ab.min).toLocaleString())+(ab.max!=null&&ab.max!==ab.min?' ~ '+Number(ab.max).toLocaleString():''));
     el.innerHTML='<div class="card" style="margin-top:10px"><b>💳 Contract / Payment Gate</b><div class="reason">'+esc(p.platform||g.platform||'')+' · '+esc(p.application_method||'')+'<br>'+esc(p.protection_hint||'')+'</div>'+status+
@@ -2346,9 +2346,9 @@ async function showClientIntake(btn){
   btn.disabled=true; const old=btn.textContent; btn.textContent="불러오는 중…";
   try{
     const [d,c]=await Promise.all([api("/api/paid-jobs/"+encodeURIComponent(id)+"/intake"),api("/api/paid-jobs/"+encodeURIComponent(id)+"/connections")]);
-    const a=d.answers||{}, fields=d.spec?.fields||[];
+    const a=d.answers||{}, fields=(d.spec&&d.spec.fields)||[];
     const renderField=f=>{
-      const val=a[f.id]??""; const req=f.required?" *":""; const help=f.help?("<div class=\\\"intakeHelp\\\">"+esc(f.help)+"</div>"):"";
+      const val=a[f.id]||""; const req=f.required?" *":""; const help=f.help?("<div class=\\\"intakeHelp\\\">"+esc(f.help)+"</div>"):"";
       let control="";
       if(f.type==="select"){control="<select data-intake-field=\\\""+esc(f.id)+"\\\">"+((f.options||[]).map(o=>"<option value=\\\""+esc(o.value)+"\\\" "+(String(val)===String(o.value)?"selected":"")+">"+esc(o.label)+"</option>").join(""))+"</select>";}
       else if(f.type==="textarea"){control="<textarea data-intake-field=\\\""+esc(f.id)+"\\\">"+esc(val)+"</textarea>";}
@@ -2356,10 +2356,10 @@ async function showClientIntake(btn){
       return "<div class=\\\"intakeField\\\"><label>"+esc(f.label)+req+"</label>"+control+help+"</div>";
     };
     const basicHtml=fields.filter(f=>!f.advanced).map(renderField).join(""), advancedHtml=fields.filter(f=>f.advanced).map(renderField).join("");
-    const discovery=(d.discovery_plan||d.spec?.discovery_plan||[]);
+    const discovery=(d.discovery_plan||(d.spec&&d.spec.discovery_plan)||[]);
     const discoveryHtml=discovery.length?("<div class=\\\"reason\\\" style=\\\"margin:10px 0\\\"><b>🤖 시스템이 자동으로 처리할 항목</b><br>"+discovery.map(x=>"• "+esc(x)).join("<br>")+"</div>"):"";
     const advancedSection=advancedHtml?("<details style=\\\"margin:10px 0\\\"><summary><b>⚙️ 고급 입력 — 자동처리가 실패할 때만</b></summary>"+advancedHtml+"</details>"):"";
-    const answerStatus=d.status==="ready_for_build"?("<span class=\\\"intakeReady\\\">✅ 고객 답변 "+esc(d.completion?.complete||0)+"/"+esc(d.completion?.required||0)+"</span>"):("<span class=\\\"intakeMissing\\\">🟡 고객 답변 "+esc(d.completion?.complete||0)+"/"+esc(d.completion?.required||0)+"</span>");
+    const answerStatus=d.status==="ready_for_build"?("<span class=\\\"intakeReady\\\">✅ 고객 답변 "+esc((d.completion&&d.completion.complete)||0)+"/"+esc((d.completion&&d.completion.required)||0)+"</span>"):("<span class=\\\"intakeMissing\\\">🟡 고객 답변 "+esc((d.completion&&d.completion.complete)||0)+"/"+esc((d.completion&&d.completion.required)||0)+"</span>");
     const cp=c.progress||{}, connStatus=cp.ready?("<span class=\\\"intakeReady\\\">✅ 계정 연결 "+esc(cp.connected||0)+"/"+esc(cp.required||0)+"</span>"):("<span class=\\\"intakeMissing\\\">🔗 계정 연결 "+esc(cp.connected||0)+"/"+esc(cp.required||0)+"</span>");
     const connRows=(c.connections||[]).map(x=>{
       const ok=x.status==="connected_verified", meta=x.metadata||{}, summary=x.provider==="squarespace"?(meta.title||meta.url||""):x.provider==="prodigi"?(meta.mode||""):"";
@@ -2384,7 +2384,7 @@ async function connectAccount(btn){
       if(!d.authorization_url)throw new Error(d.error||"Etsy authorization URL missing");
       location.href=d.authorization_url; return;
     }
-    const row=btn.closest("[data-connection-provider]"), key=row?.querySelector("[data-account-key]")?.value||"", mode=row?.querySelector("[data-account-mode]")?.value||"sandbox";
+    const row=btn.closest("[data-connection-provider]"), key=((row&&row.querySelector("[data-account-key]"))||{}).value||"", mode=((row&&row.querySelector("[data-account-mode]"))||{}).value||"sandbox";
     if(!key){alert(provider+" API key를 입력해주세요.");return;}
     const d=await api("/api/paid-jobs/"+encodeURIComponent(id)+"/connections/"+encodeURIComponent(provider),{method:"POST",body:JSON.stringify({api_key:key,mode})});
     if(!d.ok)throw new Error(d.error+(d.detail?": "+d.detail:""));
@@ -2464,7 +2464,7 @@ async function showManagerPlan(btn){
   const br=p.build_runtime||{}, ag=p.artifact_generator||{}, cw=p.code_worker||{}, qc=p.qc||{}; const arts=(br.artifacts||[]).map(a=>'• '+esc(a.artifact_id)+' · '+esc(a.path)).join('<br>');
   const d=p.input_diagnostics||{};
   const diag='<details style="margin:10px 0"><summary>🔎 Manager 실제 입력 진단</summary><div class="meta" style="white-space:pre-wrap;margin-top:8px">TITLE: '+esc(d.title||'')+'\\nDESCRIPTION LENGTH: '+esc(d.description_length)+'\\nDESCRIPTION: '+esc(d.description||'')+'\\nSKILLS: '+esc(d.skills||'')+'\\nURL: '+esc(d.url||'')+'\\nANALYSIS LENGTH: '+esc(d.analysis_text_length)+'\\nANALYSIS PREVIEW: '+esc(d.analysis_preview||'')+'</div></details>';
-  el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc(p.build_spec?.spec_version||'no-build-spec')+'</div>'+diag+'<b>🧩 요구 기능</b><br>'+req+'<br><br><b>🏭 Factory Builder</b><br>'+esc(fb.builder_version||'')+' · 준비 '+esc(fb.ready_tasks||0)+' · 외부권한 대기 '+esc(fb.blocked_tasks||0)+'<br>'+bt+'<br><br><b>⚙️ Worker Execution</b><br>'+esc(wx.execution_version||'')+' · 내부 제작큐 '+esc(wx.queued_internal_builds||0)+' · 고객권한 대기 '+esc(wx.waiting_for_client_access||0)+'<br>'+wj+'<br><br><b>📦 Build Runtime</b><br>'+esc(br.runtime_version||'')+' · 산출물 '+esc(br.artifact_count||0)+'개<br>'+arts+'<br><br><b>🛠 Artifact Generator</b><br>'+esc(ag.generator_version||'')+' · 실제 초안 '+esc(ag.generated_count||0)+'개 · '+esc(ag.total_bytes||0)+' bytes<br><br><b>💻 Code Worker</b><br>'+esc(cw.code_worker_version||'')+' · '+esc(cw.status||'')+' · 파일 '+esc(cw.file_count||0)+'개 · 테스트 '+esc(cw.test_execution||'')+'<br><br><b>🧪 QC</b><br>'+esc(qc.qc_version||'')+' · '+esc(qc.status||'')+' · '+esc(qc.passed||0)+'/'+esc(qc.total||0)+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
+  el.innerHTML='<div class="reason" style="margin-top:12px"><div class="meta">Manager '+esc(p.manager_version)+' · '+esc((p.build_spec&&p.build_spec.spec_version)||'no-build-spec')+'</div>'+diag+'<b>🧩 요구 기능</b><br>'+req+'<br><br><b>🏭 Factory Builder</b><br>'+esc(fb.builder_version||'')+' · 준비 '+esc(fb.ready_tasks||0)+' · 외부권한 대기 '+esc(fb.blocked_tasks||0)+'<br>'+bt+'<br><br><b>⚙️ Worker Execution</b><br>'+esc(wx.execution_version||'')+' · 내부 제작큐 '+esc(wx.queued_internal_builds||0)+' · 고객권한 대기 '+esc(wx.waiting_for_client_access||0)+'<br>'+wj+'<br><br><b>📦 Build Runtime</b><br>'+esc(br.runtime_version||'')+' · 산출물 '+esc(br.artifact_count||0)+'개<br>'+arts+'<br><br><b>🛠 Artifact Generator</b><br>'+esc(ag.generator_version||'')+' · 실제 초안 '+esc(ag.generated_count||0)+'개 · '+esc(ag.total_bytes||0)+' bytes<br><br><b>💻 Code Worker</b><br>'+esc(cw.code_worker_version||'')+' · '+esc(cw.status||'')+' · 파일 '+esc(cw.file_count||0)+'개 · 테스트 '+esc(cw.test_execution||'')+'<br><br><b>🧪 QC</b><br>'+esc(qc.qc_version||'')+' · '+esc(qc.status||'')+' · '+esc(qc.passed||0)+'/'+esc(qc.total||0)+'<br><br><b>❓ 고객 확인 질문</b><br>'+qs+'<br><br><b>⏱ 예상 제작</b> '+esc(p.estimated_build_hours)+'시간 · <b>외부비용</b> '+(p.external_cost_status==='needs_validation'||p.estimated_external_cost==null?'확인 필요':esc(p.estimated_external_cost))+' · <b>위험도</b> '+esc(p.delivery_risk)+'<br><br><b>✉️ 지원 메시지 초안</b><br>'+esc(p.proposal_draft)+'<br><br><b>상태</b> '+esc(p.status)+' — 승인 전에는 자동 지원/전송하지 않음</div>';
  }catch(err){el.innerHTML='<div class="empty error">작업계획 조회 실패: '+esc(err.message)+'</div>';}
  finally{btn.disabled=false;btn.textContent=old;}
 }
