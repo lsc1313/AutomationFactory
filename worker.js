@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.56.2";
-const BUILD_ID = "v0.56.2-funnel-consistency-20261003";
+const APP_VERSION = "0.56.3";
+const BUILD_ID = "v0.56.3-platform-eligibility-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2293,7 +2293,20 @@ async function loadPaidJobs(runManager=true){
  const applicationRows=humanRows.filter(j=>j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied');
  const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
  const center=await api('/api/application-center',{timeoutMs:5000}).catch(()=>({count:0,held_count:applicationRows.length,items:[],degraded:true}));
- const shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0), appDiag=center.diagnostics||{}, sourceFunnel=center.source_funnel||{};
+ let shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0), appDiag=center.diagnostics||{}, sourceFunnel=center.source_funnel||{};
+ const freelancerConnection=await getPlatformConnection(env,"freelancer");
+ const freelancerBalanceBlocked=freelancerConnection.metadata?.bid_balance_blocked===true;
+ const freelancerRequiredBalance=Number(freelancerConnection.metadata?.bid_min_balance_usd||19);
+ if(freelancerBalanceBlocked){
+   const blockedSelected=(center.selected||[]).filter(x=>String(x.row?.source||"")==="freelancer_projects").length;
+   shortlistCount=Math.max(0,shortlistCount-blockedSelected);
+   applicationHeldCount+=blockedSelected;
+   if(sourceFunnel.freelancer_projects){
+     sourceFunnel.freelancer_projects.platform_eligible=0;
+     sourceFunnel.freelancer_projects.platform_blocked=Number(sourceFunnel.freelancer_projects.application_safe||0);
+     sourceFunnel.freelancer_projects.approval_waiting=0;
+   }
+ }
  const centerHeldItems=Array.isArray(center.held_items)?center.held_items:[];
  const centerHeldIds=new Set(centerHeldItems.map(x=>String(x.opportunity_id||'')));
  const safetyHeldCount=rows.filter(j=>j.manager_stage==='auto_held'&&!centerHeldIds.has(String(j.opportunity_id||''))).length;
@@ -2311,9 +2324,9 @@ async function loadPaidJobs(runManager=true){
  }
  const actionableHumanCount=shortlistCount+otherHumanRows.length;
  const revenueExecutionCount=autoCount+shortlistCount+passiveRows.length+readyCount;
- const humanInbox=actionableHumanCount?'<div class="notice"><b>👆 지금 사람이 할 일 '+actionableHumanCount+'건</b><br><span class="sub">실제로 개입할 항목만 표시합니다. 지원/안전게이트 '+heldApplicationCount+'건은 Manager가 자동보류 중입니다.</span>'+(shortlistCount?'<div class="decisions"><button id="openApplicationCenter">📨 우선지원 '+shortlistCount+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다.</span></div>';
+ const humanInbox=actionableHumanCount?'<div class="notice"><b>👆 지금 사람이 할 일 '+actionableHumanCount+'건</b><br><span class="sub">실제로 개입할 항목만 표시합니다. 지원/안전게이트 '+heldApplicationCount+'건은 Manager가 자동보류 중입니다.</span>'+(freelancerBalanceBlocked?'<div class="reason">⛔ Freelancer 현재 지원 불가 · 계정 최소 잔액 '+esc(freelancerRequiredBalance)+' USD 조건 때문에 우선지원에서 제외합니다.</div>':'')+(shortlistCount?'<div class="decisions"><button id="openApplicationCenter">📨 우선지원 '+shortlistCount+'건 열기</button></div>':'')+(otherHumanRows.length?'<div class="decisions">'+otherHumanRows.map(j=>'<a class="link" target="_blank" rel="noopener" href="'+esc(j.url)+'">'+esc(j.title)+' · '+esc(j.manager_status_label||'외부 처리')+'</a>').join('<br>')+'</div>':'')+'<div id="applicationCenter"></div></div>':'<div class="notice"><b>🙌 지금 사람이 할 일 0건</b><br><span class="sub">현재는 자동공장 또는 외부 응답을 기다리면 됩니다.</span></div>';
  const sourceNames={freelancer_projects:'Freelancer',github_paid:'GitHub Paid',agent_bounties:'Agent Bounties'};
- const sourceFunnelBox=Object.entries(sourceFunnel).length?'<div class="notice"><b>💸 소스별 수익 전환</b><br><span class="sub">후보 → 제작가능 → 보상확인 → 지원후보 → 안전통과 → 승인대기 → 제출/진행</span>'+Object.entries(sourceFunnel).map(([s,x])=>'<div style="margin-top:9px"><b>'+esc(sourceNames[s]||s)+'</b> · 후보 '+esc(x.total||0)+' → 제작 '+esc(x.factory_ready||0)+' → 보상확인 '+esc(x.pay_verified||0)+(Number(x.pay_verification_waiting||0)?' <span class="sub">(검증대기 '+esc(x.pay_verification_waiting||0)+')</span>':'')+' → 지원후보 '+esc(x.judge_actionable||0)+' → 안전통과 '+esc(x.application_safe||0)+' → 승인대기 '+esc(x.approval_waiting||0)+' → 제출/진행 '+esc(x.submitted||0)+'</div>').join('')+'</div>':'';
+ const sourceFunnelBox=Object.entries(sourceFunnel).length?'<div class="notice"><b>💸 소스별 수익 전환</b><br><span class="sub">후보 → 제작가능 → 보상확인 → 지원후보 → 안전통과 → 플랫폼지원가능 → 승인대기 → 제출/진행</span>'+Object.entries(sourceFunnel).map(([s,x])=>'<div style="margin-top:9px"><b>'+esc(sourceNames[s]||s)+'</b> · 후보 '+esc(x.total||0)+' → 제작 '+esc(x.factory_ready||0)+' → 보상확인 '+esc(x.pay_verified||0)+(Number(x.pay_verification_waiting||0)?' <span class="sub">(검증대기 '+esc(x.pay_verification_waiting||0)+')</span>':'')+' → 지원후보 '+esc(x.judge_actionable||0)+' → 안전통과 '+esc(x.application_safe||0)+' → 플랫폼지원가능 '+esc(x.platform_eligible===undefined?x.application_safe:x.platform_eligible)+(Number(x.platform_blocked||0)?' <span class="sub">(계정차단 '+esc(x.platform_blocked)+')</span>':'')+' → 승인대기 '+esc(x.approval_waiting||0)+' → 제출/진행 '+esc(x.submitted||0)+'</div>').join('')+'</div>':'';
  const platformBox='<div class="notice" id="platformConnectionCenter"><b>🔌 플랫폼 연결센터</b><br><span class="sub">Freelancer 연결 상태 확인 중…</span></div>';
   const summary='<div class="notice"><b>💰 수익 실행 대시보드</b><br>수익진행 <b>'+revenueExecutionCount+'</b> · 내부자동 '+autoCount+' · 사람확인 '+actionableHumanCount+' · 자동보류 '+heldApplicationCount+' · 외부응답대기 '+passiveRows.length+' · 납품준비 '+readyCount+' · 예외 '+exceptionCount+'<br><span class="sub">Money Scout는 뒤에서 계속 탐색합니다. 여기에는 지금 돈으로 연결되는 실행 항목을 먼저 표시합니다.</span>'+(heldApplicationCount?'<br><span class="sub"><b>자동보류 진단</b> · 자격/포트폴리오 '+holdDiagnostics.qualification+' · 첨부검증 '+holdDiagnostics.attachment+' · 고객환경의존 '+holdDiagnostics.independent_delivery+' · 복합범위 '+holdDiagnostics.complex_scope+' · 납기/위험 '+holdDiagnostics.delivery_risk+' · 기타 '+holdDiagnostics.other+'</span>':'')+(appDiag.held_count?'<br><span class="sub"><b>지원센터 탈락 '+esc(appDiag.held_count)+'</b> · 하드차단 '+esc((appDiag.counts||{}).hard_hold||0)+' · 우선점수미달 '+esc((appDiag.counts||{}).below_priority||0)+' · 상위3건 제한 '+esc((appDiag.counts||{}).capacity_limit||0)+' · 플랫폼미연결 '+esc((appDiag.counts||{}).platform_not_connected||0)+' · 저가치/시간 '+esc((appDiag.counts||{}).low_value||0)+' · 경쟁과다 '+esc((appDiag.counts||{}).competition||0)+' · 계약후 고객접근 '+esc((appDiag.counts||{}).client_access||0)+'</span>':'')+'</div>'+humanInbox;
  el.innerHTML=platformBox+sourceFunnelBox+summary+'<details class="jobDetails" style="margin-top:14px"><summary>📦 전체 유료 일감 '+rows.length+'개 보기</summary><div class="sub" style="margin:10px 0">평소에는 열어볼 필요 없습니다. Manager가 우선지원·계약·제작·납품 단계가 되면 위 실행 영역으로 올립니다.</div>'+rows.map(j=>{
@@ -2359,6 +2372,8 @@ async function loadPaidJobs(runManager=true){
    const box=document.getElementById('applicationCenter'); appBtn.disabled=true;appBtn.textContent='지원서 준비 중…';
    try{
      const d=await api('/api/application-center');
+     const pc=await api('/api/platform-connections').catch(()=>({providers:[]})), fc=(pc.providers||[]).find(x=>x.provider==='freelancer')||{}, balanceBlocked=fc.metadata&&fc.metadata.bid_balance_blocked===true;
+     if(balanceBlocked){box.innerHTML='<div class="card"><b>⛔ Freelancer 지원 보류</b><div class="reason">현재 계정의 최소 잔액 조건 때문에 실제 입찰이 불가능하여 승인대기 목록에서 제외했습니다.</div></div>';return;}
      box.innerHTML='<div class="card" style="margin-top:10px"><b>📨 지원센터 · 우선지원 '+d.count+'건</b><div class="intakeHelp">Manager가 수익성·제작가능성·작업시간·외부의존성을 기준으로 선별했습니다. 보류 '+d.held_count+'건은 지금 확인할 필요 없습니다. Freelancer 공식 API 제출은 사용자 승인 후 Preflight를 통과한 지원서만 실행합니다.</div>'+
        d.items.map((x,i)=>'<details class="jobDetails"><summary>'+(i+1)+'. '+esc(x.title)+' · '+esc(x.currency)+' '+esc(x.bid_amount||'금액확인')+' · '+esc(x.delivery_days)+'일</summary><div class="reason"><b>제안문</b><br>'+esc(x.proposal)+'</div>'+((x.questions&&x.questions.length)?'<div class="reason"><b>확인 질문</b><br>'+x.questions.map(q=>'• '+esc(q)).join('<br>')+'</div>':'')+'<div class="reason"><b>판단근거</b><br>경쟁 '+esc((x.decision_summary&&x.decision_summary.competition_count)||0)+'명 · 제안 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.gross_bid)||x.bid_amount||0)+' · 예상 순수익 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.estimated_net)||'확인중')+' · 예상 작업 '+esc((x.decision_summary&&x.decision_summary.effective_estimated_hours)||'확인중')+'시간 · 시간당 가치 '+esc(x.currency)+' '+esc((x.decision_summary&&x.decision_summary.value_per_hour)||'확인중')+' · 자동완결 '+esc((x.decision_summary&&x.decision_summary.automation_completion_ratio)||0)+'%</div><div class="decisions"><button class="approveBidBtn" data-job-id="'+esc(x.opportunity_id)+'">✅ 지원 승인 · Preflight</button> <a class="link" target="_blank" rel="noopener" href="'+esc(x.application_url)+'">원문 열기</a></div><div class="sub" id="bid-status-'+esc(x.opportunity_id)+'"></div></details>').join('')+
        '</div>';
