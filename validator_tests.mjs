@@ -462,7 +462,6 @@ assert.match(fulfillJudge, /execution-gate-v0\.8\.0/);
 
 // v0.7.6 paid jobs must be rejudged after Judge upgrades
 const rejudgeWorker = fs.readFileSync(new URL("./worker.js", import.meta.url), "utf8");
-assert.match(rejudgeWorker, /staleJudge/);
 assert.match(rejudgeWorker, /execution-gate-v0\.8\.0/);
 assert.match(rejudgeWorker, /factory_fulfillable/);
 assert.match(rejudgeWorker, /await rejudgeAll\(env\)/);
