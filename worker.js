@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.9";
-const BUILD_ID = "v0.55.9-async-revenue-scan-20261003";
+const APP_VERSION = "0.56.0";
+const BUILD_ID = "v0.56.0-source-breakdown-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -459,17 +459,20 @@ async function runScout(env, sourceNames = null) {
   let watch = 0;
   let cold = 0;
   const sourceDiagnostics = {};
+  const sourceCounts = {};
 
   for (const group of collected.results) {
+    sourceCounts[group.source] = { found: Number(group.items?.length || 0), saved: 0, hot: 0, watch: 0, cold: 0 };
     if (group.items?.diagnostics) sourceDiagnostics[group.source] = group.items.diagnostics;
     found += group.items.length;
     for (const item of group.items) {
       try {
         const r = await upsertOpportunity(env, item);
         saved += 1;
-        if (r.grade === "hot") hot += 1;
-        else if (r.grade === "watch") watch += 1;
-        else cold += 1;
+        if (sourceCounts[group.source]) sourceCounts[group.source].saved += 1;
+        if (r.grade === "hot") { hot += 1; if (sourceCounts[group.source]) sourceCounts[group.source].hot += 1; }
+        else if (r.grade === "watch") { watch += 1; if (sourceCounts[group.source]) sourceCounts[group.source].watch += 1; }
+        else { cold += 1; if (sourceCounts[group.source]) sourceCounts[group.source].cold += 1; }
       } catch (error) {
         collected.errors.push({
           source: group.source,
@@ -479,6 +482,9 @@ async function runScout(env, sourceNames = null) {
     }
   }
 
+  for (const name of names) if (!sourceCounts[name]) sourceCounts[name] = { found: 0, saved: 0, hot: 0, watch: 0, cold: 0 };
+  for (const err of collected.errors) if (sourceCounts[err.source]) sourceCounts[err.source].errors = Number(sourceCounts[err.source].errors || 0) + 1;
+  const sourceSummaryDiagnostic={source:"source_summary",diagnostic:{counts:sourceCounts}};
   const subscription_mining = await mineSubscriptionCandidates(env);
   const finished = nowIso();
   await env.DB.prepare(`
@@ -494,7 +500,7 @@ async function runScout(env, sourceNames = null) {
     watch,
     cold,
     collected.errors.length,
-    JSON.stringify([runtimeDiagnostic, ...collected.errors, ...Object.entries(sourceDiagnostics).map(([source, d]) => ({ source, diagnostic: d }))]),
+    JSON.stringify([runtimeDiagnostic, sourceSummaryDiagnostic, ...collected.errors, ...Object.entries(sourceDiagnostics).map(([source, d]) => ({ source, diagnostic: d }))]),
     runId
   ).run();
 
@@ -509,6 +515,7 @@ async function runScout(env, sourceNames = null) {
     grades: { hot, watch, cold },
     errors: collected.errors,
     diagnostics: sourceDiagnostics,
+    source_counts: sourceCounts,
     subscription_mining,
     runtime: { app_version: APP_VERSION, build_id: BUILD_ID }
   };
@@ -2156,7 +2163,7 @@ async function load(){
  let runMeta=''; try{const a=JSON.parse((lr&&lr.errors_json)||'[]'); const d=(a.find(x=>x.source==='freelancer_projects'&&x.diagnostic)||{}).diagnostic; if(d)runMeta=' · Freelancer '+d.pages_succeeded+'/'+d.pages_requested+'페이지 · 원본 '+d.raw_count+' · 고유 '+d.unique_count;}catch{}
  document.getElementById('runinfo').textContent=(stats.active_run?'자동 스캔 실행 중 · 시작 '+when(stats.active_run.started_at)+' | ':'')+(lr?('마지막 완료 '+when(lr.finished_at||lr.started_at)+' · 발견 '+lr.found_count+' · 저장 '+lr.saved_count+' · 오류 '+lr.error_count+runMeta):'완료된 스캔 기록이 없습니다.');
  let diag=[];try{diag=JSON.parse((lr&&lr.errors_json)||'[]').filter(x=>x.diagnostic)}catch{}
- const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='runtime')return '실행코드 '+(d.app_version||'?')+' · 빌드 '+(d.build_id||'?');if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links||0)+' · 상세확인 '+(d.details_checked||0)+' · Micro 후보 '+(d.micro_matches||0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count||0)+' · 선별 '+(d.unique_count||0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
+ const diagText=diag.map(x=>{const d=x.diagnostic||{};if(x.source==='runtime')return '실행코드 '+(d.app_version||'?')+' · 빌드 '+(d.build_id||'?');if(x.source==='source_summary'){const counts=d.counts||{};return '소스별 유입 '+Object.entries(counts).map(([s,v])=>s+' '+(v.found||0)+'건'+((v.errors||0)?' (오류 '+v.errors+')':'')).join(' · ');}if(x.source==='wishket_projects')return '위시켓 · 공개링크 '+(d.public_links||0)+' · 상세확인 '+(d.details_checked||0)+' · Micro 후보 '+(d.micro_matches||0)+' · 외부쓰기 OFF';if(x.source==='freelancer_projects')return 'Freelancer · 원본 '+(d.raw_count||0)+' · 선별 '+(d.unique_count||0);return x.source+' · 수집진단 '+JSON.stringify(d)}).join(' | ');
  document.getElementById('sourceDiagnostics').textContent=diagText?('플랫폼별 진단 · '+diagText):'플랫폼별 수집 진단은 다음 스캔부터 표시됩니다.';
  const re=document.getElementById('runerrors');
  let errs=[];try{errs=JSON.parse((lr&&lr.errors_json)||'[]').filter(x=>x.error)}catch{}
@@ -2217,8 +2224,8 @@ if(revenueBtn)revenueBtn.onclick=async()=>{
   document.getElementById('runinfo').textContent='수익형 즉시 스캔 요청 중… 위시켓 · Agent Bounties · GitHub Paid · Freelancer';
   try{
     const d=await api('/api/scout/revenue-core',{method:'POST',body:'{}',timeoutMs:120000});
-    const sd=(d.scan&&d.scan.diagnostics)||{}, errs=(d.scan&&d.scan.errors)||[];
-    const src=((d.scan&&d.scan.sources)||[]).map(s=>{const x=sd[s]||{};let detail='';if(s==='freelancer_projects')detail='원본 '+(x.raw_count||0)+' / 선별 '+(x.unique_count||0);else if(s==='wishket_projects')detail='링크 '+(x.public_links||0)+' / 후보 '+(x.micro_matches||0);else detail='수집완료';const er=errs.find(e=>e.source===s);return s+' ['+(er?'오류: '+er.error:detail)+']';}).join(' · ');
+    const sd=(d.scan&&d.scan.diagnostics)||{}, sc=(d.scan&&d.scan.source_counts)||{}, errs=(d.scan&&d.scan.errors)||[];
+    const src=((d.scan&&d.scan.sources)||[]).map(s=>{const x=sd[s]||{}, n=sc[s]||{};let detail='유입 '+(n.found||0)+' / 저장 '+(n.saved||0);if(s==='freelancer_projects'&&x.raw_count!=null)detail+=' · 원본 '+(x.raw_count||0)+' / 선별 '+(x.unique_count||0);else if(s==='wishket_projects'&&x.public_links!=null)detail+=' · 링크 '+(x.public_links||0)+' / 후보 '+(x.micro_matches||0);const er=errs.find(e=>e.source===s);return s+' ['+detail+(er?' · 오류: '+er.error:'')+']';}).join(' · ');
     document.getElementById('runinfo').textContent='수익형 스캔 완료 · 발견 '+((d.scan&&d.scan.found)||0)+' · 저장 '+((d.scan&&d.scan.saved)||0)+' · '+src;
     alert('수익형 스캔 완료');
     await load();
