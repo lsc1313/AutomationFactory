@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.3";
-const BUILD_ID = "v0.53.3-paid-jobs-readonly-fast-20261003";
+const APP_VERSION = "0.53.4";
+const BUILD_ID = "v0.53.4-mobile-api-timeout-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2055,7 +2055,21 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const tokenEl=document.getElementById('token');
 tokenEl.value=localStorage.getItem('af_admin_token')||'';
 function headers(){const h={'content-type':'application/json'};const t=localStorage.getItem('af_admin_token')||'';if(t)h['x-admin-token']=t;return h;}
-async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json().catch(()=>({error:'응답 해석 실패'}));if(!r.ok){const detail=j.detail?(' · '+String(j.detail).slice(0,300)):'';throw new Error((j.error||('HTTP '+r.status))+detail);}return j;}
+async function api(url,opt={}){
+ const controller=new AbortController();
+ const timeoutMs=Number(opt.timeoutMs||12000);
+ const timer=setTimeout(()=>controller.abort(),timeoutMs);
+ try{
+  const clean={...opt};delete clean.timeoutMs;
+  const r=await fetch(url,{...clean,signal:controller.signal,headers:{...headers(),...(clean.headers||{})}});
+  const j=await r.json().catch(()=>({error:'응답 해석 실패'}));
+  if(!r.ok){const detail=j.detail?(' · '+String(j.detail).slice(0,300)):'';throw new Error((j.error||('HTTP '+r.status))+detail);}
+  return j;
+ }catch(e){
+  if(e&&e.name==='AbortError')throw new Error('응답 시간 초과 ('+Math.round(timeoutMs/1000)+'초)');
+  throw e;
+ }finally{clearTimeout(timer);}
+}
 function money(a,b,c){if(a==null&&b==null)return '';const f=n=>Number(n||0).toLocaleString();return (a===b||!b?f(a):f(a)+' ~ '+f(b))+(c?' '+c:'');}
 function when(s){if(!s)return '';const d=new Date(s);return isNaN(d)?'':d.toLocaleString();}
 function stateLabel(s){return s==='proceed'?'진행':s==='hold'?'보류':s==='reject'?'제외':'미검토';}
@@ -2161,7 +2175,7 @@ async function loadPaidJobs(runManager=true){
  const passiveRows=waitingRows.filter(j=>!humanRows.includes(j));
  const applicationRows=humanRows.filter(j=>j.manager_stage==='waiting_contract_payment'&&(j.deal_application_status||'not_applied')==='not_applied');
  const otherHumanRows=humanRows.filter(j=>!applicationRows.includes(j));
- const center=await api('/api/application-center').catch(()=>({count:0,held_count:applicationRows.length,items:[]}));
+ const center=await api('/api/application-center',{timeoutMs:5000}).catch(()=>({count:0,held_count:applicationRows.length,items:[],degraded:true}));
  const shortlistCount=Number(center.count||0), applicationHeldCount=Number(center.held_count||0);
  const safetyHeldCount=rows.filter(j=>j.manager_stage==='auto_held').length;
  const heldApplicationCount=applicationHeldCount+safetyHeldCount;
