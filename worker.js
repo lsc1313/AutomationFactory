@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.53.8";
-const BUILD_ID = "v0.53.8-inline-script-compat-20261003";
+const APP_VERSION = "0.53.9";
+const BUILD_ID = "v0.53.9-confirm-newline-parse-fix-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -2260,7 +2260,7 @@ async function loadPaidJobs(runManager=true){
          const pre=await api('/api/freelancer/bid-preflight',{method:'POST',body:JSON.stringify({opportunity_id:id})});
          if(!pre.ok||!pre.eligible){status.textContent='⛔ 지원 차단: '+esc(pre.reason||'preflight_failed');return;}
          const amount=(pre.draft&&pre.draft.bid_amount)||'',period=(pre.draft&&pre.draft.delivery_days)||'';
-         const ok=confirm('Freelancer에 실제 입찰을 제출합니다.\n금액: '+amount+' '+((pre.budget&&pre.budget.currency)||'')+'\n기간: '+period+'일\n\n제출 후 취소가 제한될 수 있습니다. 계속할까요?');
+         const ok=confirm('Freelancer에 실제 입찰을 제출합니다.\\n금액: '+amount+' '+((pre.budget&&pre.budget.currency)||'')+'\\n기간: '+period+'일\\n\\n제출 후 취소가 제한될 수 있습니다. 계속할까요?');
          if(!ok){status.textContent='승인이 취소되었습니다.';return;}
          status.textContent='공식 API로 입찰 제출 중…';
          const out=await api('/api/freelancer/bid-submit',{method:'POST',body:JSON.stringify({opportunity_id:id,approved:true})});
