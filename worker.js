@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.1";
-const BUILD_ID = "v0.55.1-application-hold-diagnostics-20261003";
+const APP_VERSION = "0.55.2";
+const BUILD_ID = "v0.55.2-profit-ranked-human-approval-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1170,14 +1170,15 @@ function applicationPriority(row,draft) {
   if(automationRatio<0.65){points-=3;reasons.push("low_automation_completion_ratio")}
   if(integrationDependencies.length){points-=Math.min(4,integrationDependencies.length*2);deliveryRisk+=integrationDependencies.length;reasons.push(...integrationDependencies)}
   const complexScope=scopeSignals.length>=2;
-  if((scopeSignals.length&&Number(draft.effective_estimated_hours||0)<=3)||complexScope){points-=complexScope?8:4;deliveryRisk+=complexScope?4:2;reasons.push("scope_time_underestimate")}
+  if((scopeSignals.length&&Number(draft.effective_estimated_hours||0)<=3)||complexScope){points-=complexScope?4:2;deliveryRisk+=complexScope?2:1;reasons.push("scope_time_underestimate")}
   if(qualificationHardHold){points-=100;reasons.push("qualification_proof_required")}
   if(attachmentHardHold){points-=100;reasons.push("attachment_not_verified")}
-  // Client workspace/runtime access is normal for many paid implementation jobs.
-  // Block production until authorized access exists, but do not block the proposal itself.
-  if(independentDeliveryHardHold){points-=3;deliveryRisk+=2;reasons.push("client_access_required_after_contract")}
-  const hardHold=qualificationHardHold||attachmentHardHold||complexScope||(deliveryRisk>=5&&draft.delivery_days<=3);
-  if(hardHold){reasons.push(qualificationHardHold?"qualification_evidence_gate":attachmentHardHold?"attachment_review_gate":complexScope?"complex_scope_review_gate":"delivery_risk_gate")}
+  // Client access and broad scope are bid-planning risks, not reasons to suppress a proposal.
+  // Production remains blocked later until the contract/access gates are satisfied.
+  if(independentDeliveryHardHold){points-=1;deliveryRisk+=1;reasons.push("client_access_required_after_contract")}
+  const impossibleTightDelivery=deliveryRisk>=7&&draft.delivery_days<=2;
+  const hardHold=qualificationHardHold||attachmentHardHold||impossibleTightDelivery;
+  if(hardHold){reasons.push(qualificationHardHold?"qualification_evidence_gate":attachmentHardHold?"attachment_review_gate":"delivery_risk_gate")}
   return {points,reasons,gross_bid:gross,estimated_platform_fee:estimatedPlatformFee,estimated_net:estimatedNet,fee_rate_assumption:feeRate,competition_count:competitionCount,value_per_hour:Math.round(valuePerHour*100)/100,delivery_risk:deliveryRisk,automation_completion_ratio:Math.round(automationRatio*100),hard_hold:hardHold,proof_requirements:proofRequirements,integration_dependencies:integrationDependencies,external_workspace_signals:externalWorkspaceSignals,environment_dependency_signals:environmentDependencySignals,scope_signals:scopeSignals,attachment_signals:attachmentSignals,requires_human_qualification_review:qualificationHardHold,requires_attachment_review:attachmentHardHold,requires_independent_delivery_review:false,requires_client_access_after_contract:independentDeliveryHardHold,requires_client_environment_review:environmentDependencySignals.length>0,requires_complex_scope_review:complexScope};
 }
 
@@ -1487,7 +1488,9 @@ async function applicationCenterRows(env) {
     }
     return {row,draft:{...draft,priority,platform_connection:needsFreelancer?{provider:"freelancer",account_status:freelancer.account_status,api_status:freelancer.api_status}:null}}})
     .sort((a,b)=>b.draft.priority.points-a.draft.priority.points||Number(b.row.score||0)-Number(a.row.score||0));
-  const selected=ranked.filter(x=>x.draft.priority.points>=4&&!x.draft.priority.hard_hold).slice(0,3);
+  // Rank viable jobs by economics/competition, but always surface the best safe candidates
+  // for explicit human approval instead of requiring an arbitrary positive score.
+  const selected=ranked.filter(x=>!x.draft.priority.hard_hold).slice(0,3);
   return {
     selected:selected.map(x=>({...x,decision_summary:{
       competition_count:x.draft.priority.competition_count,
@@ -1509,8 +1512,7 @@ async function applicationCenterRows(env) {
       for(const x of held){
         const p=x.draft.priority||{}, rs=p.reasons||[];
         if(p.hard_hold)counts.hard_hold++;
-        if(!p.hard_hold&&Number(p.points||0)<4)counts.below_priority++;
-        if(!p.hard_hold&&Number(p.points||0)>=4)counts.capacity_limit++;
+        if(!p.hard_hold&&selected.includes(x)){} else if(!p.hard_hold)counts.capacity_limit++;
         if(rs.includes("platform_not_connected"))counts.platform_not_connected++;
         if(rs.includes("qualification_evidence_gate"))counts.qualification++;
         if(rs.includes("attachment_review_gate"))counts.attachment++;
@@ -1521,7 +1523,7 @@ async function applicationCenterRows(env) {
         if(rs.includes("client_access_required_after_contract"))counts.client_access++;
         if(!p.hard_hold&&Number(p.points||0)>=4&&selected.length>=3){} else if(!(rs.length))counts.other++;
       }
-      return {candidate_count:ranked.length,selected_count:selected.length,held_count:held.length,selection_threshold:4,selection_capacity:3,counts};
+      return {candidate_count:ranked.length,selected_count:selected.length,held_count:held.length,selection_threshold:"ranked_safe_top3",selection_capacity:3,counts};
     })()
   };
 }
