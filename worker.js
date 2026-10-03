@@ -1,8 +1,8 @@
 import { judgeOpportunity } from "./judge.js";
 import { collectSources, SOURCE_REGISTRY, collectMarketplaceValidationEvidence } from "./sources.js";
 
-const APP_VERSION = "0.55.4";
-const BUILD_ID = "v0.55.4-bid-error-ui-20261003";
+const APP_VERSION = "0.55.5";
+const BUILD_ID = "v0.55.5-freelancer-balance-preflight-20261003";
 const APP_NAME = "Money Scout";
 
 function json(data, status = 200, headers = {}) {
@@ -1388,8 +1388,22 @@ async function freelancerBidPreflight(env,row) {
   const restrictedPreferred=/(?:preferred freelancer|preferred_freelancer|preferred-only|preferred only)/i.test(projectText);
   const restrictedSelected=/(?:selected freelancer|selected_freelancer|invite[-_ ]only|invited freelancer)/i.test(projectText);
   const account=await freelancerApiRead(env,"/api/users/0.1/self/");
-  const accountText=JSON.stringify(account.payload||{}).toLowerCase();
+  const accountPayload=account.payload||{}, accountText=JSON.stringify(accountPayload).toLowerCase();
   const accountPreferred=/(?:preferred freelancer|preferred_freelancer)[^,}\]]{0,80}(?:true|1|yes)/i.test(accountText);
+  // Freelancer can require a minimum available balance before accepting a bid.
+  // Use account balances only when the API exposes a clear USD available/amount field.
+  const balanceRows=accountPayload?.result?.balances||accountPayload?.balances||accountPayload?.result?.user?.balances||[];
+  let usdBalance=null;
+  if(Array.isArray(balanceRows)){
+    for(const b of balanceRows){
+      const code=String(b?.currency?.code||b?.currency_code||b?.code||"").toUpperCase();
+      if(code!=="USD")continue;
+      const v=Number(b?.available??b?.available_balance??b?.amount??b?.balance);
+      if(Number.isFinite(v)){usdBalance=v;break;}
+    }
+  }
+  const knownMinBidBalanceUsd=19;
+  if(usdBalance!==null&&usdBalance<knownMinBidBalanceUsd)return {ok:true,eligible:false,project_id:projectId,status:status||"unknown",reason:"insufficient_account_balance",required_balance_usd:knownMinBidBalanceUsd,available_balance_usd:usdBalance,write_executed:false};
   if(restrictedPreferred&&!accountPreferred)return {ok:true,eligible:false,project_id:projectId,status:status||"unknown",reason:"preferred_freelancer_required",write_executed:false};
   if(restrictedSelected)return {ok:true,eligible:false,project_id:projectId,status:status||"unknown",reason:"selected_freelancer_restriction",write_executed:false};
   const draft=applicationDraft(row), priority=applicationPriority(row,draft);
@@ -2344,6 +2358,7 @@ async function loadPaidJobs(runManager=true){
          }else{
            const pf=out.preflight||{}, dr=pf.draft||{}, bg=pf.budget||{};
            const parts=['⛔ 제출 실패'];
+           if(pf.reason==='insufficient_account_balance')parts.push('Freelancer 최소 잔액 '+esc(pf.required_balance_usd||19)+' USD 필요'+(pf.available_balance_usd!==undefined?' · 현재 '+esc(pf.available_balance_usd)+' USD':''));
            if(out.status!==undefined&&out.status!==null)parts.push('HTTP '+esc(out.status));
            if(out.api_message)parts.push(esc(out.api_message));
            if(dr.bid_amount!==undefined)parts.push('입찰 '+esc(dr.bid_amount)+(bg.currency?' '+esc(bg.currency):''));
