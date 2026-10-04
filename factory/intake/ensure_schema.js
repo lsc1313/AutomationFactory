@@ -5,6 +5,7 @@ const SQL=[
 "CREATE TABLE IF NOT EXISTS intake_review_queue (review_id TEXT PRIMARY KEY,intake_job_id TEXT NOT NULL,intake_file_id TEXT NOT NULL,reason_code TEXT NOT NULL,candidates_json TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'pending',resolution_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
 "CREATE INDEX IF NOT EXISTS idx_intake_review_status ON intake_review_queue(status,created_at)",
 "CREATE TABLE IF NOT EXISTS extraction_jobs (extraction_job_id TEXT PRIMARY KEY,intake_job_id TEXT NOT NULL DEFAULT '',intake_file_id TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT 'pc_ocr',mode TEXT NOT NULL DEFAULT 'ocr',status TEXT NOT NULL DEFAULT 'queued',source_ref TEXT NOT NULL DEFAULT '',result_json TEXT NOT NULL DEFAULT '{}',error_text TEXT NOT NULL DEFAULT '',claimed_at TEXT,completed_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
-"CREATE INDEX IF NOT EXISTS idx_extraction_jobs_queue ON extraction_jobs(provider,status,created_at)"
+"CREATE INDEX IF NOT EXISTS idx_extraction_jobs_queue ON extraction_jobs(provider,status,created_at)",
+"CREATE TABLE IF NOT EXISTS pc_workers (worker_id TEXT PRIMARY KEY,last_seen_at TEXT NOT NULL,capabilities_json TEXT NOT NULL DEFAULT '{}',status TEXT NOT NULL DEFAULT 'offline')"
 ];let ready=false;
 export async function ensureFactorySchema(db){if(ready||!db)return;for(const sql of SQL)await db.prepare(sql).run();ready=true}
