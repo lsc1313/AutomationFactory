@@ -9,6 +9,9 @@ const bundle=zipStored([["orders.csv","Order ID,SKU,Qty,Supplier Cost\nA1,S1,2,1
 const result=await ingestArchive(bundle,{name:"customer_bundle.zip"});
 assert.equal(result.counts.total,2);
 assert.equal(result.files.find(x=>x.name==="orders.csv").result.normalized_rows[0].sku,"S1");
-assert.equal(result.files.find(x=>x.name==="invoice.pdf").status,"awaiting_extraction");
+const pdfFile=result.files.find(x=>x.name==="invoice.pdf");
+assert.equal(pdfFile.route.valid,true);
+assert.equal(pdfFile.route.adapter,"pdf_text");
+assert.equal(pdfFile.status,"awaiting_extraction");
 assert.equal(result.status,"awaiting_extraction");
 console.log("ARCHIVE INTAKE TESTS OK");
