@@ -30,7 +30,9 @@ assert.equal(plan.file.kind,"spreadsheet");
 assert.equal(plan.document.document_type,"invoice");
 assert.equal(plan.status,"ready");
 
-const orderPlan=buildIntakePlan({name:"orders.csv",mime:"text/csv"},{headers:["order_id","sku","qty","unit_price","status"]});assert.equal(orderPlan.status,"ready");assert.ok(orderPlan.mapping.confidence>=.7);\n\nconst normalized=normalizeRows([{"주문번호":"A-1","상품코드":"S-1","주문수량":2,"공급가":1000}],ko);
+const orderPlan=buildIntakePlan({name:"orders.csv",mime:"text/csv"},{headers:["order_id","sku","qty","unit_price","status"]});assert.equal(orderPlan.status,"ready");assert.ok(orderPlan.mapping.confidence>=.7);
+
+const normalized=normalizeRows([{"주문번호":"A-1","상품코드":"S-1","주문수량":2,"공급가":1000}],ko);
 assert.equal(normalized[0].order_id,"A-1");
 assert.equal(normalized[0].sku,"S-1");
 assert.equal(normalized[0].quantity,2);
