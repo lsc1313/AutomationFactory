@@ -1,0 +1,1 @@
+import assert from "node:assert/strict";import {factoryHtml} from "./page.js";const h=factoryHtml();assert.ok(h.includes("Exception Factory"));assert.ok(h.includes('type="file"'));assert.ok(h.includes("/api/factory/audit"));assert.ok(h.includes("추출 엔진 필요"));console.log("FACTORY UI TESTS OK");
