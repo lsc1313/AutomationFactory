@@ -27,7 +27,8 @@
     "check:scan-status": "node factory/api/scan_status_tests.mjs",
     "pc-local": "node factory/pc-worker/local_server.js",
     "check:pc-local": "node factory/pc-worker/local_server_tests.mjs",
-    "check:mixed-scan": "node factory/scan/mixed_scan_tests.mjs"
+    "check:mixed-scan": "node factory/scan/mixed_scan_tests.mjs",
+    "pc-zero-cost": "node factory/pc-worker/zero_cost_runner.js"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
