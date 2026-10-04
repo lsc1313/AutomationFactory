@@ -1,11 +1,12 @@
-export function numericValue(v){
+export function numericValue(v,{accountingNegative=true}={}){
  if(typeof v==="number")return Number.isFinite(v)?v:0;
  let s=String(v??"").trim();if(!s)return 0;
- const negative=/^\(.*\)$/.test(s);if(negative)s=s.slice(1,-1);
+ const parenthesized=/^\(.*\)$/.test(s);if(parenthesized)s=s.slice(1,-1);const negative=accountingNegative&&parenthesized;
  s=s.replace(/[₩$€£¥]/g,"").replace(/\s+/g,"").replace(/,/g,"").replace(/[^0-9.+-]/g,"");
  const x=Number(s);return Number.isFinite(x)?(negative?-Math.abs(x):x):0;
 }
 function n(v){return numericValue(v)}
+function q(v){return numericValue(v,{accountingNegative:false})}
 function key(r){return [r.order_id||"",r.sku||""].join("::")}
 function ex(type,row,{expected=null,actual=null,difference=null,reason="",evidence=[],confidence=1}={}){
  return {type,order_id:row.order_id||"",sku:row.sku||"",expected,actual,difference,reason,evidence,confidence,severity:Math.abs(n(difference))>0?"money":"review"};
@@ -25,14 +26,14 @@ export function detectExceptions({orders=[],invoices=[],priceList=[]}={},opts={}
    if(String(ord.status||"").toLowerCase().match(/cancel|취소/)){
     out.push(ex("CANCELLED_ORDER_BILLED",inv,{expected:0,actual:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"supplier billed a cancelled order",evidence:[k],confidence:1}));
    }
-   if(inv.quantity!=null&&ord.quantity!=null&&Math.abs(n(inv.quantity)-n(ord.quantity))>tolerance){
-    out.push(ex("QUANTITY_MISMATCH",inv,{expected:n(ord.quantity),actual:n(inv.quantity),difference:n(inv.quantity)-n(ord.quantity),reason:"invoice quantity differs from order quantity",evidence:[k],confidence:1}));
+   if(inv.quantity!=null&&ord.quantity!=null&&Math.abs(q(inv.quantity)-q(ord.quantity))>tolerance){
+    out.push(ex("QUANTITY_MISMATCH",inv,{expected:q(ord.quantity),actual:q(inv.quantity),difference:q(inv.quantity)-q(ord.quantity),reason:"invoice quantity differs from order quantity",evidence:[k],confidence:1}));
    }
   }
   const expectedCost=price?.unit_cost??ord?.unit_cost;
   const actualCost=inv.unit_cost??inv.unit_price;
   if(expectedCost!=null&&actualCost!=null&&n(actualCost)-n(expectedCost)>tolerance){
-   const qty=Math.max(1,n(inv.quantity)||1),delta=(n(actualCost)-n(expectedCost))*qty;
+   const qty=Math.max(1,q(inv.quantity)||1),delta=(n(actualCost)-n(expectedCost))*qty;
    out.push(ex("OVERCHARGE",inv,{expected:n(expectedCost),actual:n(actualCost),difference:delta,reason:"invoiced unit cost exceeds expected unit cost",evidence:[String(inv.sku||"")],confidence:1}));
   }
   if(price?.unit_cost!=null&&ord?.unit_cost!=null&&Math.abs(n(price.unit_cost)-n(ord.unit_cost))>tolerance){
