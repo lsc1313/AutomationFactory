@@ -32,4 +32,7 @@ assert.ok(h.includes("return [{name:x.file.name,role:x.role,result:j.result}]"))
 assert.ok(h.includes("extracted.push(...await pcExtract(x))"));
 assert.ok(h.includes("function collectReady("));
 assert.ok(h.includes("directFiles.push(...collectReady(uploaded,x.role))"));
+assert.ok(h.includes("role:guess(f.name)"));
+assert.ok(h.includes("document_type:inferred||roleDoc(guess(child.name))"));
+assert.ok(!h.includes("map(f=>({name:x.file.name+'#'+f.name,role:x.role,result:f.result}))"));
 console.log("FACTORY UI TESTS OK");
