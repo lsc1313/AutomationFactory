@@ -705,7 +705,7 @@ const appStart = uiSyntaxSource.indexOf("function appHtml() {");
 assert.ok(appStart >= 0);
 const templateStartMarker = "return `";
 const templateStart = uiSyntaxSource.indexOf(templateStartMarker, appStart) + templateStartMarker.length;
-const appEnd = uiSyntaxSource.indexOf("\n}\n\nexport default", templateStart);
+const appEnd = uiSyntaxSource.indexOf("\nasync function ", templateStart);
 assert.ok(appEnd > templateStart);
 const templateEnd = uiSyntaxSource.lastIndexOf("`;", appEnd);
 assert.ok(templateEnd > templateStart);
