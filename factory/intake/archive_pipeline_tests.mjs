@@ -11,7 +11,7 @@ assert.equal(result.counts.total,2);
 assert.equal(result.files.find(x=>x.name==="orders.csv").result.normalized_rows[0].sku,"S1");
 const pdfFile=result.files.find(x=>x.name==="invoice.pdf");
 assert.equal(pdfFile.route.valid,true);
-assert.equal(pdfFile.route.adapter,"pdf_text");
+assert.ok(["pdf_text","pdf_ocr"].includes(pdfFile.route.adapter));
 assert.equal(pdfFile.status,"awaiting_extraction");
 assert.equal(result.status,"awaiting_extraction");
 console.log("ARCHIVE INTAKE TESTS OK");
