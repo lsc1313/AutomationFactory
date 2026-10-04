@@ -48,7 +48,7 @@ export function classifyDocument({name="",text="",headers=[]}={}){
     ["price_list",["price list","pricing","unit cost","supplier cost","가격표","단가표","공급가"]],
     ["purchase_order",["purchase order","po number","po #","발주서","발주번호"]],
     ["invoice",["invoice","invoice number","amount due","송장","청구서"]],
-    ["order",["order id","order number","order date","주문번호","주문일"]],
+    ["order",["order id","order number","order date","orders","order","주문번호","주문일","주문"]],
     ["inventory",["inventory","stock on hand","warehouse","재고","재고수량"]]
   ];
   let best={document_type:"unknown",confidence:0,evidence:[]};
