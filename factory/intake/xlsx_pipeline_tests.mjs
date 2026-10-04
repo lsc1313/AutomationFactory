@@ -31,4 +31,13 @@ assert.equal(result.sheets[0].normalized_rows[0].unit_cost,12500);
 assert.equal(result.status,"ready");
 assert.equal(result.sheets[0].plan.document.document_type,"order");
 assert.equal(result.sheets[0].mapping.confidence,1);
+
+const invoiceSheet={name:"Supplier Invoice",headers:["Order ID","SKU","Qty","Unit Cost","Total"],rows:[{"Order ID":"A1","SKU":"S1","Qty":2,"Unit Cost":12,"Total":24}]};
+const priceSheet={name:"Price List",headers:["SKU","Supplier Unit Cost"],rows:[{"SKU":"S1","Supplier Unit Cost":10}]};
+// Sheet-name classification is exercised through the same intake evidence rules used by ingestXlsx.
+const {buildIntakePlan}=await import("./intake.js");
+const invoicePlan=buildIntakePlan({name:"monthly_data.xlsx#"+invoiceSheet.name,mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},{text:invoiceSheet.name+" "+invoiceSheet.headers.join(" "),headers:invoiceSheet.headers});
+const pricePlan=buildIntakePlan({name:"monthly_data.xlsx#"+priceSheet.name,mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},{text:priceSheet.name+" "+priceSheet.headers.join(" "),headers:priceSheet.headers});
+assert.equal(invoicePlan.document.document_type,"invoice");
+assert.equal(pricePlan.document.document_type,"price_list");
 console.log("XLSX END-TO-END TESTS OK");
