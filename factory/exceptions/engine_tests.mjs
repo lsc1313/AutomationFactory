@@ -20,6 +20,7 @@ assert.equal(numericValue("₩12,500"),12500);
 assert.equal(numericValue("$1,234.50"),1234.5);
 assert.equal(numericValue("12 500"),12500);
 assert.equal(numericValue("(3,000)"),-3000);
+assert.equal(numericValue("(3)",{accountingNegative:false}),3);
 assert.equal(numericValue("1,250원"),1250);
 const formatted=detectExceptions({orders:[{order_id:"F1",sku:"S1",quantity:"2",unit_cost:"₩10,000"}],invoices:[{order_id:"F1",sku:"S1",quantity:"2",unit_cost:"₩11,500",total:"₩23,000"}]});
 assert.equal(formatted.find(x=>x.type==="OVERCHARGE")?.difference,3000);
