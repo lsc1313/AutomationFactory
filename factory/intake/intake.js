@@ -75,7 +75,7 @@ export function mapHeaders(headers=[]){
     if(best){ fields[best.field]=best; used.add(best.field); } else unmapped.push(String(raw));
   }
   const values=Object.values(fields);
-  const confidence=values.length?values.reduce((s,x)=>s+x.confidence,0)/Math.max(headers.length,1):0;
+  const confidence=values.length?values.reduce((s,x)=>s+x.confidence,0)/values.length:0;
   return {fields,unmapped_headers:unmapped,confidence:Number(confidence.toFixed(3))};
 }
 export function buildIntakePlan(file,{text="",headers=[]}={}){
