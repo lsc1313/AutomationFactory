@@ -99,9 +99,15 @@ export function buildIntakePlan(file,{text="",headers=[]}={}){
 }
 export function normalizeRows(rows=[],mappingResult){
   const fields=mappingResult?.fields||{};
+  const sourceHeaders=Object.keys(fields).map(field=>fields[field].source_header);
   return rows.map((row,index)=>{
     const out={_row:index+1};
-    for(const [field,m] of Object.entries(fields)) out[field]=row?.[m.source_header] ?? null;
+    for(const [field,m] of Object.entries(fields)){
+      if(Array.isArray(row)){
+        const column=sourceHeaders.indexOf(m.source_header);
+        out[field]=column>=0?(row[column] ?? null):null;
+      }else out[field]=row?.[m.source_header] ?? null;
+    }
     return out;
   });
 }
