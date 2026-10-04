@@ -1,9 +1,11 @@
+import {handlePcWorkerApi} from "./pc_worker.js";
 import {ingestUploadedFiles} from "./upload.js";
 import {runSupplierAudit} from "../audit/supplier_audit.js";
 import {buildEvidenceReport,buildFreeScanSummary} from "../report/evidence_report.js";
 
 function response(body,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}})}
-export async function handleFactoryApi(request,path){
+export async function handleFactoryApi(request,path,env){
+ if(path.startsWith("/api/factory/pc-worker/"))return await handlePcWorkerApi(request,path,env);
  if(path==="/api/factory/upload"&&request.method==="POST"){const r=await ingestUploadedFiles(request);return response(r,r.status||200)}
  if(path==="/api/factory/health"&&request.method==="GET")return response({ok:true,factory:"universal-intake",version:"1"});
  if(path==="/api/factory/audit"&&request.method==="POST"){
