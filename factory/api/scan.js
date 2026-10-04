@@ -15,7 +15,7 @@ function pushUploadFile(out,f,overrides={},prefix=""){
  if(f.kind==="archive"||f.result?.files){
   const children=f.files||f.result?.files||[];
   for(const child of children){
-   const wrapped=child.result?.result?{...child.result.result,name:child.name}:{...child,name:child.name};
+   const wrapped=child.result?.result?{...child.result.result,name:child.name,kind:child.result.kind||child.kind||"text"}:{...child,name:child.name};
    pushUploadFile(out,wrapped,overrides,name);
   }
   return;
