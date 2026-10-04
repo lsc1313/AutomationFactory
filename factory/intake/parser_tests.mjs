@@ -10,6 +10,14 @@ assert.equal(csv.rows[0]["상품코드"],"S1");
 const quoted=parseDelimited('Order ID,Description,Qty\nA1,"Widget, Large",2',{name:"orders.csv"});
 assert.equal(quoted.rows[0].Description,"Widget, Large");
 
+const multiline=parseDelimited('Order ID,Description,Qty\nA1,"Widget first line\nsecond line",2\nA2,"He said ""OK""",1',{name:"orders.csv"});
+assert.equal(multiline.rows.length,2);
+assert.equal(multiline.rows[0].Description,"Widget first line\nsecond line");
+assert.equal(multiline.rows[1].Description,'He said "OK"');
+assert.deepEqual(multiline.issues,[]);
+const broken=parseDelimited('Order ID,Description\nA1,"unfinished',{name:"orders.csv"});
+assert.ok(broken.issues.includes("UNCLOSED_QUOTE"));
+
 const tsv=parseDelimited("SKU\tQty\tUnit Cost\nS1\t3\t12.5",{name:"x.tsv"});
 assert.equal(tsv.delimiter,"\t");
 assert.equal(tsv.rows[0]["Unit Cost"],"12.5");
