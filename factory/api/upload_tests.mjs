@@ -1,0 +1,4 @@
+import assert from "node:assert/strict";import {ingestUploadedFiles} from "./upload.js";
+let f=new FormData();f.append("files",new File(["order_id,sku,quantity\nO1,A,2"],"orders.csv",{type:"text/csv"}));let r=await ingestUploadedFiles(new Request("https://x/upload",{method:"POST",body:f}));assert.equal(r.ok,true);assert.equal(r.summary.total,1);assert.equal(r.files[0].kind,"text");
+f=new FormData();f.append("files",new File([new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])],"invoice.png",{type:"image/png"}));r=await ingestUploadedFiles(new Request("https://x/upload",{method:"POST",body:f}));assert.equal(r.files[0].kind,"image");assert.equal(r.files[0].status,"awaiting_extraction");
+console.log("BINARY UPLOAD TESTS OK");
