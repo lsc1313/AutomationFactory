@@ -9,7 +9,7 @@ export function runSupplierAudit({orders=[],invoices=[],priceList=[],confirmedMa
   status:x.status,method:x.method,confidence:x.confidence,candidates:x.candidates||[],
   reason:x.status==="needs_review"?"ambiguous match requires human confirmation":"no safe match found"
  }));
- const safeInvoices=confirmed.map(x=>x.source);
+ const safeInvoices=confirmed.map(x=>({...x.source,_source_order_id:x.source.order_id||"",_source_sku:x.source.sku||"",order_id:x.target.order_id||x.source.order_id||"",sku:x.target.sku||x.source.sku||""}));
  const safeOrderKeys=new Set(confirmed.map(x=>[String(x.target.order_id||""),String(x.target.sku||"")].join("::")));
  const safeOrders=orders.filter(o=>safeOrderKeys.has([String(o.order_id||""),String(o.sku||"")].join("::")));
  const exceptions=detectExceptions({orders:safeOrders,invoices:safeInvoices,priceList},options);
