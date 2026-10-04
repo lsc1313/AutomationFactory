@@ -2,8 +2,8 @@ import {ingestUploadedFiles} from "./upload.js";import {runBatchSupplierScan} fr
 function roleType(role){return role==="orders"?"order":role==="invoices"?"invoice":role==="priceList"?"price_list":""}
 function flatten(upload,overrides={}){
  const out=[];for(const f of upload.files||[]){const forced=roleType(overrides[f.name]);
-  if(f.kind==="xlsx"){for(const s of f.sheets||[])out.push({file_name:f.name+"#"+s.name,document_type:forced||s.plan?.document?.document_type||"unknown",status:s.plan?.status||f.status,normalized_rows:s.normalized_rows||[]})}
-  else if(f.kind==="text"){out.push({file_name:f.name,document_type:forced||f.result?.plan?.document?.document_type||"unknown",status:f.result?.plan?.status||f.status,normalized_rows:f.result?.normalized_rows||[]})}
+  if(f.kind==="xlsx"){for(const s of f.sheets||[])out.push({file_name:f.name+"#"+s.name,document_type:forced||s.plan?.document?.document_type||"unknown",status:forced&&s.normalized_rows?.length?"ready":(s.plan?.status||f.status),normalized_rows:s.normalized_rows||[]})}
+  else if(f.kind==="text"){out.push({file_name:f.name,document_type:forced||f.result?.plan?.document?.document_type||"unknown",status:forced&&f.result?.normalized_rows?.length?"ready":(f.result?.plan?.status||f.status),normalized_rows:f.result?.normalized_rows||[]})}
   else out.push({file_name:f.name,document_type:forced||f.document_type||"unknown",status:f.status,normalized_rows:f.normalized_rows||[]});
  }return out;
 }
