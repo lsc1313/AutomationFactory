@@ -11,7 +11,8 @@ r=matchRecord({order_id:"",sku:"vendor777"},targets,{confirmedMappings:{vendor77
 assert.equal(r.status,"confirmed");assert.equal(r.method,"confirmed_mapping");
 r=matchRecord({order_id:"",sku:"ZX9X",description:"Premium Cable 2 meter"},targets,{candidateThreshold:.3});
 assert.equal(r.status,"needs_review");assert.equal(r.auto_confirm_allowed,false);assert.equal(r.target,null);assert.ok(r.candidates.length>0);
-r=matchRecord({order_id:"ORD-300",sku:"SUP-7O7"},targets);assert.equal(r.status,"confirmed");assert.equal(r.method,"exact_order_id_ocr_confusable_sku");\nr=matchRecord({order_id:"NOPE",sku:"NOTHING",description:"unknown"},targets);
+r=matchRecord({order_id:"ORD-300",sku:"SUP-7O7"},targets);assert.equal(r.status,"confirmed");assert.equal(r.method,"exact_order_id_ocr_confusable_sku");
+r=matchRecord({order_id:"NOPE",sku:"NOTHING",description:"unknown"},targets);
 assert.equal(r.status,"unmatched");
 const ds=matchDataset([{order_id:"ORD-100",sku:"ABC-123"},{sku:"ZX9X",description:"Premium Cable 2 meter"}],targets,{candidateThreshold:.3});
 assert.equal(ds.summary.confirmed,1);assert.equal(ds.summary.needs_review,1);
