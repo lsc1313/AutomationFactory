@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs && npm run check:intake",
+    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs && npm run check:intake && npm run check:exceptions",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check:intake": "node factory/intake/intake_tests.mjs && node factory/intake/parser_tests.mjs && node factory/intake/batch_tests.mjs && node factory/intake/zip_reader_tests.mjs && node factory/intake/xlsx_pipeline_tests.mjs && node factory/intake/pdf_pipeline_tests.mjs && node factory/intake/image_pipeline_tests.mjs && node factory/intake/archive_pipeline_tests.mjs && node factory/intake/d1_store_tests.mjs"
+    "check:intake": "node factory/intake/intake_tests.mjs && node factory/intake/parser_tests.mjs && node factory/intake/batch_tests.mjs && node factory/intake/zip_reader_tests.mjs && node factory/intake/xlsx_pipeline_tests.mjs && node factory/intake/pdf_pipeline_tests.mjs && node factory/intake/image_pipeline_tests.mjs && node factory/intake/archive_pipeline_tests.mjs && node factory/intake/d1_store_tests.mjs",
+    "check:exceptions": "node factory/exceptions/engine_tests.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
