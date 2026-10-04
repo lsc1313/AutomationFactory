@@ -2660,7 +2660,7 @@ export default {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
-      if (path.startsWith("/api/factory/")) { const factoryResponse = await handleFactoryApi(request,path); if (factoryResponse) return factoryResponse; }
+      if (path.startsWith("/api/factory/")) { const factoryResponse = await handleFactoryApi(request,path,env); if (factoryResponse) return factoryResponse; }
 
       // Render the shell and health check without waiting for D1 schema work.
       // This keeps diagnostics reachable even when schema initialization is slow.
