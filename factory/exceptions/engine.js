@@ -21,7 +21,7 @@ export function detectExceptions({orders=[],invoices=[],priceList=[]}={},opts={}
  const tolerance=n(opts.tolerance??0.01),out=[];
  const ordersByKey=new Map(orders.map(r=>[key(r),r]));
  const priceBySku=new Map(priceList.filter(r=>r.sku).map(r=>[String(r.sku),r]));
- const seen=new Map();
+ const seen=new Map(),economicSeen=new Map();
  for(const inv of invoices){
   const k=key(inv),ord=ordersByKey.get(k),price=priceBySku.get(String(inv.sku||""));
   const fingerprint=[inv.invoice_id||"",inv.order_id||"",inv.sku||"",inv.quantity??"",inv.unit_cost??inv.unit_price??"",inv.total??""].join("|");
@@ -29,11 +29,11 @@ export function detectExceptions({orders=[],invoices=[],priceList=[]}={},opts={}
   if(seen.has(fingerprint)){
    out.push(ex("DUPLICATE_BILLING",inv,{expected:"single charge",actual:"duplicate charge",difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"same invoice/order/SKU/amount fingerprint repeated",evidence:[seen.get(fingerprint),fingerprint],confidence:1}));
   }else seen.set(fingerprint,fingerprint);
-  const economicKey="economic:"+economicFingerprint;
-  if(!seen.has(fingerprint)&&seen.has(economicKey)){
-   out.push(ex("POSSIBLE_DUPLICATE_BILLING",inv,{expected:"single charge",actual:"same order/SKU/qty/amount on another invoice",difference:0,reason:"same economic charge repeated with a different invoice identity",evidence:[seen.get(economicKey),economicFingerprint],confidence:.85}));
+  const previousEconomic=economicSeen.get(economicFingerprint);
+  if(previousEconomic&&previousEconomic.invoice_id!==String(inv.invoice_id||"")){
+   out.push(ex("POSSIBLE_DUPLICATE_BILLING",inv,{expected:"single charge",actual:"same order/SKU/qty/amount on another invoice",difference:0,reason:"same economic charge repeated with a different invoice identity",evidence:[previousEconomic.invoice_id||previousEconomic.fingerprint,economicFingerprint],confidence:.85}));
   }
-  if(!seen.has(economicKey))seen.set(economicKey,inv.invoice_id||economicFingerprint);
+  if(!previousEconomic)economicSeen.set(economicFingerprint,{invoice_id:String(inv.invoice_id||""),fingerprint});
   if(ord){
    if(nonBillableStatus(ord.status)){
     out.push(ex("CANCELLED_ORDER_BILLED",inv,{expected:0,actual:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"supplier billed an order marked cancelled/void/refunded/returned",evidence:[k],confidence:1}));
