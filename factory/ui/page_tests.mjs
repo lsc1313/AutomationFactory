@@ -15,6 +15,9 @@ assert.ok(h.includes("roles.innerHTML=items.map"));
 assert.ok(h.includes("flatMap(s=>s.normalized_rows||[])"));
 assert.ok(h.includes("canonicalRows(rows)"));
 assert.ok(h.includes("supplier unit cost"));
+assert.ok(h.includes(".xml"));
+assert.ok(h.includes("parseXml"));
+assert.ok(!h.includes('accept=".csv,.tsv,.json,.xml,.txt,.xlsx,.xls'));
 assert.ok(h.includes("quantity:['qty','quantity'"));
 
 const script=h.match(/<script>([\s\S]*?)<\/script>/)?.[1];
