@@ -15,7 +15,7 @@ const FIELD_ALIASES = {
   description:["description","item description","product","product name","상품명","품목명","제품명"],
   quantity:["qty","quantity","order qty","ordered quantity","수량","주문수량"],
   unit_price:["unit price","price","sales price","판매가","단가"],
-  unit_cost:["unit cost","cost","purchase price","supplier cost","공급가","매입가","원가"],
+  unit_cost:["unit cost","cost","purchase price","supplier cost","supplier unit cost","공급가","매입가","원가"],
   total:["total","amount","line total","total amount","합계","금액","총액"],
   currency:["currency","통화","화폐"],
   date:["date","order date","invoice date","transaction date","일자","날짜","주문일","송장일"],
