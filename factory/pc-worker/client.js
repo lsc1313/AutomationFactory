@@ -5,3 +5,5 @@ export async function source(c,key){return new Uint8Array(await (await call(c,"/
 export async function submit(c,{id,result,error="",source_key=""}){return await (await call(c,"/api/factory/pc-worker/result",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,result,error,source_key})})).json()}
 
 export async function sendHeartbeat(c,{worker_id="home-pc",capabilities={}}={}){return await (await call(c,"/api/factory/pc-worker/heartbeat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({worker_id,capabilities})})).json()}
+
+export async function consumeTicket(c,ticket_id){return await (await call(c,"/api/factory/pc-worker/consume-ticket",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticket_id})})).json()}
