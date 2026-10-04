@@ -13,28 +13,28 @@ function delimiterOf(text,name=""){
   candidates.sort((a,b)=>b.n-a.n);
   return candidates[0].n>0?candidates[0].d:",";
 }
-function splitDelimitedLine(line,delimiter){
-  const out=[]; let cur=""; let quoted=false;
-  for(let i=0;i<line.length;i++){
-    const ch=line[i];
+function parseDelimitedRecords(text,delimiter){
+  const records=[];let row=[],cur="",quoted=false;
+  const pushField=()=>{row.push(cur.trim());cur=""};
+  const pushRow=()=>{if(row.some(x=>String(x).trim()))records.push(row);row=[]};
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
     if(ch==='"'){
-      if(quoted&&line[i+1]==='"'){cur+='"';i++;} else quoted=!quoted;
-    } else if(ch===delimiter&&!quoted){out.push(cur.trim());cur="";}
+      if(quoted&&text[i+1]==='"'){cur+='"';i++;}else quoted=!quoted;
+    }else if(ch===delimiter&&!quoted)pushField();
+    else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;pushField();pushRow();}
     else cur+=ch;
   }
-  out.push(cur.trim()); return out;
+  if(cur.length||row.length){pushField();pushRow()}
+  return {records,unclosed_quote:quoted};
 }
 export function parseDelimited(input,{name=""}={}){
   const text=decode(input).replace(/^\uFEFF/,"");
-  const delimiter=delimiterOf(text,name);
-  const lines=text.split(/\r?\n/).filter(x=>x.trim());
-  if(!lines.length) return {headers:[],rows:[],delimiter,issues:["EMPTY_FILE"]};
-  const headers=splitDelimitedLine(lines[0],delimiter);
-  const rows=lines.slice(1).map(line=>{
-    const values=splitDelimitedLine(line,delimiter); const row={};
-    headers.forEach((h,i)=>row[h]=values[i]??""); return row;
-  });
-  return {headers,rows,delimiter,issues:[]};
+  const delimiter=delimiterOf(text,name),parsed=parseDelimitedRecords(text,delimiter),records=parsed.records;
+  if(!records.length) return {headers:[],rows:[],delimiter,issues:["EMPTY_FILE"]};
+  const headers=records[0];
+  const rows=records.slice(1).map(values=>{const row={};headers.forEach((h,i)=>row[h]=values[i]??"");return row});
+  return {headers,rows,delimiter,issues:parsed.unclosed_quote?["UNCLOSED_QUOTE"]:[]};
 }
 export function parseJson(input){
   const value=JSON.parse(decode(input));
