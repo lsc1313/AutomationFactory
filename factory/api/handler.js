@@ -1,3 +1,4 @@
+import {scanStatus} from "./scan_status.js";
 import {ensureFactorySchema} from "../intake/ensure_schema.js";
 import {scanUploadedFiles} from "./scan.js";
 import {handlePcWorkerApi} from "./pc_worker.js";
@@ -9,6 +10,7 @@ function response(body,status=200){return new Response(JSON.stringify(body),{sta
 export async function handleFactoryApi(request,path,env){
  if(env?.DB)await ensureFactorySchema(env.DB);
  if(path.startsWith("/api/factory/pc-worker/"))return await handlePcWorkerApi(request,path,env);
+ if(path==="/api/factory/scan/status"&&request.method==="POST"){let b;try{b=await request.json()}catch{return response({ok:false,error:"invalid_json"},400)}const ids=Array.isArray(b?.extraction_job_ids)?b.extraction_job_ids.filter(Boolean).slice(0,20):[];if(!ids.length)return response({ok:false,error:"extraction_job_ids_required"},400);return response({ok:true,...await scanStatus(env.DB,ids,{currency:b?.currency||"UNSPECIFIED",scanMode:"free"})})}
  if(path==="/api/factory/scan"&&request.method==="POST"){const r=await scanUploadedFiles(request,env);return response(r,r.status||200)}
  if(path==="/api/factory/upload"&&request.method==="POST"){const r=await ingestUploadedFiles(request,env);return response(r,r.status||200)}
  if(path==="/api/factory/health"&&request.method==="GET")return response({ok:true,factory:"universal-intake",version:"1"});
