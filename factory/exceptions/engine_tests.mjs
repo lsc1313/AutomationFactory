@@ -30,4 +30,7 @@ const refunded=detectExceptions({orders:[{order_id:"R1",sku:"S1",quantity:1,stat
 assert.ok(refunded.some(x=>x.type==="CANCELLED_ORDER_BILLED"));
 const partial=detectExceptions({orders:[{order_id:"R2",sku:"S2",quantity:1,status:"partial refund"}],invoices:[{order_id:"R2",sku:"S2",quantity:1,total:5000}]});
 assert.ok(!partial.some(x=>x.type==="CANCELLED_ORDER_BILLED"));
+const crossInvoice=detectExceptions({orders:[{order_id:"D1",sku:"S1",quantity:1}],invoices:[{invoice_id:"INV-1",order_id:"D1",sku:"S1",quantity:1,unit_cost:5000,total:5000},{invoice_id:"INV-2",order_id:"D1",sku:"S1",quantity:1,unit_cost:5000,total:5000}]});
+assert.ok(crossInvoice.some(x=>x.type==="POSSIBLE_DUPLICATE_BILLING"));
+assert.equal(summarizeExceptions(crossInvoice).money_exposure,0);
 console.log("EXCEPTION ENGINE TESTS OK");
