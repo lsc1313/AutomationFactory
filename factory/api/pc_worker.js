@@ -1,3 +1,4 @@
+import {consumeUploadTicket} from "../pc-worker/upload_ticket.js";
 import {heartbeat,pcStatus} from "../pc-worker/heartbeat.js";
 import {finalizeExtraction} from "../extraction/extraction_bridge.js";
 import {readSource,deleteSource} from "../storage/object_storage.js";
@@ -6,6 +7,7 @@ function out(x,s=200){return new Response(JSON.stringify(x),{status:s,headers:{"
 function auth(request,env){const expected=String(env.PC_WORKER_TOKEN||"");const got=String(request.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");return expected&&got===expected}
 export async function handlePcWorkerApi(request,path,env){
  if(!auth(request,env))return out({ok:false,error:"unauthorized"},401);
+ if(path==="/api/factory/pc-worker/consume-ticket"&&request.method==="POST"){const b=await request.json().catch(()=>({}));if(!b.ticket_id)return out({ok:false,error:"ticket_id_required"},400);const r=await consumeUploadTicket(env.DB,b.ticket_id);return out(r,r.ok?200:409)}
  if(path==="/api/factory/pc-worker/heartbeat"&&request.method==="POST"){const b=await request.json().catch(()=>({}));return out({ok:true,...await heartbeat(env.DB,{worker_id:b.worker_id||"home-pc",capabilities:b.capabilities||{}})})}
  if(path==="/api/factory/pc-worker/claim"&&request.method==="POST"){const job=await claimExtraction(env.DB,{provider:"pc_ocr"});return out({ok:true,job})}
  if(path==="/api/factory/pc-worker/source"&&request.method==="GET"){const key=new URL(request.url).searchParams.get("key")||"";if(!key.startsWith("intake/"))return out({ok:false,error:"invalid_source_key"},400);const obj=await readSource(env,key);if(!obj)return out({ok:false,error:"source_not_found"},404);return new Response(await obj.arrayBuffer(),{headers:{"content-type":obj.httpMetadata?.contentType||"application/octet-stream","cache-control":"no-store"}})}
