@@ -10,7 +10,7 @@ export async function handleFactoryApi(request,path,env){
  if(env?.DB)await ensureFactorySchema(env.DB);
  if(path.startsWith("/api/factory/pc-worker/"))return await handlePcWorkerApi(request,path,env);
  if(path==="/api/factory/scan"&&request.method==="POST"){const r=await scanUploadedFiles(request);return response(r,r.status||200)}
- if(path==="/api/factory/upload"&&request.method==="POST"){const r=await ingestUploadedFiles(request);return response(r,r.status||200)}
+ if(path==="/api/factory/upload"&&request.method==="POST"){const r=await ingestUploadedFiles(request,env);return response(r,r.status||200)}
  if(path==="/api/factory/health"&&request.method==="GET")return response({ok:true,factory:"universal-intake",version:"1"});
  if(path==="/api/factory/audit"&&request.method==="POST"){
   let body;try{body=await request.json()}catch{return response({ok:false,error:"invalid_json"},400)}
