@@ -42,4 +42,9 @@ const uncertain=buildIntakePlan({name:"mystery.bin"},{text:"hello"});
 assert.equal(uncertain.status,"needs_review");
 assert.ok(uncertain.issues.some(x=>x.code==="UNSUPPORTED_FILE"));
 
+
+const namedInvoice=classifyDocument({name:"supplier_invoice.csv",headers:["order id","sku","qty","unit cost","total"]});
+assert.equal(namedInvoice.document_type,"invoice");
+assert.ok(namedInvoice.confidence>=.99);
+
 console.log("UNIVERSAL INTAKE TESTS OK");
