@@ -6,7 +6,7 @@ export async function ingestXlsx(file,input){
   const sheets=workbook.sheets.map(sheet=>{
     const mapping=mapHeaders(sheet.headers);
     const evidenceText=[sheet.headers.join(" "),...sheet.rows.slice(0,3).map(row=>Object.values(row).join(" "))].join(" ");
-    const plan=buildIntakePlan(file,{text:evidenceText,headers:sheet.headers});
+    const plan=buildIntakePlan({...file,name:`${file?.name||"workbook.xlsx"}#${sheet.name||"sheet"}`},{text:`${sheet.name||""} ${evidenceText}`,headers:sheet.headers});
     const normalized_rows=normalizeRows(sheet.rows,mapping);
     const issues=[...plan.issues];
     if(!sheet.headers.length) issues.push({code:"XLSX_HEADERS_MISSING",severity:"review"});
