@@ -12,9 +12,9 @@ export function chooseExtractionProvider(route,{pcAvailable=false,cloudOcrConfig
 export function validateProviderResult(result){
  const v=validateExtraction(result||{});
  const confidence=Number(result?.confidence??0);
- const issues=[...(v.issues||[])];
+ const issues=[]; if(!v.usable)issues.push("EXTRACTION_EMPTY"); if(v.needs_review)issues.push("EXTRACTION_REVIEW_REQUIRED");
  if(confidence&&confidence<0.8)issues.push("EXTRACTION_LOW_CONFIDENCE");
- return {ok:v.ok&&issues.length===0,confidence,issues,text:result?.text||"",headers:result?.headers||[],rows:result?.rows||[]};
+ return {ok:v.usable&&!v.needs_review&&issues.length===0,confidence,issues,text:result?.text||"",headers:result?.headers||[],rows:result?.rows||[]};
 }
 export function buildExtractionJob({job_id,file_id,name,route,options={}}){
  const selected=chooseExtractionProvider(route,options);
