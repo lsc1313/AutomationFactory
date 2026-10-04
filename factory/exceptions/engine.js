@@ -8,6 +8,12 @@ export function numericValue(v,{accountingNegative=true}={}){
 function n(v){return numericValue(v)}
 function q(v){return numericValue(v,{accountingNegative:false})}
 function key(r){return [r.order_id||"",r.sku||""].join("::")}
+export function nonBillableStatus(v){
+ const s=String(v??"").trim().toLowerCase().replace(/[ _-]+/g," ");
+ if(!s)return false;
+ if(/partial|partially|부분|일부/.test(s))return false;
+ return /cancelled|canceled|cancel|voided|void|refunded|refund complete|fully refunded|returned|return complete|취소|환불완료|전액환불|반품완료/.test(s);
+}
 function ex(type,row,{expected=null,actual=null,difference=null,reason="",evidence=[],confidence=1}={}){
  return {type,order_id:row.order_id||"",sku:row.sku||"",expected,actual,difference,reason,evidence,confidence,severity:Math.abs(n(difference))>0?"money":"review"};
 }
@@ -23,8 +29,8 @@ export function detectExceptions({orders=[],invoices=[],priceList=[]}={},opts={}
    out.push(ex("DUPLICATE_BILLING",inv,{expected:"single charge",actual:"duplicate charge",difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"same invoice/order/SKU/amount fingerprint repeated",evidence:[seen.get(fingerprint),fingerprint],confidence:1}));
   }else seen.set(fingerprint,fingerprint);
   if(ord){
-   if(String(ord.status||"").toLowerCase().match(/cancel|취소/)){
-    out.push(ex("CANCELLED_ORDER_BILLED",inv,{expected:0,actual:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"supplier billed a cancelled order",evidence:[k],confidence:1}));
+   if(nonBillableStatus(ord.status)){
+    out.push(ex("CANCELLED_ORDER_BILLED",inv,{expected:0,actual:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"supplier billed an order marked cancelled/void/refunded/returned",evidence:[k],confidence:1}));
    }
    if(inv.quantity!=null&&ord.quantity!=null&&Math.abs(q(inv.quantity)-q(ord.quantity))>tolerance){
     out.push(ex("QUANTITY_MISMATCH",inv,{expected:q(ord.quantity),actual:q(inv.quantity),difference:q(inv.quantity)-q(ord.quantity),reason:"invoice quantity differs from order quantity",evidence:[k],confidence:1}));
