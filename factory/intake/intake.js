@@ -44,7 +44,7 @@ export function classifyDocument({name="",text="",headers=[]}={}){
   const hay=clean([name,text,...headers].join(" "));
   const rules=[
     ["credit_note",["credit note","credit memo","대변전표"]],
-    ["refund",["refund","refunded","환불"]],
+    ["refund",["refund","refunded","refund amount","환불"]],
     ["price_list",["price list","pricing","unit cost","supplier cost","가격표","단가표","공급가"]],
     ["purchase_order",["purchase order","po number","po #","발주서","발주번호"]],
     ["invoice",["invoice","invoice number","amount due","송장","청구서"]],
@@ -55,7 +55,7 @@ export function classifyDocument({name="",text="",headers=[]}={}){
   for(const [type,terms] of rules){
     const evidence=terms.filter(t=>hay.includes(clean(t)));
     const score=Math.min(.99,evidence.length*.24+(clean(name).includes(type.replace("_"," "))?.2:0));
-    if(score>best.confidence) best={document_type:type,confidence:Number(score.toFixed(2)),evidence};
+    if(score>best.confidence || (score===best.confidence && best.document_type==="unknown")) best={document_type:type,confidence:Number(score.toFixed(2)),evidence};
   }
   return best;
 }
