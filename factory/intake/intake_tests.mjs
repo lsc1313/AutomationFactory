@@ -53,4 +53,17 @@ const genericPrice=classifyDocument({name:"export_2026.xlsx",headers:["SKU","Sup
 assert.equal(genericPrice.document_type,"price_list");
 const genericOrder=classifyDocument({name:"download.csv",headers:["Order ID","SKU","Qty","Unit Price","Status"]});
 assert.equal(genericOrder.document_type,"order");
+const vendorHeaders=mapHeaders(["Ord #","Vendor SKU","Ordered Qty","Vendor Cost","Extended Amount","Inv #"]);
+assert.equal(vendorHeaders.fields.order_id.source_header,"Ord #");
+assert.equal(vendorHeaders.fields.sku.source_header,"Vendor SKU");
+assert.equal(vendorHeaders.fields.quantity.source_header,"Ordered Qty");
+assert.equal(vendorHeaders.fields.unit_cost.source_header,"Vendor Cost");
+assert.equal(vendorHeaders.fields.total.source_header,"Extended Amount");
+assert.equal(vendorHeaders.fields.invoice_id.source_header,"Inv #");
+const koreanSupplier=mapHeaders(["오더번호","품번","청구수량","공급단가","청구금액","인보이스번호"]);
+assert.equal(koreanSupplier.fields.order_id.source_header,"오더번호");
+assert.equal(koreanSupplier.fields.sku.source_header,"품번");
+assert.equal(koreanSupplier.fields.quantity.source_header,"청구수량");
+assert.equal(koreanSupplier.fields.unit_cost.source_header,"공급단가");
+assert.equal(koreanSupplier.fields.total.source_header,"청구금액");
 console.log("UNIVERSAL INTAKE TESTS OK");
