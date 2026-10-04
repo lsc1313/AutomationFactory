@@ -7,11 +7,14 @@ function similarity(a,b){
  return hit/Math.max(ta.size,tb.size);
 }
 function exactKey(r){return [norm(r.order_id),norm(r.sku)].join("::")}
+function ocrKey(v){return norm(v).replace(/[o0]/g,"0").replace(/[il1]/g,"1")}
+function ocrConfusableSku(a,b){const A=norm(a),B=norm(b);return !!A&&!!B&&A!==B&&ocrKey(A)===ocrKey(B)}
 export function matchRecord(source,targets,{confirmedMappings={},candidateThreshold=.55}={}){
  const key=exactKey(source);
  if(norm(source.order_id)&&norm(source.sku)){
   const exact=targets.filter(t=>exactKey(t)===key);
   if(exact.length===1)return {status:"confirmed",method:"exact_order_sku",confidence:1,target:exact[0],candidates:[]};
+  const oid=norm(source.order_id),ocr=targets.filter(t=>norm(t.order_id)===oid&&ocrConfusableSku(source.sku,t.sku));if(ocr.length===1)return {status:"confirmed",method:"exact_order_id_ocr_confusable_sku",confidence:.99,target:ocr[0],candidates:[]};
  }
  const sourceSku=norm(source.sku);
  if(sourceSku&&confirmedMappings[sourceSku]){
