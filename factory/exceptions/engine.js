@@ -25,9 +25,15 @@ export function detectExceptions({orders=[],invoices=[],priceList=[]}={},opts={}
  for(const inv of invoices){
   const k=key(inv),ord=ordersByKey.get(k),price=priceBySku.get(String(inv.sku||""));
   const fingerprint=[inv.invoice_id||"",inv.order_id||"",inv.sku||"",inv.quantity??"",inv.unit_cost??inv.unit_price??"",inv.total??""].join("|");
+  const economicFingerprint=[inv.order_id||"",inv.sku||"",q(inv.quantity),n(inv.unit_cost??inv.unit_price),n(inv.total)||q(inv.quantity)*n(inv.unit_cost??inv.unit_price)].join("|");
   if(seen.has(fingerprint)){
    out.push(ex("DUPLICATE_BILLING",inv,{expected:"single charge",actual:"duplicate charge",difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"same invoice/order/SKU/amount fingerprint repeated",evidence:[seen.get(fingerprint),fingerprint],confidence:1}));
   }else seen.set(fingerprint,fingerprint);
+  const economicKey="economic:"+economicFingerprint;
+  if(!seen.has(fingerprint)&&seen.has(economicKey)){
+   out.push(ex("POSSIBLE_DUPLICATE_BILLING",inv,{expected:"single charge",actual:"same order/SKU/qty/amount on another invoice",difference:0,reason:"same economic charge repeated with a different invoice identity",evidence:[seen.get(economicKey),economicFingerprint],confidence:.85}));
+  }
+  if(!seen.has(economicKey))seen.set(economicKey,inv.invoice_id||economicFingerprint);
   if(ord){
    if(nonBillableStatus(ord.status)){
     out.push(ex("CANCELLED_ORDER_BILLED",inv,{expected:0,actual:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),difference:n(inv.total)||n(inv.quantity)*n(inv.unit_cost||inv.unit_price),reason:"supplier billed an order marked cancelled/void/refunded/returned",evidence:[k],confidence:1}));
