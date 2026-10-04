@@ -9,14 +9,14 @@ const EXTENSIONS = {
 };
 
 const FIELD_ALIASES = {
-  order_id:["order id","order no","order number","주문번호","주문 번호","주문id"],
-  invoice_id:["invoice id","invoice no","invoice number","invoice #","송장번호","청구서번호"],
-  sku:["sku","item no","item number","item code","product code","상품코드","품목코드","제품코드","supplier ref"],
+  order_id:["order id","order no","order number","order #","ord no","ord #","주문번호","주문 번호","주문id","주문 no","오더번호","오더 no"],
+  invoice_id:["invoice id","invoice no","invoice number","invoice #","inv no","inv #","bill no","송장번호","청구서번호","인보이스번호","전표번호"],
+  sku:["sku","item no","item number","item code","product code","product sku","vendor sku","supplier sku","part no","model no","상품코드","품목코드","제품코드","상품번호","품번","모델번호","공급사코드","supplier ref"],
   description:["description","item description","product","product name","상품명","품목명","제품명"],
-  quantity:["qty","quantity","order qty","ordered quantity","수량","주문수량"],
-  unit_price:["unit price","price","sales price","판매가","단가"],
-  unit_cost:["unit cost","cost","purchase price","supplier cost","supplier unit cost","공급가","매입가","원가"],
-  total:["total","amount","line total","total amount","합계","금액","총액"],
+  quantity:["qty","quantity","order qty","ordered quantity","ordered qty","units","pcs","수량","주문수량","주문 수량","발주수량","청구수량","개수","수량 ea"],
+  unit_price:["unit price","price","sales price","sale price","selling price","판매가","판매단가","판매 단가","단가"],
+  unit_cost:["unit cost","cost","purchase price","purchase unit price","supplier cost","supplier unit cost","vendor cost","buy price","공급가","공급단가","공급 단가","매입가","매입단가","원가","원가단가"],
+  total:["total","amount","line total","total amount","extended amount","net amount","합계","금액","총액","청구금액","공급금액","결제금액"],
   currency:["currency","통화","화폐"],
   date:["date","order date","invoice date","transaction date","일자","날짜","주문일","송장일"],
   supplier:["supplier","vendor","supplier name","vendor name","공급업체","공급사","거래처"],
