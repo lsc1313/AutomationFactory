@@ -4,7 +4,8 @@ import {matchRecord,matchDataset} from "./engine.js";
 const targets=[
   {order_id:"ORD-100",sku:"ABC-123",description:"Blue Widget Large"},
   {order_id:"ORD-200",sku:"ZX-9",description:"Premium Cable 2m"},
-  {order_id:"ORD-300",sku:"SUP-777",description:"Paper Roll"},\n  {order_id:"ORD-400",sku:"SUP-707",description:"OCR Paper Roll"}
+  {order_id:"ORD-300",sku:"SUP-777",description:"Paper Roll"},
+  {order_id:"ORD-400",sku:"SUP-707",description:"OCR Paper Roll"}
 ];
 
 let r=matchRecord({order_id:"ORD100",sku:"ABC_123"},targets);
