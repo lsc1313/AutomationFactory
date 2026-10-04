@@ -47,4 +47,10 @@ const namedInvoice=classifyDocument({name:"supplier_invoice.csv",headers:["order
 assert.equal(namedInvoice.document_type,"invoice");
 assert.ok(namedInvoice.confidence>=.99);
 
+const genericInvoice=classifyDocument({name:"data1.csv",headers:["Invoice Number","SKU","Qty","Unit Cost","Total"]});
+assert.equal(genericInvoice.document_type,"invoice");
+const genericPrice=classifyDocument({name:"export_2026.xlsx",headers:["SKU","Supplier Unit Cost"]});
+assert.equal(genericPrice.document_type,"price_list");
+const genericOrder=classifyDocument({name:"download.csv",headers:["Order ID","SKU","Qty","Unit Price","Status"]});
+assert.equal(genericOrder.document_type,"order");
 console.log("UNIVERSAL INTAKE TESTS OK");
