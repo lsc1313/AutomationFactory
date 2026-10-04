@@ -1,4 +1,4 @@
-import http from "node:http";import {extractDocument,tesseractAvailable,popplerAvailable} from "./extractor.js";import {config,consumeTicket} from "./client.js";
+import {pathToFileURL} from "node:url";import http from "node:http";import {extractDocument,tesseractAvailable,popplerAvailable} from "./extractor.js";import {config,consumeTicket} from "./client.js";
 const MAX=8*1024*1024;
 function json(res,status,data){res.writeHead(status,{"content-type":"application/json","cache-control":"no-store","access-control-allow-origin":process.env.PC_ALLOWED_ORIGIN||"*","access-control-allow-headers":"content-type,x-upload-ticket","access-control-allow-methods":"GET,POST,OPTIONS"});res.end(JSON.stringify(data))}
 function auth(req){const token=String(process.env.PC_LOCAL_TOKEN||"");return token&&req.headers.authorization==="Bearer "+token}
@@ -11,4 +11,4 @@ export function createLocalServer(){
   return json(res,404,{ok:false,error:"not_found"});
  }catch(e){return json(res,e.message==="FILE_TOO_LARGE"?413:500,{ok:false,error:String(e?.message||e)})}})
 }
-if(import.meta.url===`file://${process.argv[1]?.replaceAll("\\","/")}`){const port=Number(process.env.PC_LOCAL_PORT||8788),host=process.env.PC_LOCAL_HOST||"127.0.0.1";createLocalServer().listen(port,host,()=>console.log(`PC Local Intake listening http://${host}:${port}`))}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){const port=Number(process.env.PC_LOCAL_PORT||8788),host=process.env.PC_LOCAL_HOST||"127.0.0.1";createLocalServer().listen(port,host,()=>console.log(`PC Local Intake listening http://${host}:${port}`))}
