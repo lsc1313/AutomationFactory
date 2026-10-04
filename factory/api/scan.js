@@ -12,11 +12,16 @@ function pushUploadFile(out,f,overrides={},prefix=""){
   out.push({file_name:name,document_type:forced||f.result?.plan?.document?.document_type||"unknown",status:forced&&f.result?.normalized_rows?.length?"ready":(f.result?.plan?.status||f.status),normalized_rows:f.result?.normalized_rows||[]});
   return;
  }
- if(f.kind==="archive"||f.result?.files){
+ if(f.kind==="archive"||f.result?.files||f.files){
   const children=f.files||f.result?.files||[];
   for(const child of children){
-   const wrapped=child.result?.result?{...child.result.result,name:child.name,kind:child.result.kind||child.kind||"text"}:{...child,name:child.name};
-   pushUploadFile(out,wrapped,overrides,name);
+   if(child.result?.normalized_rows){
+    out.push({file_name:name+"#"+child.name,document_type:roleType(overrides[child.name]||overrides[name+"#"+child.name])||child.result.plan?.document?.document_type||"unknown",status:child.result.plan?.status||child.status||"needs_review",normalized_rows:child.result.normalized_rows||[]});
+   }else if(child.result?.sheets){
+    for(const s of child.result.sheets||[])out.push({file_name:name+"#"+child.name+"#"+(s.name||s.path||"sheet"),document_type:roleType(overrides[child.name]||overrides[name+"#"+child.name])||s.plan?.document?.document_type||"unknown",status:s.plan?.status||child.status||"needs_review",normalized_rows:s.normalized_rows||[]});
+   }else{
+    pushUploadFile(out,{...child,name:child.name},overrides,name);
+   }
   }
   return;
  }
