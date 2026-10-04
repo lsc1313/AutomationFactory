@@ -24,7 +24,7 @@ export function matchRecord(source,targets,{confirmedMappings={},candidateThresh
  }
  if(norm(source.order_id)){
   const orderHits=targets.filter(t=>norm(t.order_id)===norm(source.order_id));
-  if(orderHits.length===1&&(!source.sku||!orderHits[0].sku))return {status:"confirmed",method:"exact_order_id",confidence:1,target:orderHits[0],candidates:[]};
+  if(orderHits.length===1)return {status:"confirmed",method:source.sku&&orderHits[0].sku?"exact_order_id_unique_candidate":"exact_order_id",confidence:source.sku&&orderHits[0].sku?.98:1,target:orderHits[0],candidates:[]};
  }
  const scored=targets.map(t=>{
   const skuScore=similarity(source.sku,t.sku);
