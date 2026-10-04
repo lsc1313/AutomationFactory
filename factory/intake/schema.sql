@@ -46,3 +46,20 @@ CREATE TABLE IF NOT EXISTS intake_review_queue (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_intake_review_status ON intake_review_queue(status, created_at);
+
+CREATE TABLE IF NOT EXISTS extraction_jobs (
+  extraction_job_id TEXT PRIMARY KEY,
+  intake_job_id TEXT NOT NULL DEFAULT '',
+  intake_file_id TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'pc_ocr',
+  mode TEXT NOT NULL DEFAULT 'ocr',
+  status TEXT NOT NULL DEFAULT 'queued',
+  source_ref TEXT NOT NULL DEFAULT '',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  error_text TEXT NOT NULL DEFAULT '',
+  claimed_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_jobs_queue ON extraction_jobs(provider,status,created_at);
