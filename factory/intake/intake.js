@@ -41,6 +41,18 @@ export function detectFileKind(name,mime=""){
   return {kind:"unknown",ext,supported:false,confidence:0};
 }
 export function classifyDocument({name="",text="",headers=[]}={}){
+  const fileName=clean(name);
+  const strongNameRules=[
+    ["invoice",["supplier invoice","invoice","청구서","송장"]],
+    ["price_list",["supplier price list","price list","pricing","가격표","단가표"]],
+    ["purchase_order",["purchase order","발주서"]],
+    ["credit_note",["credit note","credit memo","대변전표"]],
+    ["refund",["refund","환불"]]
+  ];
+  for(const [type,terms] of strongNameRules){
+    const evidence=terms.filter(t=>fileName.includes(clean(t)));
+    if(evidence.length) return {document_type:type,confidence:.99,evidence:evidence.map(x=>"filename:"+x)};
+  }
   const hay=clean([name,text,...headers].join(" "));
   const rules=[
     ["credit_note",["credit note","credit memo","대변전표"]],
