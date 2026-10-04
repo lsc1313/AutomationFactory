@@ -7,8 +7,8 @@ function flatten(upload,overrides={}){
   else out.push({file_name:f.name,document_type:forced||f.document_type||"unknown",status:f.status,normalized_rows:f.normalized_rows||[]});
  }return out;
 }
-export async function scanUploadedFiles(request){
+export async function scanUploadedFiles(request,env=null){
  const form=await request.formData(),rolesRaw=String(form.get("roles")||"{}");let roles={};try{roles=JSON.parse(rolesRaw)}catch{return {ok:false,status:400,error:"invalid_roles"}}
- const clone=new FormData();for(const f of form.getAll("files"))clone.append("files",f);const upload=await ingestUploadedFiles(new Request("https://local/upload",{method:"POST",body:clone}));if(!upload.ok)return upload;
+ const clone=new FormData();for(const f of form.getAll("files"))clone.append("files",f);const upload=await ingestUploadedFiles(new Request("https://local/upload",{method:"POST",body:clone}),env);if(!upload.ok)return upload;
  const files=flatten(upload,roles),scan=runBatchSupplierScan(files,{scanMode:"free",currency:String(form.get("currency")||"UNSPECIFIED")});return {ok:true,status:200,upload_summary:upload.summary,scan};
 }
