@@ -1,3 +1,5 @@
+import {storeSource} from "../storage/object_storage.js";
+import {enqueueExtraction} from "../extraction/queue.js";
 import {ingestXlsx} from "../intake/xlsx_pipeline.js";
 import {ingestArchive} from "../intake/archive_pipeline.js";
 import {routePdf} from "../intake/pdf_pipeline.js";
@@ -6,7 +8,7 @@ import {ingestParsedFile} from "../intake/parsers.js";
 const MAX_FILE_BYTES=8*1024*1024,MAX_FILES=12;
 function ext(n){return String(n||"").toLowerCase().split(".").pop()}
 function compactXlsx(r){return {status:r.status,workbook:r.workbook,sheets:r.sheets.map(s=>({name:s.name,headers:s.headers,mapping:s.mapping,plan:s.plan,normalized_rows:s.normalized_rows.slice(0,2000),row_count:s.normalized_rows.length}))}}
-export async function ingestUploadedFiles(request){
+export async function ingestUploadedFiles(request,env=null){
  const form=await request.formData();const files=form.getAll("files").filter(x=>x&&typeof x.arrayBuffer==="function");
  if(!files.length)return {ok:false,status:400,error:"files_required"};if(files.length>MAX_FILES)return {ok:false,status:413,error:"too_many_files",max_files:MAX_FILES};
  const results=[];
@@ -15,8 +17,8 @@ export async function ingestUploadedFiles(request){
   try{
    if(e==="xlsx")results.push({name:file.name,size:file.size,kind:"xlsx",...(compactXlsx(await ingestXlsx({name:file.name,mime:file.type},bytes)))});
    else if(e==="zip"){const r=await ingestArchive(bytes,{name:file.name});results.push({name:file.name,size:file.size,kind:"archive",...r})}
-   else if(e==="pdf"){const route=routePdf(bytes);results.push({name:file.name,size:file.size,kind:"pdf",status:route.valid?"awaiting_extraction":"needs_review",route})}
-   else if(["png","jpg","jpeg","webp"].includes(e)){const route=inspectImage(bytes,{name:file.name});results.push({name:file.name,size:file.size,kind:"image",status:route.valid?"awaiting_extraction":"needs_review",route})}
+   else if(e==="pdf"){const route=routePdf(bytes);let extra={};if(route.valid&&env?.DB){const jobId=crypto.randomUUID(),fileId=crypto.randomUUID(),stored=await storeSource(env,{jobId,fileId,file});if(stored.stored){const q=await enqueueExtraction(env.DB,{intake_job_id:jobId,intake_file_id:fileId,provider:"pc_ocr",mode:route.adapter,source_ref:stored.key});extra={job_id:jobId,file_id:fileId,source_stored:true,extraction_job_id:q.extraction_job_id}}else extra={source_stored:false,setup_required:stored.reason}}results.push({name:file.name,size:file.size,kind:"pdf",status:route.valid?"awaiting_extraction":"needs_review",route,...extra})}
+   else if(["png","jpg","jpeg","webp"].includes(e)){const route=inspectImage(bytes,{name:file.name});let extra={};if(route.valid&&env?.DB){const jobId=crypto.randomUUID(),fileId=crypto.randomUUID(),stored=await storeSource(env,{jobId,fileId,file});if(stored.stored){const q=await enqueueExtraction(env.DB,{intake_job_id:jobId,intake_file_id:fileId,provider:"pc_ocr",mode:route.adapter,source_ref:stored.key});extra={job_id:jobId,file_id:fileId,source_stored:true,extraction_job_id:q.extraction_job_id}}else extra={source_stored:false,setup_required:stored.reason}}results.push({name:file.name,size:file.size,kind:"image",status:route.valid?"awaiting_extraction":"needs_review",route,...extra})}
    else if(["csv","tsv","json","xml","txt"].includes(e)){const r=ingestParsedFile({name:file.name,mime:file.type},bytes);results.push({name:file.name,size:file.size,kind:"text",status:r.plan.status,result:r})}
    else results.push({name:file.name,size:file.size,status:"needs_review",issues:["UNSUPPORTED_UPLOAD_TYPE"]});
   }catch(error){results.push({name:file.name,size:file.size,status:"needs_review",issues:["UPLOAD_INGEST_ERROR"],error:String(error?.message||error)})}
