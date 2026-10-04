@@ -27,6 +27,8 @@ assert.doesNotThrow(()=>new vm.Script(script),"factory browser script must parse
 assert.ok(h.includes("const zipOcr="));
 assert.ok(h.includes("const pcFiles=[...binary,...zipOcr]"));
 assert.ok(h.includes("j.result?.archive"));
+assert.ok(!h.includes("return {name:x.file.name,role:x.role,result:j.result};if(j.result?.archive"));
+assert.ok(h.includes("return [{name:x.file.name,role:x.role,result:j.result}]"));
 assert.ok(h.includes("extracted.push(...await pcExtract(x))"));
 assert.ok(h.includes("function collectReady("));
 assert.ok(h.includes("directFiles.push(...collectReady(uploaded,x.role))"));
