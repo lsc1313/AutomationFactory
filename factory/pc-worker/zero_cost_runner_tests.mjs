@@ -1,0 +1,1 @@
+import assert from "node:assert/strict";const old={...process.env};process.env.FACTORY_BASE_URL="";process.env.PC_WORKER_TOKEN="";const {startZeroCost}=await import("./zero_cost_runner.js");await assert.rejects(()=>startZeroCost(),/FACTORY_BASE_URL_REQUIRED/);Object.assign(process.env,old);console.log("ZERO COST RUNNER TESTS OK");
