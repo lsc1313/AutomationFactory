@@ -7,11 +7,11 @@ A2,S2,1,2500`,{name:"orders.csv"});
 assert.deepEqual(csv.headers,["주문번호","상품코드","주문수량","공급가"]);
 assert.equal(csv.rows[0]["상품코드"],"S1");
 
-const quoted=parseDelimited('Order ID,Description,Qty\\nA1,"Widget, Large",2',{name:"orders.csv"});
+const quoted=parseDelimited('Order ID,Description,Qty\nA1,"Widget, Large",2',{name:"orders.csv"});
 assert.equal(quoted.rows[0].Description,"Widget, Large");
 
-const tsv=parseDelimited("SKU\\tQty\\tUnit Cost\\nS1\\t3\\t12.5",{name:"x.tsv"});
-assert.equal(tsv.delimiter,"\\t");
+const tsv=parseDelimited("SKU\tQty\tUnit Cost\nS1\t3\t12.5",{name:"x.tsv"});
+assert.equal(tsv.delimiter,"\t");
 assert.equal(tsv.rows[0]["Unit Cost"],"12.5");
 
 const json=parseJson('[{"Order ID":"A1","SKU":"S1","Qty":2,"Supplier Cost":10}]');
