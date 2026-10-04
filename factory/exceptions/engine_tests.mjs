@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {detectExceptions,summarizeExceptions,numericValue} from "./engine.js";
+import {detectExceptions,summarizeExceptions,numericValue,nonBillableStatus} from "./engine.js";
 const orders=[
  {order_id:"O1",sku:"A",quantity:2,unit_cost:10,status:"paid"},
  {order_id:"O2",sku:"B",quantity:1,unit_cost:20,status:"cancelled"},
@@ -24,4 +24,10 @@ assert.equal(numericValue("(3)",{accountingNegative:false}),3);
 assert.equal(numericValue("1,250원"),1250);
 const formatted=detectExceptions({orders:[{order_id:"F1",sku:"S1",quantity:"2",unit_cost:"₩10,000"}],invoices:[{order_id:"F1",sku:"S1",quantity:"2",unit_cost:"₩11,500",total:"₩23,000"}]});
 assert.equal(formatted.find(x=>x.type==="OVERCHARGE")?.difference,3000);
+for(const s of ["cancelled","canceled","void","voided","fully refunded","returned","취소완료","전액환불","반품완료"]) assert.equal(nonBillableStatus(s),true,s);
+for(const s of ["paid","fulfilled","partial refund","partially refunded","부분환불","일부 반품"]) assert.equal(nonBillableStatus(s),false,s);
+const refunded=detectExceptions({orders:[{order_id:"R1",sku:"S1",quantity:1,status:"fully refunded"}],invoices:[{order_id:"R1",sku:"S1",quantity:1,total:5000}]});
+assert.ok(refunded.some(x=>x.type==="CANCELLED_ORDER_BILLED"));
+const partial=detectExceptions({orders:[{order_id:"R2",sku:"S2",quantity:1,status:"partial refund"}],invoices:[{order_id:"R2",sku:"S2",quantity:1,total:5000}]});
+assert.ok(!partial.some(x=>x.type==="CANCELLED_ORDER_BILLED"));
 console.log("EXCEPTION ENGINE TESTS OK");
