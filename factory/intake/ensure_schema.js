@@ -9,4 +9,4 @@ const SQL=[
 "CREATE TABLE IF NOT EXISTS pc_workers (worker_id TEXT PRIMARY KEY,last_seen_at TEXT NOT NULL,capabilities_json TEXT NOT NULL DEFAULT '{}',status TEXT NOT NULL DEFAULT 'offline',endpoint_url TEXT NOT NULL DEFAULT '')",
 "CREATE TABLE IF NOT EXISTS pc_upload_tickets (ticket_id TEXT PRIMARY KEY,worker_id TEXT NOT NULL DEFAULT 'home-pc',file_name TEXT NOT NULL DEFAULT '',expires_at TEXT NOT NULL,used_at TEXT,created_at TEXT NOT NULL)"
 ];let ready=false;
-export async function ensureFactorySchema(db){if(ready||!db)return;for(const sql of SQL)await db.prepare(sql).run();ready=true}
+export async function ensureFactorySchema(db){if(ready||!db)return;for(const sql of SQL)await db.prepare(sql).run();const cols=await db.prepare("PRAGMA table_info(pc_workers)").all();if(!(cols.results||[]).some(x=>x.name==="endpoint_url"))await db.prepare("ALTER TABLE pc_workers ADD COLUMN endpoint_url TEXT NOT NULL DEFAULT ''").run();ready=true}
