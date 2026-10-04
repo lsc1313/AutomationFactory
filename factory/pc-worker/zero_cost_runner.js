@@ -1,4 +1,4 @@
-import {spawn} from "node:child_process";
+import {pathToFileURL} from "node:url";import {spawn} from "node:child_process";
 import readline from "node:readline";
 function need(name){const v=String(process.env[name]||"");if(!v)throw new Error(name+"_REQUIRED");return v}
 function child(cmd,args,env=process.env){return spawn(cmd,args,{env,stdio:["ignore","pipe","pipe"],windowsHide:true})}
@@ -11,4 +11,4 @@ export async function startZeroCost(){
   console.log("Exception Factory PC ONLINE:",endpoint);const worker=child(process.execPath,["factory/pc-worker/index.js"],{...env,PC_PUBLIC_ENDPOINT:endpoint});worker.stdout.pipe(process.stdout);worker.stderr.pipe(process.stderr);await new Promise((resolve,reject)=>{worker.once("exit",code=>code===0?resolve():reject(new Error("PC_WORKER_EXIT_"+code)));worker.once("error",reject)});
  }finally{stop()}
 }
-if(import.meta.url===`file://${process.argv[1]?.replaceAll("\\","/")}`)startZeroCost().catch(e=>{console.error("[PC ZERO COST]",e.message);process.exit(1)});
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)startZeroCost().catch(e=>{console.error("[PC ZERO COST]",e.message);process.exit(1)});
