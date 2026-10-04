@@ -24,4 +24,8 @@ const script=h.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(script,"factory inline script missing");
 assert.doesNotThrow(()=>new vm.Script(script),"factory browser script must parse");
 
+assert.ok(html.includes("const zipOcr="));
+assert.ok(html.includes("const pcFiles=[...binary,...zipOcr]"));
+assert.ok(html.includes("j.result?.archive"));
+assert.ok(html.includes("extracted.push(...await pcExtract(x))"));
 console.log("FACTORY UI TESTS OK");
