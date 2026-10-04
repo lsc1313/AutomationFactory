@@ -39,7 +39,8 @@ const regression=runMixedScan({
 
 assert.equal(regression.audit.audit.verified_invoice_lines,6);
 assert.equal(regression.audit.review_queue.length,0);
-assert.equal(regression.audit.audit.total_exposure,25000);
-assert.equal(regression.audit.audit.total_exceptions,5);
+assert.equal(regression.audit.audit.money_exposure,25000);
+assert.equal(regression.audit.audit.exception_count,5);
+assert.equal(regression.free_summary.headline.transactions_checked,6);\nassert.equal(regression.free_summary.headline.potential_discrepancies,5);\nassert.equal(regression.free_summary.headline.potential_money_exposure.amount,25000);\nassert.equal(regression.free_summary.headline.human_review_required,0);
 
 console.log("MIXED SCAN TESTS OK");
