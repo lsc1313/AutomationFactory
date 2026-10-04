@@ -1,3 +1,4 @@
+import {ensureFactorySchema} from "../intake/ensure_schema.js";
 import {scanUploadedFiles} from "./scan.js";
 import {handlePcWorkerApi} from "./pc_worker.js";
 import {ingestUploadedFiles} from "./upload.js";
@@ -6,6 +7,7 @@ import {buildEvidenceReport,buildFreeScanSummary} from "../report/evidence_repor
 
 function response(body,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}})}
 export async function handleFactoryApi(request,path,env){
+ if(env?.DB)await ensureFactorySchema(env.DB);
  if(path.startsWith("/api/factory/pc-worker/"))return await handlePcWorkerApi(request,path,env);
  if(path==="/api/factory/scan"&&request.method==="POST"){const r=await scanUploadedFiles(request);return response(r,r.status||200)}
  if(path==="/api/factory/upload"&&request.method==="POST"){const r=await ingestUploadedFiles(request);return response(r,r.status||200)}
