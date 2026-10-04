@@ -9,7 +9,7 @@ export function inspectPdf(input){
   const raw=ascii(input);
   if(!raw.startsWith("%PDF-")) return {valid:false,mode:"invalid",reason:"PDF_SIGNATURE_MISSING"};
   const hasImages=/\/Subtype\s*\/Image\b/.test(raw);
-  const hasTextOps=/\bBT\b[\s\S]{0,12000}\bET\b/.test(raw);
+  const hasTextOps=/(?:^|[\\s\\r\\n])BT(?:[\\s\\r\\n])[\\s\\S]{0,12000}(?:^|[\\s\\r\\n])ET(?:[\\s\\r\\n]|$)/m.test(raw);
   const pageCount=Math.max(1,(raw.match(/\/Type\s*\/Page\b/g)||[]).length);
   return {valid:true,page_count:pageCount,has_images:hasImages,has_text_operators:hasTextOps,mode:hasTextOps?"text_extract":"ocr_required"};
 }
