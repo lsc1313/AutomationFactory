@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs && npm run check:intake && npm run check:exceptions && npm run check:matching && npm run check:audit && npm run check:report && npm run check:factory-api && npm run check:factory-ui && npm run check:upload && npm run check:extraction && npm run check:storage && npm run check:pc-worker && npm run check:extraction-bridge && npm run check:table-geometry && npm run check:scan && npm run check:scan-api && npm run check:scan-status && npm run check:pc-local && npm run check:mixed-scan && npm run check:pc-zero-cost",
+    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs && npm run check:intake && npm run check:exceptions && npm run check:matching && npm run check:audit && npm run check:report && npm run check:factory-api && npm run check:factory-ui && npm run check:upload && npm run check:extraction && npm run check:storage && npm run check:pc-worker && npm run check:extraction-bridge && npm run check:table-geometry && npm run check:scan && npm run check:scan-api && npm run check:scan-status && npm run check:pc-local && npm run check:pc-zip && npm run check:mixed-scan && npm run check:pc-zero-cost",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check:intake": "node factory/intake/intake_tests.mjs && node factory/intake/parser_tests.mjs && node factory/intake/batch_tests.mjs && node factory/intake/zip_reader_tests.mjs && node factory/intake/xlsx_pipeline_tests.mjs && node factory/intake/pdf_pipeline_tests.mjs && node factory/intake/image_pipeline_tests.mjs && node factory/intake/archive_pipeline_tests.mjs && node factory/intake/d1_store_tests.mjs",
@@ -27,6 +27,7 @@
     "check:scan-status": "node factory/api/scan_status_tests.mjs",
     "pc-local": "node factory/pc-worker/local_server.js",
     "check:pc-local": "node factory/pc-worker/local_server_tests.mjs",
+    "check:pc-zip": "node factory/pc-worker/zip_extractor_tests.mjs",
     "check:mixed-scan": "node factory/scan/mixed_scan_tests.mjs",
     "pc-zero-cost": "node factory/pc-worker/zero_cost_runner.js",
     "check:pc-zero-cost": "node factory/pc-worker/zero_cost_runner_tests.mjs"
