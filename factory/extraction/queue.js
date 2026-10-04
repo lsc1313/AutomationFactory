@@ -8,3 +8,6 @@ export async function claimExtraction(db,{provider="pc_ocr"}={}){
 export async function completeExtraction(db,{id,result,error=""}){
  const ts=now(),status=error?"failed":"completed";await db.prepare("UPDATE extraction_jobs SET status=?,result_json=?,error_text=?,completed_at=?,updated_at=? WHERE extraction_job_id=?").bind(status,JSON.stringify(result||{}),String(error||""),ts,ts,id).run();return {id,status};
 }
+
+export async function getExtraction(db,id){return await db.prepare("SELECT * FROM extraction_jobs WHERE extraction_job_id=?").bind(id).first()}
+export async function getExtractions(db,ids=[]){const out=[];for(const id of ids){const r=await getExtraction(db,id);if(r)out.push(r)}return out}
