@@ -53,6 +53,10 @@ export function classifyDocument({name="",text="",headers=[]}={}){
     const evidence=terms.filter(t=>fileName.includes(clean(t)));
     if(evidence.length) return {document_type:type,confidence:.99,evidence:evidence.map(x=>"filename:"+x)};
   }
+  const hs=headers.map(clean),has=(...terms)=>terms.some(t=>hs.some(h=>h===clean(t)));
+  if(has("invoice id","invoice no","invoice number","invoice #","송장번호","청구서번호")&&has("total","amount","line total","total amount","합계","금액","총액")) return {document_type:"invoice",confidence:.96,evidence:["header:invoice_id","header:total"]};
+  if(has("sku","item code","product code","상품코드","품목코드")&&has("supplier cost","supplier unit cost","unit cost","purchase price","공급가","매입가","원가")&&!has("order id","order no","order number","주문번호")) return {document_type:"price_list",confidence:.94,evidence:["header:sku","header:unit_cost","header:no_order_id"]};
+  if(has("order id","order no","order number","주문번호")&&(has("status","order status","상태","주문상태")||has("unit price","sales price","판매가"))) return {document_type:"order",confidence:.94,evidence:["header:order_id","header:order_fields"]};
   const hay=clean([name,text,...headers].join(" "));
   const rules=[
     ["credit_note",["credit note","credit memo","대변전표"]],
