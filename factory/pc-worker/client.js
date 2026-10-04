@@ -3,3 +3,5 @@ async function call(c,path,opt={}){const r=await fetch(c.base+path,{...opt,heade
 export async function claim(c){return (await (await call(c,"/api/factory/pc-worker/claim",{method:"POST"})).json()).job||null}
 export async function source(c,key){return new Uint8Array(await (await call(c,"/api/factory/pc-worker/source?key="+encodeURIComponent(key))).arrayBuffer())}
 export async function submit(c,{id,result,error="",source_key=""}){return await (await call(c,"/api/factory/pc-worker/result",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,result,error,source_key})})).json()}
+
+export async function sendHeartbeat(c,{worker_id="home-pc",capabilities={}}={}){return await (await call(c,"/api/factory/pc-worker/heartbeat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({worker_id,capabilities})})).json()}
