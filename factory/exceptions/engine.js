@@ -1,4 +1,11 @@
-function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
+export function numericValue(v){
+ if(typeof v==="number")return Number.isFinite(v)?v:0;
+ let s=String(v??"").trim();if(!s)return 0;
+ const negative=/^\(.*\)$/.test(s);if(negative)s=s.slice(1,-1);
+ s=s.replace(/[₩$€£¥]/g,"").replace(/\s+/g,"").replace(/,/g,"").replace(/[^0-9.+-]/g,"");
+ const x=Number(s);return Number.isFinite(x)?(negative?-Math.abs(x):x):0;
+}
+function n(v){return numericValue(v)}
 function key(r){return [r.order_id||"",r.sku||""].join("::")}
 function ex(type,row,{expected=null,actual=null,difference=null,reason="",evidence=[],confidence=1}={}){
  return {type,order_id:row.order_id||"",sku:row.sku||"",expected,actual,difference,reason,evidence,confidence,severity:Math.abs(n(difference))>0?"money":"review"};
