@@ -29,8 +29,7 @@ assert.equal(ingested.normalized_rows[0].sku,"S1");
 assert.equal(ingested.normalized_rows[0].quantity,"2");
 assert.equal(ingested.normalized_rows[0].unit_cost,"10");
 
-const supplier=ingestParsedFile({name:"supplier_price_list.csv",mime:"text/csv"},"sku,supplier_unit_cost
-S1,10");assert.equal(supplier.normalized_rows[0].unit_cost,"10");\n\nconst pdf=ingestParsedFile({name:"invoice.pdf",mime:"application/pdf"},null,{extractedText:"Invoice Number INV-1 Amount Due"});
+const supplier=ingestParsedFile({name:"supplier_price_list.csv",mime:"text/csv"},`sku,supplier_unit_cost\nS1,10`);assert.equal(supplier.normalized_rows[0].unit_cost,"10");\n\nconst pdf=ingestParsedFile({name:"invoice.pdf",mime:"application/pdf"},null,{extractedText:"Invoice Number INV-1 Amount Due"});
 assert.equal(pdf.adapter_required,true);
 assert.equal(pdf.plan.document.document_type,"invoice");
 
