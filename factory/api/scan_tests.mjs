@@ -25,7 +25,8 @@ zfd.append("files",new File([bundle],"customer_bundle.zip",{type:"application/zi
 zfd.append("roles","{}");
 const zr=await scanUploadedFiles(new Request("https://local/scan",{method:"POST",body:zfd}));
 assert.equal(zr.ok,true);
-if(!zr.scan.report) console.log("ZIP_SCAN_DIAG",JSON.stringify(zr.scan,null,2));\nassert.ok(zr.scan.report);
+if(!zr.scan.report) console.log("ZIP_SCAN_DIAG",JSON.stringify(zr.scan,null,2));
+assert.ok(zr.scan.report);
 assert.equal(zr.scan.assembled.counts.orders,1);
 assert.equal(zr.scan.assembled.counts.invoices,1);
 assert.equal(zr.scan.assembled.counts.priceList,1);
