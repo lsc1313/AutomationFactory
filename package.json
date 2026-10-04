@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs && npm run check:intake && npm run check:exceptions && npm run check:matching && npm run check:audit && npm run check:report && npm run check:factory-api",
+    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs && npm run check:intake && npm run check:exceptions && npm run check:matching && npm run check:audit && npm run check:report && npm run check:factory-api && npm run check:factory-ui",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check:intake": "node factory/intake/intake_tests.mjs && node factory/intake/parser_tests.mjs && node factory/intake/batch_tests.mjs && node factory/intake/zip_reader_tests.mjs && node factory/intake/xlsx_pipeline_tests.mjs && node factory/intake/pdf_pipeline_tests.mjs && node factory/intake/image_pipeline_tests.mjs && node factory/intake/archive_pipeline_tests.mjs && node factory/intake/d1_store_tests.mjs",
@@ -12,7 +12,8 @@
     "check:matching": "node factory/matching/engine_tests.mjs",
     "check:audit": "node factory/audit/supplier_audit_tests.mjs",
     "check:report": "node factory/report/evidence_report_tests.mjs",
-    "check:factory-api": "node factory/api/handler_tests.mjs"
+    "check:factory-api": "node factory/api/handler_tests.mjs",
+    "check:factory-ui": "node factory/ui/page_tests.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
