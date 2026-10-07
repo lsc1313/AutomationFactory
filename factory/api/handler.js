@@ -18,8 +18,9 @@ function factoryAuthorized(request,env){
 }
 export async function handleFactoryApi(request,path,env){
  if(env?.DB)await ensureFactorySchema(env.DB);
- if(!factoryAuthorized(request,env))return response({ok:false,error:"factory_unauthorized"},401);
+ if(path==="/api/factory/health"&&request.method==="GET")return response({ok:true,factory:"universal-intake",version:"1"});
  if(path.startsWith("/api/factory/pc-worker/"))return await handlePcWorkerApi(request,path,env);
+ if(!factoryAuthorized(request,env))return response({ok:false,error:"factory_unauthorized"},401);
  if(path==="/api/factory/mixed-scan"&&request.method==="POST"){let b;try{b=await request.json()}catch{return response({ok:false,error:"invalid_json"},400)}const direct=Array.isArray(b.direct_files)?b.direct_files:[],extracted=Array.isArray(b.extracted_files)?b.extracted_files:[];if(direct.length+extracted.length>20)return response({ok:false,error:"too_many_files"},413);const scan=runMixedScan({direct_files:direct,extracted_files:extracted},{currency:b.currency});return response({ok:true,scan})}
  if(path==="/api/factory/scan/status"&&request.method==="POST"){let b;try{b=await request.json()}catch{return response({ok:false,error:"invalid_json"},400)}const ids=Array.isArray(b?.extraction_job_ids)?b.extraction_job_ids.filter(Boolean).slice(0,20):[];if(!ids.length)return response({ok:false,error:"extraction_job_ids_required"},400);return response({ok:true,...await scanStatus(env.DB,ids,{currency:b?.currency||"UNSPECIFIED",scanMode:"free"})})}
  if(path==="/api/factory/scan"&&request.method==="POST"){const r=await scanUploadedFiles(request,env);return response(r,r.status||200)}
