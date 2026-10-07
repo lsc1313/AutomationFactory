@@ -5,14 +5,15 @@ import {ingestArchive} from "../intake/archive_pipeline.js";
 import {routePdf} from "../intake/pdf_pipeline.js";
 import {inspectImage} from "../intake/image_pipeline.js";
 import {ingestParsedFile} from "../intake/parsers.js";
-const MAX_FILE_BYTES=8*1024*1024,MAX_FILES=12;
+const MAX_FILES=12,FILE_LIMITS={image:20*1024*1024,pdf:30*1024*1024,zip:50*1024*1024,other:8*1024*1024};
+function fileLimit(name){const e=ext(name);return ["png","jpg","jpeg","webp"].includes(e)?FILE_LIMITS.image:e==="pdf"?FILE_LIMITS.pdf:e==="zip"?FILE_LIMITS.zip:FILE_LIMITS.other}
 function ext(n){return String(n||"").toLowerCase().split(".").pop()}
 function compactXlsx(r){return {status:r.status,workbook:r.workbook,sheets:r.sheets.map(s=>({name:s.name,headers:s.headers,mapping:s.mapping,plan:s.plan,normalized_rows:s.normalized_rows.slice(0,2000),row_count:s.normalized_rows.length}))}}
 export async function ingestUploadedFiles(request,env=null){
  const form=await request.formData();const files=form.getAll("files").filter(x=>x&&typeof x.arrayBuffer==="function");
  if(!files.length)return {ok:false,status:400,error:"files_required"};if(files.length>MAX_FILES)return {ok:false,status:413,error:"too_many_files",max_files:MAX_FILES};
  const results=[];
- for(const file of files){if(file.size>MAX_FILE_BYTES){results.push({name:file.name,size:file.size,status:"needs_review",issues:["FILE_TOO_LARGE"]});continue}
+ for(const file of files){const maxBytes=fileLimit(file.name);if(file.size>maxBytes){results.push({name:file.name,size:file.size,status:"needs_review",issues:["FILE_TOO_LARGE"],max_bytes:maxBytes});continue}
   const bytes=new Uint8Array(await file.arrayBuffer()),e=ext(file.name);
   try{
    if(e==="xlsx")results.push({name:file.name,size:file.size,kind:"xlsx",...(compactXlsx(await ingestXlsx({name:file.name,mime:file.type},bytes)))});
