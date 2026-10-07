@@ -42,14 +42,16 @@ export function detectExceptions({orders=[],invoices=[],priceList=[]}={},opts={}
     out.push(ex("QUANTITY_MISMATCH",inv,{expected:q(ord.quantity),actual:q(inv.quantity),difference:q(inv.quantity)-q(ord.quantity),reason:"invoice quantity differs from order quantity",evidence:[k],confidence:1}));
    }
   }
-  const expectedCost=price?.unit_cost??ord?.unit_cost;
+  const orderBaseline=ord?.unit_cost??ord?.unit_price;
+  const currentSupplierCost=price?.unit_cost;
+  const expectedCost=orderBaseline??currentSupplierCost;
   const actualCost=inv.unit_cost??inv.unit_price;
   if(expectedCost!=null&&actualCost!=null&&n(actualCost)-n(expectedCost)>tolerance){
    const qty=Math.max(1,q(inv.quantity)||1),delta=(n(actualCost)-n(expectedCost))*qty;
-   out.push(ex("OVERCHARGE",inv,{expected:n(expectedCost),actual:n(actualCost),difference:delta,reason:"invoiced unit cost exceeds expected unit cost",evidence:[String(inv.sku||"")],confidence:1}));
+   out.push(ex("OVERCHARGE",inv,{expected:n(expectedCost),actual:n(actualCost),difference:delta,reason:orderBaseline!=null?"invoiced unit cost exceeds order-time baseline":"invoiced unit cost exceeds current supplier price",evidence:[String(inv.sku||""),orderBaseline!=null?"order_baseline":"current_price_list"],confidence:orderBaseline!=null?1:.9}));
   }
-  if(price?.unit_cost!=null&&ord?.unit_cost!=null&&Math.abs(n(price.unit_cost)-n(ord.unit_cost))>tolerance){
-   out.push(ex("SUPPLIER_COST_CHANGED",inv,{expected:n(ord.unit_cost),actual:n(price.unit_cost),difference:n(price.unit_cost)-n(ord.unit_cost),reason:"current supplier price differs from order baseline",evidence:[String(inv.sku||"")],confidence:1}));
+  if(currentSupplierCost!=null&&orderBaseline!=null&&Math.abs(n(currentSupplierCost)-n(orderBaseline))>tolerance){
+   out.push(ex("SUPPLIER_COST_CHANGED",inv,{expected:n(orderBaseline),actual:n(currentSupplierCost),difference:n(currentSupplierCost)-n(orderBaseline),reason:"current supplier price differs from order-time baseline; informational until billing evidence confirms impact",evidence:[String(inv.sku||""),"order_baseline","current_price_list"],confidence:.9}));
   }
  }
  return out;
