@@ -10,8 +10,15 @@ import {runSupplierAudit} from "../audit/supplier_audit.js";
 import {buildEvidenceReport,buildFreeScanSummary} from "../report/evidence_report.js";
 
 function response(body,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}})}
+function factoryAuthorized(request,env){
+ const required=String(env?.FACTORY_ACCESS_KEY||"").trim();
+ if(!required)return true;
+ const supplied=String(request.headers.get("x-factory-key")||"").trim();
+ return supplied.length===required.length&&supplied===required;
+}
 export async function handleFactoryApi(request,path,env){
  if(env?.DB)await ensureFactorySchema(env.DB);
+ if(!factoryAuthorized(request,env))return response({ok:false,error:"factory_unauthorized"},401);
  if(path.startsWith("/api/factory/pc-worker/"))return await handlePcWorkerApi(request,path,env);
  if(path==="/api/factory/mixed-scan"&&request.method==="POST"){let b;try{b=await request.json()}catch{return response({ok:false,error:"invalid_json"},400)}const direct=Array.isArray(b.direct_files)?b.direct_files:[],extracted=Array.isArray(b.extracted_files)?b.extracted_files:[];if(direct.length+extracted.length>20)return response({ok:false,error:"too_many_files"},413);const scan=runMixedScan({direct_files:direct,extracted_files:extracted},{currency:b.currency});return response({ok:true,scan})}
  if(path==="/api/factory/scan/status"&&request.method==="POST"){let b;try{b=await request.json()}catch{return response({ok:false,error:"invalid_json"},400)}const ids=Array.isArray(b?.extraction_job_ids)?b.extraction_job_ids.filter(Boolean).slice(0,20):[];if(!ids.length)return response({ok:false,error:"extraction_job_ids_required"},400);return response({ok:true,...await scanStatus(env.DB,ids,{currency:b?.currency||"UNSPECIFIED",scanMode:"free"})})}
