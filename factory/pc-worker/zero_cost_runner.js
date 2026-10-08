@@ -3,7 +3,7 @@ import readline from "node:readline";
 function need(name){const v=String(process.env[name]||"");if(!v)throw new Error(name+"_REQUIRED");return v}
 function child(cmd,args,env=process.env){return spawn(cmd,args,{env,stdio:["ignore","pipe","pipe"],windowsHide:true})}
 export async function startZeroCost(){
- need("FACTORY_BASE_URL");need("PC_WORKER_TOKEN");const port=String(process.env.PC_LOCAL_PORT||"8788"),env={...process.env,PC_LOCAL_HOST:"127.0.0.1",PC_LOCAL_PORT:port};
+ need("FACTORY_BASE_URL");need("PC_WORKER_TOKEN");const port=String(process.env.PC_LOCAL_PORT||"8788");const factoryOrigin=new URL(need("FACTORY_BASE_URL")).origin;const env={...process.env,PC_ALLOWED_ORIGIN:process.env.PC_ALLOWED_ORIGIN||factoryOrigin,PC_LOCAL_HOST:"127.0.0.1",PC_LOCAL_PORT:port};
  const local=child(process.execPath,["factory/pc-worker/local_server.js"],env);local.stdout.pipe(process.stdout);local.stderr.pipe(process.stderr);
  const tunnel=child(process.env.CLOUDFLARED_CMD||"cloudflared",["tunnel","--url","http://127.0.0.1:"+port],env);tunnel.stdout.pipe(process.stdout);
  let done=false;const stop=()=>{if(done)return;done=true;local.kill();tunnel.kill()};process.once("SIGINT",()=>{stop();process.exit(0)});process.once("SIGTERM",()=>{stop();process.exit(0)});
