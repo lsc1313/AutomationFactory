@@ -25,6 +25,11 @@ try{
  r=await fetch(base+"/extract",{method:"OPTIONS",headers:{origin:"https://evil.example","access-control-request-method":"POST"}});
  assert.equal(r.status,403);
  assert.equal(r.headers.get("access-control-allow-origin"),null);
+ r=await fetch(base+"/extract",{method:"POST",headers:{origin:"https://evil.example","x-upload-ticket":"bogus"}});
+ assert.equal(r.status,403);
+ delete process.env.PC_ALLOWED_ORIGIN;
+ r=await fetch(base+"/extract",{method:"OPTIONS",headers:{origin:"https://factory.example"}});
+ assert.equal(r.status,403);
 }finally{
  await new Promise(r=>s.close(r));
  delete process.env.PC_ALLOWED_ORIGIN;
