@@ -1,0 +1,4 @@
+import assert from "node:assert/strict";import {finalizeExtraction} from "./extraction_bridge.js";
+const p=finalizeExtraction({file:{name:"supplier_invoice.pdf",mime:"application/pdf"},result:{text:"INVOICE invoice number INV-1 amount due 120",confidence:.95}});assert.equal(p.document_type,"invoice");assert.equal(p.status,"needs_review");assert.ok(p.issues.some(x=>x.code==="STRUCTURED_TABLE_EXTRACTION_REQUIRED"));
+const i=finalizeExtraction({file:{name:"invoice.png",mime:"image/png"},result:{text:"invoice",confidence:.9,tables:[{headers:["SKU","Qty","Unit Cost"],rows:[{"SKU":"A1","Qty":"2","Unit Cost":"10"}]}]}});assert.equal(i.normalized_rows[0].sku,"A1");assert.equal(i.normalized_rows[0].quantity,"2");
+console.log("EXTRACTION BRIDGE TESTS OK");

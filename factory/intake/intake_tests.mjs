@@ -1,0 +1,69 @@
+import assert from "node:assert/strict";
+import {detectFileKind,classifyDocument,mapHeaders,buildIntakePlan,normalizeRows} from "./intake.js";
+
+assert.equal(detectFileKind("supplier.xlsx").kind,"spreadsheet");
+assert.equal(detectFileKind("scan.PDF").kind,"pdf");
+assert.equal(detectFileKind("bundle.zip").kind,"archive");
+assert.equal(detectFileKind("unknown.bin").supported,false);
+
+assert.equal(classifyDocument({name:"supplier_invoice.pdf",text:"Invoice Number INV-1 Amount Due"}).document_type,"invoice");
+assert.equal(classifyDocument({name:"PO-10.pdf",text:"Purchase Order PO Number 10"}).document_type,"purchase_order");
+assert.equal(classifyDocument({name:"refund.csv",headers:["Order ID","Refund Amount"]}).document_type,"refund");
+assert.equal(classifyDocument({name:"supplier_price_list.xlsx",headers:["SKU","Unit Cost"]}).document_type,"price_list");
+
+const en=mapHeaders(["Order ID","SKU","Qty","Supplier Cost","Invoice Number"]);
+assert.equal(en.fields.order_id.source_header,"Order ID");
+assert.equal(en.fields.sku.source_header,"SKU");
+assert.equal(en.fields.quantity.source_header,"Qty");
+assert.equal(en.fields.unit_cost.source_header,"Supplier Cost");
+assert.equal(en.fields.invoice_id.source_header,"Invoice Number");
+
+const ko=mapHeaders(["주문번호","상품코드","주문수량","공급가","거래처"]);
+assert.equal(ko.fields.order_id.source_header,"주문번호");
+assert.equal(ko.fields.sku.source_header,"상품코드");
+assert.equal(ko.fields.quantity.source_header,"주문수량");
+assert.equal(ko.fields.unit_cost.source_header,"공급가");
+assert.equal(ko.fields.supplier.source_header,"거래처");
+
+const plan=buildIntakePlan({name:"invoice.xlsx",mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},{text:"Invoice Number",headers:["Invoice Number","SKU","Qty","Unit Cost","Total"]});
+assert.equal(plan.file.kind,"spreadsheet");
+assert.equal(plan.document.document_type,"invoice");
+assert.equal(plan.status,"ready");
+
+const orderPlan=buildIntakePlan({name:"orders.csv",mime:"text/csv"},{headers:["order_id","sku","qty","unit_price","status"]});assert.equal(orderPlan.status,"ready");assert.ok(orderPlan.mapping.confidence>=.7);
+
+const normalized=normalizeRows([{"주문번호":"A-1","상품코드":"S-1","주문수량":2,"공급가":1000}],ko);
+assert.equal(normalized[0].order_id,"A-1");
+assert.equal(normalized[0].sku,"S-1");
+assert.equal(normalized[0].quantity,2);
+assert.equal(normalized[0].unit_cost,1000);
+
+const uncertain=buildIntakePlan({name:"mystery.bin"},{text:"hello"});
+assert.equal(uncertain.status,"needs_review");
+assert.ok(uncertain.issues.some(x=>x.code==="UNSUPPORTED_FILE"));
+
+
+const namedInvoice=classifyDocument({name:"supplier_invoice.csv",headers:["order id","sku","qty","unit cost","total"]});
+assert.equal(namedInvoice.document_type,"invoice");
+assert.ok(namedInvoice.confidence>=.99);
+
+const genericInvoice=classifyDocument({name:"data1.csv",headers:["Invoice Number","SKU","Qty","Unit Cost","Total"]});
+assert.equal(genericInvoice.document_type,"invoice");
+const genericPrice=classifyDocument({name:"export_2026.xlsx",headers:["SKU","Supplier Unit Cost"]});
+assert.equal(genericPrice.document_type,"price_list");
+const genericOrder=classifyDocument({name:"download.csv",headers:["Order ID","SKU","Qty","Unit Price","Status"]});
+assert.equal(genericOrder.document_type,"order");
+const vendorHeaders=mapHeaders(["Ord #","Vendor SKU","Ordered Qty","Vendor Cost","Extended Amount","Inv #"]);
+assert.equal(vendorHeaders.fields.order_id.source_header,"Ord #");
+assert.equal(vendorHeaders.fields.sku.source_header,"Vendor SKU");
+assert.equal(vendorHeaders.fields.quantity.source_header,"Ordered Qty");
+assert.equal(vendorHeaders.fields.unit_cost.source_header,"Vendor Cost");
+assert.equal(vendorHeaders.fields.total.source_header,"Extended Amount");
+assert.equal(vendorHeaders.fields.invoice_id.source_header,"Inv #");
+const koreanSupplier=mapHeaders(["오더번호","품번","청구수량","공급단가","청구금액","인보이스번호"]);
+assert.equal(koreanSupplier.fields.order_id.source_header,"오더번호");
+assert.equal(koreanSupplier.fields.sku.source_header,"품번");
+assert.equal(koreanSupplier.fields.quantity.source_header,"청구수량");
+assert.equal(koreanSupplier.fields.unit_cost.source_header,"공급단가");
+assert.equal(koreanSupplier.fields.total.source_header,"청구금액");
+console.log("UNIVERSAL INTAKE TESTS OK");

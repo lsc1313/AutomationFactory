@@ -1,0 +1,2 @@
+import assert from "node:assert/strict";import {scanStatus} from "./scan_status.js";
+const db={prepare(sql){return{bind(id){return{async first(){return id==="a"?{extraction_job_id:"a",status:"queued",result_json:"{}"}:{extraction_job_id:id,status:"failed",error_text:"OCR_FAIL",result_json:"{}"}}}}}}};const r=await scanStatus(db,["a","b"]);assert.equal(r.status,"processing");assert.equal(r.counts.queued,1);assert.equal(r.failed.length,1);console.log("SCAN STATUS TESTS OK");
