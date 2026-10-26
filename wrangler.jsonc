@@ -4,5 +4,12 @@
   "compatibility_date": "2026-09-26",
   "observability": {
     "enabled": true
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "THEME_QUOTA_DB",
+      "database_name": "theme-factory",
+      "database_id": "fb382e37-5486-4acd-b22a-a8d54044ecab"
+    }
+  ]
 }
