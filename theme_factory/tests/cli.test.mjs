@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {mkdtemp,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {join,resolve} from "node:path";
+import {join} from "node:path";
+import {fileURLToPath} from "node:url";
 import {execFileSync} from "node:child_process";
-const cli=resolve("theme_factory/cli.mjs");
+const cli=fileURLToPath(new URL("../cli.mjs",import.meta.url));
 test("CLI creates and lists persistent jobs",async()=>{
  const dir=await mkdtemp(join(tmpdir(),"theme-factory-"));
  try {
