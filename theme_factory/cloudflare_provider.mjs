@@ -6,7 +6,7 @@ export function createCloudflareImageProvider({accountId,apiToken,model="@cf/byt
  const url="https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(accountId)+"/ai/run/"+model;
  return {costCents:0,async generate(task){
   if(!task||typeof task.prompt!=="string")throw Error("invalid task");
-  const response=await fetchImpl(url,{method:"POST",headers:{"Authorization":"Bearer "+apiToken,"Content-Type":"application/json"},body:JSON.stringify({prompt:task.prompt})});
+  const response=await fetchImpl(url,{method:"POST",headers:{"Authorization":"Bearer "+apiToken,"Content-Type":"application/json"},body:JSON.stringify({prompt:task.prompt,width:Math.min(task.width,1024),height:Math.min(task.height,2048),num_steps:4})});
   if(!response.ok)throw Error("Cloudflare AI request failed: HTTP "+response.status);
   const type=response.headers.get("content-type")||"";
   let bytes;
