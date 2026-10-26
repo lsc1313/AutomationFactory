@@ -3,10 +3,12 @@ import {resolve,join} from "node:path";
 import {makeGenerationPlan,runGeneration} from "./generation.mjs";
 import {inspectImage} from "./image_qc.mjs";
 import {buildPackage} from "./zip.mjs";
+import {normalizeImage} from "./normalize.mjs";
 
-export async function produceTheme({slug,concept,style,wallpapers=3,icons=0,title,description},provider,outputRoot){
+export async function produceTheme({slug,concept,style,wallpapers=3,icons=0,title,description},provider,outputRoot,{normalize=false,sharpLoader}={}){
  const plan=makeGenerationPlan({slug,concept,style,wallpapers,icons});
- const results=await runGeneration(plan,provider);
+ const generated=await runGeneration(plan,provider);
+ const results=normalize?await Promise.all(generated.map(async ({task,bytes})=>({task,bytes:await normalizeImage(bytes,task,{sharpLoader})}))):generated;
  // Check every output before writing anything to disk.
  for(const {task,bytes} of results){
   if(bytes.length>40*1024*1024)throw Error("image exceeds 40 MB: "+task.id);
