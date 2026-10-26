@@ -4,7 +4,7 @@ import worker from "../worker.mjs";
 const url="https://example.test/api/preview-image";
 const makeReq=()=>new Request(url,{method:"POST",headers:{"authorization":"Bearer admin","content-type":"application/json"},body:JSON.stringify({prompt:"a blue moonlit mountain"})});
 const env=(db)=>({ADMIN_TOKEN:"admin",CLOUDFLARE_AI_TOKEN:"private",CLOUDFLARE_ACCOUNT_ID:"acct",THEME_AI_PREVIEW_ENABLED:"1",THEME_QUOTA_DB:db});
-const quota=(changes=1)=>({prepare(){return{bind(){return{async run(){return{success:true,meta:{changes}}}}}}}}});
+const quota=(changes=1)=>({prepare:()=>({bind:()=>({run:async()=>({success:true,meta:{changes}})})})});
 test("missing quota binding fails closed without calling AI",async()=>{
  const original=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw Error("unexpected")};
  try{const res=await worker.fetch(makeReq(),env(undefined));assert.equal(res.status,503);assert.equal(calls,0)}
