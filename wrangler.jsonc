@@ -11,5 +11,8 @@
       "database_name": "theme-factory",
       "database_id": "fb382e37-5486-4acd-b22a-a8d54044ecab"
     }
-  ]
+  ],
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "077453530769859915f71686765e42ef"
+  }
 }
