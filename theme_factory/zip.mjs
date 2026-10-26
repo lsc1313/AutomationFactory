@@ -1,3 +1,4 @@
+import {verifyAsset} from "./image_qc.mjs";
 import {readFile,writeFile,mkdir} from "node:fs/promises";
 import {resolve,dirname,sep} from "node:path";
 import {validateProduct,storefrontListing} from "./product.mjs";
@@ -25,7 +26,7 @@ export async function buildPackage(inputDir,outputFile){
  for(const asset of [...product.wallpapers,...product.icons]){
   const path=resolve(base,asset.file);
   if(!path.startsWith(base+sep))throw Error("asset outside input directory");
-  const data=await readFile(path);
+  const data=await verifyAsset(path,asset);
   const magicPng=data.length>=24&&data.subarray(0,8).equals(Buffer.from("89504e470d0a1a0a","hex"));
   const magicJpeg=data.length>=4&&data[0]===255&&data[1]===216&&data.at(-2)===255&&data.at(-1)===217;
   const magicWebp=data.length>=12&&data.toString("ascii",0,4)==="RIFF"&&data.toString("ascii",8,12)==="WEBP";
