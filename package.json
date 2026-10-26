@@ -8,8 +8,8 @@
     "test": "npm --prefix theme_factory test",
     "theme": "node theme_factory/cli.mjs",
     "dev": "node theme_factory/cli.mjs",
-    "legacy:check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs",
-    "pack": "node theme_factory/pack.mjs"
+    "pack": "node theme_factory/pack.mjs",
+    "deploy:theme": "wrangler deploy --config wrangler.jsonc"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
