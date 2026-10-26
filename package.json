@@ -1,12 +1,14 @@
 {
-  "name": "automation-factory-money-scout",
-  "version": "0.22.1",
+  "name": "automation-factory-theme-factory",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "check": "npm --prefix theme_factory run check",
+    "test": "npm --prefix theme_factory test",
+    "theme": "node theme_factory/cli.mjs",
+    "dev": "node theme_factory/cli.mjs",
+    "legacy:check": "node --check worker.js && node --check judge.js && node --check sources.js && node validator_tests.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
