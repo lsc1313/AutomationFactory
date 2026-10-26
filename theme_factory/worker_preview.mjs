@@ -1,3 +1,4 @@
+import {reservePreviewQuota} from "./preview_quota.mjs";
 const headers={"content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers});
 const MODEL="@cf/bytedance/stable-diffusion-xl-lightning";
@@ -15,6 +16,11 @@ export default {
    try{input=await request.json()}catch{return json({error:"invalid_json"},400)}
    const prompt=typeof input?.prompt==="string"?input.prompt.trim():"";
    if(!prompt||prompt.length>500)return json({error:"invalid_prompt"},400);
+   if(!env?.THEME_QUOTA_DB)return json({error:"quota_not_configured"},503);
+   let reserved;
+   try{reserved=await reservePreviewQuota(env.THEME_QUOTA_DB,{limit:1})}
+   catch{return json({error:"quota_unavailable"},503)}
+   if(!reserved)return json({error:"daily_preview_limit_reached"},429);
    const response=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)+"/ai/run/"+MODEL,{
     method:"POST",headers:{"Authorization":"Bearer "+env.CLOUDFLARE_AI_TOKEN,"Content-Type":"application/json"},
     body:JSON.stringify({prompt,width:1024,height:1024,num_steps:4})
