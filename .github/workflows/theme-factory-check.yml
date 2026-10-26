@@ -1,0 +1,18 @@
+name: Theme Factory validation
+on:
+  pull_request:
+    paths:
+      - 'theme_factory/**'
+      - '.github/workflows/theme-factory-check.yml'
+  workflow_dispatch:
+jobs:
+  theme-factory-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Theme Factory
+        working-directory: theme_factory
+        run: npm run check
