@@ -15,6 +15,6 @@ test("package requires image magic and emits ZIP",async()=>{
   const out=join(dir,"output.zip"),result=await buildPackage(dir,out);
   assert.equal(result.assets,1);assert.ok((await readFile(out)).length>png.length);
   await writeFile(join(dir,"assets/wallpaper.png"),Buffer.from("not an image"));
-  await assert.rejects(buildPackage(dir,out),/unsupported image/);
+  await assert.rejects(buildPackage(dir,out),/invalid PNG|unsupported image/);
  }finally{await rm(dir,{recursive:true,force:true})}
 });
