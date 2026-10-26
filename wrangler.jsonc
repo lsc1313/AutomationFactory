@@ -1,19 +1,8 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "automation-factory-money-scout",
-  "main": "worker.js",
+  "name": "automation-factory-theme-factory",
+  "main": "theme_factory/worker.mjs",
   "compatibility_date": "2026-09-26",
   "observability": {
     "enabled": true
-  },
-  "triggers": {
-    "crons": ["17 * * * *", "47 * * * *"]
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "automation-factory-money-scout",
-      "database_id": "947bb38a-f458-49c3-8ccf-48042bb415cf"
-    }
-  ]
+  }
 }
