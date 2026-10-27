@@ -6,7 +6,7 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url);
   if(request.method==="GET"&&(url.pathname==="/"||url.pathname==="/health"))
-   return json({app:"Theme Factory",version:"0.2.0",status:"preview",productionReady:false,aiConfigured:Boolean(env?.CLOUDFLARE_AI_TOKEN)});
+   return json({app:"Theme Factory",version:"0.2.1",status:"preview",productionReady:false,aiConfigured:Boolean(env?.CLOUDFLARE_AI_TOKEN),previewReady:Boolean(env?.CLOUDFLARE_AI_TOKEN&&env?.CLOUDFLARE_ACCOUNT_ID&&env?.ADMIN_TOKEN&&env?.THEME_QUOTA_DB&&Number(env?.THEME_AI_PREVIEW_ENABLED||0)===1),previewEnabled:Number(env?.THEME_AI_PREVIEW_ENABLED||0)===1,quotaConfigured:Boolean(env?.THEME_QUOTA_DB)});
   if(url.pathname==="/api/preview-image"&&request.method==="POST"){
    // No public image generation: only a configured admin token can authorize inference.
    if(!env?.ADMIN_TOKEN||request.headers.get("authorization")!=="Bearer "+env.ADMIN_TOKEN)return json({error:"unauthorized"},401);
