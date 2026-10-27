@@ -21,10 +21,11 @@ export default {
    try{reserved=await reservePreviewQuota(env.THEME_QUOTA_DB,{limit:1})}
    catch{return json({error:"quota_unavailable"},503)}
    if(!reserved)return json({error:"daily_preview_limit_reached"},429);
-   const response=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)+"/ai/run/"+MODEL,{
+   let response;
+   try{response=await fetch("https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)+"/ai/run/"+MODEL,{
     method:"POST",headers:{"Authorization":"Bearer "+env.CLOUDFLARE_AI_TOKEN,"Content-Type":"application/json"},
     body:JSON.stringify({prompt,width:1024,height:1024,num_steps:4})
-   });
+   });}catch{return json({error:"ai_network_failed"},502)}
    if(!response.ok)return json({error:"ai_request_failed",status:response.status},502);
    const contentType=response.headers.get("content-type")||"";
    if(contentType.startsWith("image/"))return new Response(response.body,{headers:{"content-type":contentType,"cache-control":"no-store"}});
