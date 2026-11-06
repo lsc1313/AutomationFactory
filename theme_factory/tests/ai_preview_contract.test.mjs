@@ -31,3 +31,9 @@ test("network failure returns controlled error",async()=>{
  try{const res=await worker.fetch(makeReq(),env(quota(1)));assert.equal(res.status,502);assert.equal((await res.json()).error,"ai_network_failed")}
  finally{globalThis.fetch=original}
 });
+
+test("upstream error code is exposed only as numeric diagnostic",async()=>{
+ const original=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({errors:[{code:10000,message:"SECRET INTERNAL DETAILS"}]}),{status:403,headers:{"content-type":"application/json"}});
+ try{const res=await worker.fetch(makeReq(),env(quota(1)));const data=await res.json();assert.equal(res.status,502);assert.equal(data.status,403);assert.equal(data.upstreamCode,10000);assert.ok(!JSON.stringify(data).includes("SECRET"))}
+ finally{globalThis.fetch=original}
+});
