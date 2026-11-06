@@ -24,3 +24,11 @@ test("readiness stays false until explicit enable and all bindings exist",async(
  assert.equal(result.previewReady,true);assert.equal(result.previewEnabled,true);
  assert.ok(!JSON.stringify(result).includes("private"));
 });
+
+test("mobile preview page contains no embedded credentials and does not call AI",async()=>{
+ const r=await worker.fetch(req("/preview"),{ADMIN_TOKEN:"super-private",CLOUDFLARE_AI_TOKEN:"also-private"});
+ const html=await r.text();assert.equal(r.status,200);assert.match(r.headers.get("content-type"),/text\/html/);
+ assert.match(html,/\/api\/preview-image/);assert.match(html,/type="password"/);
+ assert.ok(!html.includes("super-private"));assert.ok(!html.includes("also-private"));
+ assert.match(r.headers.get("content-security-policy"),/frame-ancestors 'none'/);
+});
