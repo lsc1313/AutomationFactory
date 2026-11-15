@@ -1,0 +1,16 @@
+{
+  "name": "Revenue Factory | 수익사업 제작 도구",
+  "short_name": "Revenue Factory",
+  "description": "상품 광고 시안과 판매 보고서를 만드는 로컬 제작 도구",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1222",
+  "theme_color": "#0b1222",
+  "lang": "ko",
+  "icons": [
+    {"src":"/icons/icon-192.png", "sizes":"192x192", "type":"image/png", "purpose":"any maskable"},
+    {"src":"/icons/icon-512.png", "sizes":"512x512", "type":"image/png", "purpose":"any maskable"}
+  ]
+}

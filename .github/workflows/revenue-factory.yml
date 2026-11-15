@@ -1,0 +1,24 @@
+name: Revenue Factory checks
+on:
+  pull_request:
+    paths:
+      - 'revenue_factory/**'
+      - '.github/workflows/revenue-factory.yml'
+  push:
+    paths:
+      - 'revenue_factory/**'
+      - '.github/workflows/revenue-factory.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test revenue_factory/tests/*.test.mjs
+      - run: |
+          node revenue_factory/cli.mjs creative revenue_factory/examples/product.json
+          node revenue_factory/cli.mjs report revenue_factory/examples/orders.csv

@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { makeCreativeBrief, validateProduct, writeCreativePack } from '../core.mjs';
+import { parseCsv, aggregateSales, writeSalesReport } from '../report.mjs';
+const product={brand:'테스트', name:'텀블러', audience:'출근하는 분', features:['500mL', '재사용 가능'], priceKrw:9900};
+test('상품 검증 및 사전 검토 상태',()=>{assert.equal(validateProduct(product).name,'텀블러');assert.equal(makeCreativeBrief(product).status,'DRAFT_REVIEW_REQUIRED');});
+test('미검증 효능·최저가 주장 표시',()=>{const b=makeCreativeBrief({...product,features:['국내 1위']});assert.equal(b.review.claimReviewRequired,true);});
+test('가격은 임의 할인율을 생성하지 않음',()=>{const b=makeCreativeBrief(product);assert.match(b.copy.priceLabel,/9,900원/);assert.doesNotMatch(JSON.stringify(b),/할인율/);});
+test('잘못된 입력 거부',()=>{assert.throws(()=>validateProduct({...product,features:[]}));assert.throws(()=>validateProduct({...product,priceKrw:-1}));});
+test('CSV 인용 부호 및 줄바꿈',()=>{assert.deepEqual(parseCsv('a,b\n"x,y",2\n')[1],['x,y','2']);});
+test('매출 합산',()=>{const r=aggregateSales('date,product,quantity,unit_price\n2026-11-01,A,2,1000\n2026-11-02,A,1,1000\n');assert.equal(r.revenue,3000);assert.equal(r.products[0].orders,2);});
+test('한글 헤더 가능',()=>{const r=aggregateSales('날짜,상품명,수량,단가\n2026-11-01,B,2,150\n');assert.equal(r.revenue,300);});
+test('잘못된 날짜/숫자 거부',()=>{assert.throws(()=>aggregateSales('date,product,quantity,unit_price\n2026-02-30,A,1,100\n'));assert.throws(()=>aggregateSales('date,product,quantity,unit_price\n2026-02-01,A,bad,100\n'));});
+test('광고 시안 실제 파일 생성',async()=>{const root=await mkdtemp(path.join(tmpdir(),'rf-'));try{const result=await writeCreativePack(product,root);assert.ok(result.files.includes('card-1.svg'));const preview=await readFile(path.join(root,result.job,'preview.html'),'utf8');assert.match(preview,/초안/);}finally{await rm(root,{recursive:true,force:true});}});
+test('보고서 실제 파일 생성·스프레드시트 수식 보호',async()=>{const root=await mkdtemp(path.join(tmpdir(),'rf-'));try{const result=await writeSalesReport('date,product,quantity,unit_price\n2026-11-01,=SUM(1),2,150\n',root);const csv=await readFile(path.join(root,result.job,'summary.csv'),'utf8');assert.ok(csv.includes("'=SUM(1)"));assert.equal(result.summary.revenue,300);}finally{await rm(root,{recursive:true,force:true});}});
