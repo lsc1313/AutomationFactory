@@ -36,6 +36,11 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
     res.writeHead(200,{...hardHeaders,'Content-Type':types[path.extname(filename)]||'application/octet-stream',...(url.pathname==='/app-sw.js'?{'Service-Worker-Allowed':'/'}:{})});res.end(content);return;
    }
    if(req.method==='GET'&&url.pathname==='/api/app/health')return json(res,200,{ok:true,mode:publicHost?'https-proxy':'local',renderer:await renderStatus(),payment:'manual-approval'});
+   if(req.method==='GET'&&url.pathname==='/api/app/setup-status'){const db=await store.read();return json(res,200,{setupAllowed:local&&!db.users.some(u=>u.role==='admin')});}
+   if(req.method==='POST'&&url.pathname==='/api/app/setup'){
+    const db=await store.read();if(!local||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)||db.users.some(u=>u.role==='admin'))return json(res,403,{error:'첫 설치는 PC에서만 가능합니다.'});
+    const b=await body(req,3000);const ok=await store.bootstrapAdmin(b.email,b.password);if(!ok)return json(res,409,{error:'관리자 설정이 이미 완료됐습니다.'});return json(res,201,{ok:true});
+   }
    if(req.method==='POST'&&url.pathname==='/api/app/login'){
     const key=req.socket.remoteAddress||'local';const now=Date.now();const a=attempts.get(key)||[];const active=a.filter(t=>now-t<15*60000);if(active.length>=10)return json(res,429,{error:'로그인 시도가 너무 많습니다. 15분 후 다시 시도하세요.'});active.push(now);attempts.set(key,active);if(attempts.size>1000)attempts.clear();
     const b=await body(req,2000);let auth;try{auth=await store.login(b.email,b.password);}catch{auth=null;}
@@ -75,7 +80,7 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
   if(bind!=='127.0.0.1'&&bind!=='localhost'&&(!publicHost||!secureCookie||process.env.REVENUE_TRUST_PROXY!=='1'))throw Error('외부 공개는 REVENUE_PUBLIC_HOST, REVENUE_SECURE_COOKIE=1, REVENUE_TRUST_PROXY=1이 모두 필요합니다.');
   await mkdir(path.dirname(dataFile),{recursive:true,mode:0o700});
   if(process.env.REVENUE_ADMIN_EMAIL&&process.env.REVENUE_ADMIN_PASSWORD)await store.bootstrapAdmin(process.env.REVENUE_ADMIN_EMAIL,process.env.REVENUE_ADMIN_PASSWORD);
-  if(!(await store.read()).users.some(u=>u.role==='admin'))throw Error('관리자 계정이 없습니다. REVENUE_ADMIN_EMAIL / REVENUE_ADMIN_PASSWORD(12자 이상)를 지정하세요.');
+  if(!(await store.read()).users.some(u=>u.role==='admin') && bind!=='127.0.0.1'&&bind!=='localhost')throw Error('공개 서버는 REVENUE_ADMIN_EMAIL / REVENUE_ADMIN_PASSWORD를 먼저 설정해야 합니다.');
   await store.transaction(db=>{for(const o of db.orders){if(o.status==='PROCESSING')o.status='QUEUED';}});
   await new Promise((resolve,reject)=>server.once('error',reject).listen(port,bind,resolve));void runPending();
   return server.address();

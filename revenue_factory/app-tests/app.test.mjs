@@ -33,3 +33,11 @@ test('paid creative produces actual MP4 and approved ZIP includes MP4',async t=>
  const video=await send(base,`/api/app/download/${id}/advertisement.mp4`,admin);assert.equal(video.status,200);assert.ok(video.data.byteLength>5000);
  const zip=await send(base,`/api/app/download/${id}/delivery.zip`,admin);assert.equal(zip.status,200);const data=Buffer.from(zip.data);assert.ok(data.includes(Buffer.from('advertisement.mp4')));
 });
+test('first-run setup works only locally and only once',async t=>{
+ const folder=await mkdtemp(path.join(os.tmpdir(),'rf-setup-'));const app=createApp({dataFile:path.join(folder,'db.json'),outputRoot:path.join(folder,'outputs')});const addr=await app.start({port:0});const base=`http://127.0.0.1:${addr.port}`;t.after(async()=>{await app.stop();await rm(folder,{recursive:true,force:true});});
+ assert.equal((await send(base,'/api/app/setup-status')).data.setupAllowed,true);
+ const first=await send(base,'/api/app/setup',{method:'POST',body:{email:'initial@example.com',password:'secure_admin_pass_456'}});assert.equal(first.status,201);
+ const again=await send(base,'/api/app/setup',{method:'POST',body:{email:'new@example.com',password:'secure_admin_pass_456'}});assert.equal(again.status,403);
+ assert.equal((await send(base,'/api/app/setup-status')).data.setupAllowed,false);
+ const auth=await login(base,'initial@example.com','secure_admin_pass_456');assert.equal(auth.user.role,'admin');
+});

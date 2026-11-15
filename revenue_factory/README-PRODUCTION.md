@@ -24,7 +24,7 @@
 
 ## Fast local test (Windows)
 
-Requires Node.js >=20, FFmpeg in PATH and a Korean font (Windows Malgun automatically discovered).
+Requires Node.js >=20, FFmpeg in PATH and a Korean font (Windows Malgun automatically discovered). **On a fresh local PC, administrator account setup is available directly in the browser, without environment variables.** This setup API is blocked for public hosts and non-local connections.
 
 ```powershell
 $env:REVENUE_ADMIN_EMAIL="admin@example.com"
@@ -33,7 +33,7 @@ node revenue_factory/app.mjs
 # Open http://127.0.0.1:8040/app
 ```
 
-Windows command file `revenue_factory/start-app-windows.cmd` works after environment variables are configured. Actual credentials must not be committed to GitHub.
+Windows command file `revenue_factory/start-app-windows.cmd` can now be double-clicked **without admin environment variables** on first local launch. Open the shown URL, create administrator credentials in the secure localhost-only setup screen, then log in. On a public server, bootstrap via environment variables is still mandatory. Actual credentials must not be committed to GitHub.
 
 Optional AI copy editing: set `REVENUE_GEMINI_API_KEY` and `REVENUE_GEMINI_MODEL` to a currently supported model name (see Google Gemini API docs). API usage may incur fees and free quotas may stop generation; template fallback prevents complete interruption. For Docker use these two variables in `compose.yaml` only after adding the secret to the host environment. Keep API keys out of Git.
 
