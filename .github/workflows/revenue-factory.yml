@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-nanum ffmpeg
-      - run: node --test revenue_factory/tests/*.test.mjs
+      - run: node --test revenue_factory/tests/*.test.mjs revenue_factory/app-tests/*.test.mjs
       - run: |
           node revenue_factory/cli.mjs creative revenue_factory/examples/product.json
           node revenue_factory/cli.mjs report revenue_factory/examples/orders.csv

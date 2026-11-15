@@ -1,3 +1,9 @@
+# Revenue Factory v1 — Customer app + local operator tools
+
+For the final pilot-ready app with accounts, orders, PWA and optional HTTPS deployment, **start with [README-PRODUCTION.md](README-PRODUCTION.md)**. This earlier README documents the original single-operator local studio (port 8038) and remains for compatibility.
+
+---
+
 # Revenue Factory — 1차 수익사업 운영자용 초기 완성본
 
 독립적으로 작동하는 **AI 커머스 콘텐츠·업무 자동화 사업의 로컬 운영 도구**입니다. 기존 Theme Factory, ShortsAI, GuildCore 코드는 변경하지 않습니다.
