@@ -60,7 +60,11 @@ export async function renderVideo(dir, brief, { timeoutMs = 120000, fps = 15 } =
   if(photo) {
     filters.push('[1:v]scale=620:650:force_original_aspect_ratio=decrease,setsar=1[img]');
     filters.push('[0:v][img]overlay=x=(W-w)/2:y=145:shortest=1[base]');
-  } else filters.push('[0:v]drawbox=x=42:y=140:w=636:h=645:color=0x21344D:t=fill[base]');
+  } else {
+    await writeFile(path.join(dir,'product-title.txt'),wrapCaption(brief.product.name,12,3),'utf8');
+    filters.push('[0:v]drawbox=x=42:y=140:w=636:h=645:color=0x21344D:t=fill[photoPanel]');
+    filters.push(`[photoPanel]drawtext=fontfile='${escFilter(status.font)}':textfile=product-title.txt:fontcolor=0xEAF4FF:fontsize=60:line_spacing=18:x=(w-text_w)/2:y=420[base]`);
+  }
   filters.push('[base]drawbox=x=30:y=840:w=660:h=355:color=black@0.78:t=fill[b1]');
   let last='b1';let elapsed=0;
   for(let i=0;i<config.length;i++) {
