@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { escapeHtml } from './core.mjs';
 
@@ -72,7 +72,7 @@ export function aggregateSales(csv) {
 const csvCell = v => `"${String(v).replace(/^([=+@\-\t\r])/,'\'$1').replace(/"/g,'""')}"`;
 export async function writeSalesReport(csv, outputRoot) {
   const summary = aggregateSales(csv);
-  const job = `report-${randomUUID().slice(0,12)}`;
+  const job = `report-${randomBytes(6).toString('hex')}`;
   const dir = path.join(outputRoot, job);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await writeFile(path.join(dir, 'summary.json'), JSON.stringify(summary, null, 2));

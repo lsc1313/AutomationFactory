@@ -33,3 +33,17 @@
 - Never serve external customers with the current HTTP server.
 - API and generated files are never cached by the service worker.
 - Use HTTPS, authentication, authorization, storage encryption/access controls, rate limiting and customer data deletion rules before remote deployment.
+
+## Phase 1 operator product (2026-11-15)
+
+- `server.mjs`: localhost-only HTTP API, origin guard, content serving, state transitions
+- `core.mjs`: fact-based product validation, copy, three SVG designs, storyboard
+- `render.mjs`: 25-second 720x1280 H.264 MP4 renderer via FFmpeg, silent, optional customer image, font compatibility
+- `report.mjs`: CSV parser and aggregate reports, spreadsheet formula protection
+- `workflow.mjs`: persistent on-disk job states, approval checklist, dependency-free ZIP delivery
+- `ui.html`: responsive operations dashboard, job list, render and approval controls
+- `sw.js`: only public UI shell cached, no customer or report data
+
+**Non-goals:** no third-party AI promises, no remote web access, no user tenancy, no checkout, no automatic posting, no public SaaS deployment. Approval is not a substitute for legal compliance and an operator must review materials.
+
+**Workflow:** create creative -> automatic FFmpeg render when available -> human review/approval -> delivery ZIP. Report CSV -> summary -> ZIP. Tests cover actual video generation and HTTP end-to-end flows. Windows requires FFmpeg in PATH and installed Korean font. The job directory is a per-machine, trusted-user store; customer isolation requires a later authenticated service architecture.

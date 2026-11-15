@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 export const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -75,7 +75,7 @@ function svgCard(p, brief, step) {
 export async function writeCreativePack(raw, outputRoot) {
   const p = validateProduct(raw);
   const brief = makeCreativeBrief(raw);
-  const job = `creative-${randomUUID().slice(0, 12)}`;
+  const job = `creative-${randomBytes(6).toString('hex')}`;
   const dir = path.join(outputRoot, job);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const files = ['card-1.svg', 'card-2.svg', 'card-3.svg'];
