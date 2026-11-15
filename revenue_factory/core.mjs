@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { enhanceBrief } from './ai-copy.mjs';
 
 export const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -52,7 +53,7 @@ export function makeCreativeBrief(raw) {
       claimsToVerify: risky,
       checklist: ['판매 권한이 있는 상품 사진인지 확인', '상품명·가격·특징의 실제 정보 확인', '과장된 효능·1위·최저가 표현 검증', '채널별 광고 표시 및 사용권 확인', '게시 전 사람의 최종 승인'],
     },
-    limitations: ['문구 초안·SVG 이미지·스토리보드만 제작합니다.', '영상 렌더링, AI 이미지 생성, 외부 업로드, 결제는 연결되지 않았습니다.'],
+    limitations: ['문구·SVG 이미지·스토리보드·별도 FFmpeg 렌더러용 초안입니다.', '외부 게시와 카드 결제는 연결되지 않았습니다.'],
   };
 }
 
@@ -74,7 +75,7 @@ function svgCard(p, brief, step) {
 
 export async function writeCreativePack(raw, outputRoot) {
   const p = validateProduct(raw);
-  const brief = makeCreativeBrief(raw);
+  const brief = await enhanceBrief(makeCreativeBrief(raw));
   const job = `creative-${randomBytes(6).toString('hex')}`;
   const dir = path.join(outputRoot, job);
   await mkdir(dir, { recursive: true, mode: 0o700 });

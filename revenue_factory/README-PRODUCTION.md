@@ -15,7 +15,7 @@
 **This is a functional, self-hostable PILOT app, not yet an unconditionally production-safe SaaS for arbitrary volume.**
 
 - **Real card/bank payment gateway is not integrated**. Product prices are demo/offer defaults; payments are marked paid only after the operator independently verifies an external payment and records the reference. No automatic refund/payment transfer, tax receipt or invoice is issued.
-- **Creative copy is deterministic templates**, not a connected generative AI model. Images are supplied by seller and decorated into SVG cards. MP4 is **silent** and uses product photo/text, not AI avatar/voice or motion stock.
+- Creative copy uses **optional Gemini API** when `REVENUE_GEMINI_API_KEY` is provided and falls back to offline factual templates if it is missing, over quota, or unsafe. AI claims still require human approval. Product images are supplied by seller and decorated into SVG cards. MP4 is **silent** and uses product photo/text, not AI avatar/voice or motion stock.
 - Customer sign-up is **invitation/account created by admin**, not self-service public registration.
 - Server must be a **single instance**, backed by a persistent disk. JSON file persistence is not a replacement for transactional database & multi-region cloud production.
 - No automatic social posting, marketplace price scraping, or guarantee that marketing copy complies with a given platform's policies.
@@ -34,6 +34,8 @@ node revenue_factory/app.mjs
 ```
 
 Windows command file `revenue_factory/start-app-windows.cmd` works after environment variables are configured. Actual credentials must not be committed to GitHub.
+
+Optional AI copy editing: set `REVENUE_GEMINI_API_KEY` and `REVENUE_GEMINI_MODEL` to a currently supported model name (see Google Gemini API docs). API usage may incur fees and free quotas may stop generation; template fallback prevents complete interruption. For Docker use these two variables in `compose.yaml` only after adding the secret to the host environment. Keep API keys out of Git.
 
 The operator then logs in, creates customer accounts under `운영자 관리`, and shares credentials through a secure channel. Customers can submit requests; orders remain awaiting payment until operator verification. After verification the job automatically runs. Review/approve creative packs before delivering. Reports go directly to delivery after processing.
 

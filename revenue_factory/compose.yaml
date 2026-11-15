@@ -7,6 +7,8 @@ services:
     environment:
       REVENUE_ADMIN_EMAIL: ${REVENUE_ADMIN_EMAIL:?Set administrator email}
       REVENUE_ADMIN_PASSWORD: ${REVENUE_ADMIN_PASSWORD:?Set secure administrator password}
+      REVENUE_GEMINI_API_KEY: ${REVENUE_GEMINI_API_KEY:-}
+      REVENUE_GEMINI_MODEL: ${REVENUE_GEMINI_MODEL:-gemini-3.8-flash}
       REVENUE_PUBLIC_HOST: ${REVENUE_PUBLIC_HOST:?Set a DNS hostname}
       REVENUE_DB: /data/private/app.json
       REVENUE_OUT: /data/output
