@@ -56,7 +56,7 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
    if(req.method==='POST'&&url.pathname==='/api/app/password'){const b=await body(req,5000);await store.changePassword(user.id,b.currentPassword,b.newPassword);return json(res,200,{ok:true,relogin:true},{'Set-Cookie':'rf_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});}
    if(req.method==='GET'&&url.pathname==='/api/app/orders')return json(res,200,{orders:await listOrders(store,user)});
    if(req.method==='POST'&&url.pathname==='/api/app/orders'){
-    const b=await body(req);const o=await createOrder(store,{user,kind:b.kind,input:b.input,idempotencyKey:req.headers['idempotency-key']||b.idempotencyKey});await store.audit(user.id,'order-created',o.id);return json(res,201,{order:safeOrder(o),payment:{status:'AWAITING_MANUAL_VERIFICATION',amountKrw:o.priceKrw,notice:'결제는 운영자가 외부 입금 내역을 확인한 뒤 승인합니다. 이 앱은 카드 결제를 처리하지 않습니다.'}});
+    const b=await body(req,44_000_000);const o=await createOrder(store,{user,kind:b.kind,input:b.input,idempotencyKey:req.headers['idempotency-key']||b.idempotencyKey});await store.audit(user.id,'order-created',o.id);return json(res,201,{order:safeOrder(o),payment:{status:'AWAITING_MANUAL_VERIFICATION',amountKrw:o.priceKrw,notice:'결제는 운영자가 외부 입금 내역을 확인한 뒤 승인합니다. 이 앱은 카드 결제를 처리하지 않습니다.'}});
    }
    if(req.method==='POST'&&url.pathname==='/api/app/customers'){
     if(user.role!=='admin')return json(res,403,{error:'운영자 전용'});const b=await body(req,5000);

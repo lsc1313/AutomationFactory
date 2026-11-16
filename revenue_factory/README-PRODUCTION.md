@@ -71,3 +71,17 @@ node --test revenue_factory/tests/*.test.mjs revenue_factory/app-tests/*.test.mj
 ```
 
 Existing original local operator `server.mjs` (port 8038) is still available for backward compatibility. The customer portal uses new `app.mjs` (port 8040) and its own state under `private/`.
+## Director-powered production (replaces previous silent fixed-frame demo)
+
+Revenue Factory now **requires 2–6 distinct customer-authorized product photos**. No-photo and duplicate-photo orders are rejected before payment confirmation. The production worker loads **only `createShoppingDirector`** from your local ShortsAI_CLEAN checkout, in a child process. It does **not** call `createShort`, so it never publishes to YouTube, Instagram, or Threads. The isolated worker generates separate scene audio using the `edge-tts` CLI, renders distinct motion-enabled product scenes with FFmpeg, adds scene captions, and concatenates the results into a **narrated 15–60 second MP4**. Missing voice, unsupported product claims, or media shortages cause a FAILED job, not a falsely successful delivery. Human advertising review remains mandatory.
+
+Prerequisites on the PC that runs production:
+
+- `REVENUE_SHORTSAI_HOME`: absolute directory of your **locally installed** `ShortsAI_CLEAN` checkout (where `modules/shopping/director.js` exists).
+- Node dependencies installed in that ShortsAI checkout (`npm install` there if needed); its **AI provider credentials configured in its own approved environment**.
+- FFmpeg + FFprobe on PATH, Korean system fonts, and the existing ShortsAI-compatible **Python `edge-tts` command** on PATH. Check `edge-tts --help` before ordering.
+- The app and ShortsAI can run from different folders. Ads do not use existing ShortsAI media/queues or scheduled upload jobs. The director reads customer details as input to your configured AI provider, so gain customer consent for that processing.
+
+After downloading the updated branch, set `REVENUE_SHORTSAI_HOME` in the command prompt running the app, for example `set "REVENUE_SHORTSAI_HOME=C:\\ShortsAI_CLEAN"`. Restart the app. The old NEEDS_REVIEW jobs remain old templates and **must not be sold as finished ads**; use new orders with multiple relevant product photos. New output is based on the ShortsAI Shopping Director, isolated voice generation and a safe FFmpeg render pipeline. Do not rely on an AI director or narration when offline: the job will fail visibly rather than producing a silent placeholder.
+
+Current limits: customer media is only verified by format and duplicate detection, *not semantic visual classification*. Director output checks unsupported numeric and common risky claims but cannot guarantee all copy claims or product-photo correspondence. A human must inspect the final video. Automatic payment, mass production at scale, and background music licensing are separate commercial readiness work.

@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { validateDirectorMedia,validateDirectorPlan,produceDirectorCreative } from '../director-pipeline.mjs';
+const png=(seed)=>'data:image/png;base64,'+Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(1800,seed)]).toString('base64');
+const good={name:'텀블러',brand:'온유',audience:'직장인',features:['500ml 용량','뚜껑이 있습니다'],priceKrw:19900,imageDataUrls:[png(1),png(2)]};
+const scenes=[{tts:'직장인을 위한 텀블러 상품을 소개합니다.',subtitle:'텀블러 소개'},{tts:'이 제품은 500ml 용량으로 안내되어 있습니다.',subtitle:'500ml 용량'},{tts:'뚜껑이 있는 형태의 텀블러입니다.',subtitle:'뚜껑 구성'},{tts:'온유 텀블러 상세 정보를 확인해 보세요.',subtitle:'자세히 보기'}];
+test('requires multiple verified distinct photos',()=>{assert.equal(validateDirectorMedia(good).images.length,2);assert.throws(()=>validateDirectorMedia({...good,imageDataUrls:[]}),/2~6장/);assert.throws(()=>validateDirectorMedia({...good,imageDataUrls:[png(1),png(1)]}),/중복/);assert.throws(()=>validateDirectorMedia({...good,imageDataUrls:['data:image/png;base64,AAAA',png(2)]}),/사진/);});
+test('director plan rejects empty or unsupported claims',()=>{assert.equal(validateDirectorPlan({scenes},good).length,4);assert.throws(()=>validateDirectorPlan({scenes:scenes.slice(0,2)},good),/4~7/);assert.throws(()=>validateDirectorPlan({scenes:[{...scenes[0],tts:'최저가 완치 효과 보장 상품입니다.'},...scenes.slice(1)]},good),/광고 주장/);});
+test('builds a separate review job and requires video audio attestation',async()=>{const dir=await mkdtemp(path.join(os.tmpdir(),'director-ad-'));try{const result=await produceDirectorCreative(good,dir,{director:async({images})=>{assert.equal(images.length,2);return validateDirectorPlan({scenes},good);},renderer:async({jobDir,scenes,images})=>{assert.equal(scenes.length,4);assert.equal(images.length,2);await writeFile(path.join(jobDir,'advertisement.mp4'),Buffer.alloc(70000,1));return {filename:'advertisement.mp4',bytes:70000,hasAudio:true,scenes:4,qualityGate:'passed'};}});assert.match(result.job,/^creative-/);assert.ok(result.files.includes('advertisement.mp4'));assert.equal((await readFile(path.join(dir,result.job,'brief.json'),'utf8')).includes('Shopping Director'),true);}finally{await rm(dir,{force:true,recursive:true});}});

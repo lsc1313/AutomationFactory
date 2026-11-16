@@ -5,6 +5,7 @@ import { writeCreativePack, validateProduct } from './core.mjs';
 import { writeSalesReport } from './report.mjs';
 import { createJobRecord, approveJob, zipJob, getJob, saveJob } from './workflow.mjs';
 import { renderStatus, renderVideo } from './render.mjs';
+import { produceDirectorCreative } from './director-pipeline.mjs';
 const uuid=()=>`ord_${randomBytes(12).toString('hex')}`;
 export const PRODUCTS={creative:{title:'상품 광고 패키지',price:49000,description:'상품 이미지 시안 3장, 25초 세로 MP4, 카피·스토리보드'},report:{title:'매출 보고서',price:30000,description:'CSV 매출 정리, 상품별 집계, 보고서 및 ZIP'}};
 const ISO=()=>new Date().toISOString();
@@ -13,7 +14,12 @@ export function visibleOrder(order,user){if(!order||(!['admin'].includes(user.ro
 export async function createOrder(store,{user,kind,input,idempotencyKey}){
  if(!PRODUCTS[kind])throw new Error('지원되지 않는 상품입니다.');
  if(idempotencyKey!=null&&(typeof idempotencyKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(idempotencyKey)))throw new Error('잘못된 중복 요청 키입니다.');
- if(kind==='creative')validateProduct(input);
+ if(kind==='creative'){
+  validateProduct(input);
+  // Reject unusable marketing media at order entry, not after marking payment received.
+  const { validateDirectorMedia } = await import('./director-pipeline.mjs');
+  validateDirectorMedia(input);
+ }
  if(kind==='report' && (typeof input?.csv!=='string'||input.csv.length>500_000))throw new Error('CSV는 500KB 이하의 텍스트여야 합니다.');
  const now=ISO();
  return store.transaction(db=>{
@@ -32,13 +38,11 @@ export async function runOrder(store,outputRoot,id){
  if(!current||current.status!=='QUEUED'||current.paymentStatus!=='PAID')return null;
  await store.transaction(db=>{const o=db.orders.find(x=>x.id===id);if(o.status==='QUEUED'){o.status='PROCESSING';o.updatedAt=ISO();}});
  try{
-  const result=current.kind==='creative' ? await writeCreativePack(current.brief,outputRoot) : await writeSalesReport(current.brief.csv,outputRoot);
+  const result=current.kind==='creative' ? await produceDirectorCreative(current.brief,outputRoot) : await writeSalesReport(current.brief.csv,outputRoot);
   let job=await createJobRecord(outputRoot,result,current.kind);
   if(current.kind==='creative'){
-   const status=await renderStatus();if(!status.available)throw new Error(status.reason);
-   const brief=JSON.parse(await readFile(path.join(outputRoot,result.job,'brief.json'),'utf8'));
-   const video=await renderVideo(path.join(outputRoot,result.job),brief);
-   job=await saveJob(outputRoot,result.job,{...job,id:undefined,files:[...job.files,video.filename],video});
+   if(!result.video?.hasAudio||result.video?.qualityGate!=='passed')throw new Error('음성과 품질 검증을 통과하지 못한 영상입니다.');
+   job=await saveJob(outputRoot,result.job,{...job,id:undefined,files:job.files,video:result.video});
   } else await zipJob(outputRoot,result.job);
   return store.transaction(db=>{const o=db.orders.find(x=>x.id===id);o.jobId=result.job;o.status=current.kind==='creative'?'NEEDS_REVIEW':'DELIVERED';o.updatedAt=ISO();o.brief=null;return o;});
  }catch(err){await flagOrderFailed(store,id,err.message);return null;}
