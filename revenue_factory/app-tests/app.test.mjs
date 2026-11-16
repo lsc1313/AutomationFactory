@@ -1,4 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm,stat} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm,stat} from 'node:fs/promises';import os from 'node:os';
+import http from 'node:http';import path from 'node:path';
 import {createApp} from '../app.mjs';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function setup(t){const folder=await mkdtemp(path.join(os.tmpdir(),'rf-app-'));const app=createApp({dataFile:path.join(folder,'db.json'),outputRoot:path.join(folder,'outputs')});await app.store.bootstrapAdmin('admin@example.com','some_secure_password_123');const address=await app.start({port:0});t.after(async()=>{await app.stop();await rm(folder,{recursive:true,force:true});});return {app,base:`http://127.0.0.1:${address.port}`,folder};}
@@ -35,6 +36,13 @@ test('first-run setup works only locally and only once',async t=>{
  assert.equal((await send(base,'/api/app/setup-status')).data.setupAllowed,false);
  const auth=await login(base,'initial@example.com','secure_admin_pass_456');assert.equal(auth.user.role,'admin');
 });
+function rawProxyGet(base,host,proto){
+ return new Promise((resolve,reject)=>{
+  const url=new URL(base+'/app');
+  const req=http.get({hostname:url.hostname,port:url.port,path:url.pathname,headers:{Host:host,'X-Forwarded-Proto':proto}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});
+  req.on('error',reject);
+ });
+}
 test('private tailnet HTTPS proxy accepts exact host while rejecting spoofed hosts and insecure forwarding',async t=>{
  const folder=await mkdtemp(path.join(os.tmpdir(),'rf-tailnet-'));
  const app=createApp({dataFile:path.join(folder,'db.json'),outputRoot:path.join(folder,'outputs'),secureCookie:true,publicHost:'revenue-box.example.ts.net'});
@@ -42,9 +50,9 @@ test('private tailnet HTTPS proxy accepts exact host while rejecting spoofed hos
  const addr=await app.start({port:0}); const base='http://127.0.0.1:'+addr.port;
  t.after(async()=>{await app.stop();await rm(folder,{recursive:true,force:true});});
  const host={'Host':'revenue-box.example.ts.net','X-Forwarded-Proto':'https'};
- assert.equal((await send(base,'/app',{headers:host})).status,200);
- assert.equal((await send(base,'/app',{headers:{...host,'X-Forwarded-Proto':'http'}})).status,403);
- assert.equal((await send(base,'/app',{headers:{...host,Host:'other.example.ts.net'}})).status,403);
+ assert.equal(await rawProxyGet(base,'revenue-box.example.ts.net','https'),200);
+ assert.equal(await rawProxyGet(base,'revenue-box.example.ts.net','http'),403);
+ assert.equal(await rawProxyGet(base,'other.example.ts.net','https'),403);
  assert.equal((await send(base,'/app')).status,200);
  const logged=await send(base,'/api/app/login',{method:'POST',headers:{...host,Origin:'https://revenue-box.example.ts.net'},body:{email:'admin@example.com',password:'some_secure_password_123'}});
  assert.equal(logged.status,200); assert.match(logged.cookie,/Secure/);
