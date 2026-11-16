@@ -20,6 +20,7 @@ export function validateDirectorMedia(raw) {
   const product = validateProduct(raw);
   const photos = Array.isArray(raw.imageDataUrls) ? raw.imageDataUrls : [];
   if (photos.length < 2 || photos.length > 6) throw new Error('판매용 영상은 서로 다른 실제 상품 사진 2~6장이 필요합니다.');
+  if(product.features.length<2)throw new Error('판매용 광고에는 확인 가능한 제품 특징이 최소 2개 필요합니다.');
   const seen = new Set();
   const items = photos.map((s,i)=>{
     if(typeof s!=='string' || s.length > 7_000_000)throw new Error(`상품 사진 ${i+1}이 너무 큽니다.`);
@@ -71,13 +72,41 @@ export async function runShortsDirector({shortsHome,product,images,jobDir,timeou
   const home=path.resolve(shortsHome||'');
   if(!shortsHome)throw new Error('REVENUE_SHORTSAI_HOME이 설정되지 않았습니다. 쇼츠 제작 폴더를 지정하세요.');
   const director=path.join(home,'modules','shopping','director.js');
-  await access(director);
+  const ai=path.join(home,'modules','ai','index.js');
+  await Promise.all([access(director),access(ai)]);
   const script=path.join(jobDir,'director-bridge.mjs');
-  // The director imports its OWN dependencies inside the ShortsAI installation.
-  // This subprocess only plans scenes; no createShort/upload/cleanup is called.
-  const spec={name:product.name,description:[product.brand,product.audience,...product.features].join('. '),price:product.priceKrw,images,provider:'revenue-factory'};
+  // Reuse the existing ShortsAI model gateway and Shopping Director's scene normalizer
+  // without its affiliate/curator wording, uploads, shared media folders, or schedules.
+  const spec={name:product.name,brand:product.brand,audience:product.audience,
+    features:product.features,description:[product.brand,product.audience,...product.features].join('. '),
+    price:product.priceKrw,images,provider:'revenue-factory'};
   const output=path.join(jobDir,'director-plan.json');
-  const bridge=`import {writeFile} from 'node:fs/promises';\nimport {createShoppingDirector} from ${JSON.stringify(pathToFileURL(director).href)};\nconst product=${JSON.stringify(spec)};\nconst result=await createShoppingDirector(product);\nawait writeFile(${JSON.stringify(output)},JSON.stringify({scenes:result.scenes}));\n`;
+  const facts=JSON.stringify({brand:product.brand,name:product.name,audience:product.audience,
+    features:product.features,priceKrw:product.priceKrw,landingUrl:product.landingUrl||null});
+  const prompt=[
+    '당신은 고객 의뢰형 상품 광고 제작 전문 디렉터입니다. 제휴 링크 홍보나 쿠팡 파트너스 언급은 절대 하지 마세요.',
+    '모든 장면은 고객이 실제로 제공한 동일 상품 사진을 사용합니다. 관련 없는 무료 이미지나 허위 후기, 가상 사용 장면을 추가하지 않습니다.',
+    '각 장면은 시각적인 촬영 구도, 줌·이동·컷 편집을 고려해 실제로 도움이 되는 제품 정보를 전달합니다.',
+    '먼저 상품의 사용 대상과 차별적 특징을 분석하세요. 첫 2~3초의 관심 유도, 제품 설명, 실제 입력된 특징 최소 두 가지, 마지막 행동 유도를 구성하세요.',
+    '4~7개의 서로 다른 장면. 한국어 장면 음성 대본은 12~110자, 자막은 50자 이하. 전체 길이 15~60초를 목표로 합니다.',
+    '입력에서 제공되지 않은 가격, 혜택, 할인, 효능, 안전성, 수상, 사용 후기, 배송이나 인증 사실을 창작하지 않습니다.',
+    '상품명이 특정 행사·용도(수능/합격/생일/졸업 등)를 포함하면 그 목적을 대본에 구체적으로 반영합니다.',
+    '첫 장면에 실제 상품명을 반드시 포함하며 자막은 음성의 정확한 핵심을 표현합니다.',
+    'JSON만 반환하세요. {"work_instructions":{"scenes":[{"tts":"한국어 자연스러운 음성 대본","subtitle":"짧은 화면 자막","duration":4,"direction":"hook"}]}}',
+    '확인된 원본 상품 정보: '+facts
+  ].join('\\n');
+  const bridge=[
+    "import {writeFile} from 'node:fs/promises';",
+    `import {callAI} from ${JSON.stringify(pathToFileURL(ai).href)};`,
+    `import {normalizeShoppingScenes} from ${JSON.stringify(pathToFileURL(director).href)};`,
+    `const product=${JSON.stringify(spec)};`,
+    `const prompt=${JSON.stringify(prompt)};`,
+    "const raw=await callAI(prompt);",
+    "const clean=String(raw).replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();",
+    "const result=JSON.parse(clean);",
+    "const scenes=normalizeShoppingScenes(result,product);",
+    `await writeFile(${JSON.stringify(output)},JSON.stringify({scenes}));`
+  ].join('\\n');
   await writeFile(script,bridge,{mode:0o600});
   await run(process.execPath,[script],{cwd:home,timeoutMs});
   return validateDirectorPlan(JSON.parse(await readFile(output,'utf8')),product);
