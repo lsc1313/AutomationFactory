@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "slug": "moonlit-jade-garden",
+  "name": "Moonlit Jade Garden",
+  "concept": "An original enchanted garden under a luminous moon, refined botanical fantasy for an elegant smartphone visual set",
+  "style": "Premium hand-painted ornamental fantasy, layered deep teal and jade, luminous ivory accents, fine gold filigree, delicate organic linework, cohesive composition and no text",
+  "palette": [
+    "#081c28",
+    "#155b57",
+    "#82c6a8",
+    "#f4dfae"
+  ],
+  "license": "personal-use",
+  "quality": {
+    "minUniqueAssets": 14
+  },
+  "assets": [
+    {
+      "id": "wallpaper-01",
+      "type": "wallpaper",
+      "width": 1440,
+      "height": 3200,
+      "prompt": "Main hero background: a moon above a quiet jade garden with hanging lanterns, foreground leaves framing the scene, calm central focal point, spacious upper area"
+    },
+    {
+      "id": "wallpaper-02",
+      "type": "wallpaper",
+      "width": 1440,
+      "height": 3200,
+      "prompt": "Companion background: a winding garden path beneath ornate archways, warm fireflies and small moonlit pools, same artistic treatment, different composition"
+    },
+    {
+      "id": "wallpaper-03",
+      "type": "wallpaper",
+      "width": 1440,
+      "height": 3200,
+      "prompt": "Companion background: reflective pond with lotus flowers and celestial reflections, same palette but a distinctive quiet composition"
+    },
+    {
+      "id": "lockscreen",
+      "type": "lockscreen",
+      "width": 1440,
+      "height": 3200,
+      "prompt": "A single luminous moon and delicate hanging vines; preserve top third clear for phone clock; concentrated detail in lower half"
+    },
+    {
+      "id": "icon-phone",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A recognizable handset silhouette in engraved jade and muted gold, centrally framed, matching ornate icon style"
+    },
+    {
+      "id": "icon-messages",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A speech bubble motif formed from a pale gold botanical ornament, distinct from phone icon"
+    },
+    {
+      "id": "icon-camera",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A clear camera body silhouette with luminous jade lens and gold borders"
+    },
+    {
+      "id": "icon-gallery",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A framed mountain and moon landscape icon, simple bold silhouette"
+    },
+    {
+      "id": "icon-calendar",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A calendar page silhouette decorated with one small lotus"
+    },
+    {
+      "id": "icon-clock",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A recognizable analog clock motif with golden hands"
+    },
+    {
+      "id": "icon-music",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A single musical note nested in swirling garden vines"
+    },
+    {
+      "id": "icon-settings",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "Clear mechanical gear silhouette with subtle gold ornament"
+    },
+    {
+      "id": "icon-browser",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A globe icon with three clear latitudinal arcs, gold and jade"
+    },
+    {
+      "id": "icon-mail",
+      "type": "icon",
+      "width": 1024,
+      "height": 1024,
+      "prompt": "A sealed envelope silhouette with wax seal, soft moonlit finish"
+    }
+  ]
+}
