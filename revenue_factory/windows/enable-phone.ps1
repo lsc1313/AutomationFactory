@@ -6,7 +6,27 @@ if (-not $cli) {
  if (Test-Path $installed) { $cli = [pscustomobject]@{Source=$installed} }
 }
 if (-not $cli) { throw 'Tailscale CLI not found. Existing Tailscale desktop installation path needs to be checked.' }
-$status = & $cli.Source status --json | ConvertFrom-Json
+# Windows PowerShell 5.1 decodes native output using the console code page.
+# Non-ASCII peer/display names can corrupt Tailscale JSON before ConvertFrom-Json.
+# Capture the CLI's UTF-8 stdout directly instead of piping through PowerShell.
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $cli.Source
+$psi.Arguments = 'status --json'
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.CreateNoWindow = $true
+$psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+$psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+$process = New-Object System.Diagnostics.Process
+$process.StartInfo = $psi
+[void]$process.Start()
+$rawJson = $process.StandardOutput.ReadToEnd()
+$errorOutput = $process.StandardError.ReadToEnd()
+$process.WaitForExit()
+if ($process.ExitCode -ne 0) { throw "Tailscale status failed: $errorOutput" }
+try { $status = ConvertFrom-Json -InputObject $rawJson -ErrorAction Stop }
+catch { throw 'Tailscale status JSON could not be decoded as UTF-8. Verify the Tailscale installation.' }
 if ($LASTEXITCODE -ne 0 -or -not $status.Self -or -not $status.Self.DNSName) { throw 'Tailscale must be connected before mobile access can be enabled.' }
 $dns = $status.Self.DNSName.TrimEnd('.').ToLowerInvariant()
 if ($dns -notmatch '^[a-z0-9-]+(\.[a-z0-9-]+)+\.ts\.net$') { throw "Invalid Tailscale device hostname: $dns" }
