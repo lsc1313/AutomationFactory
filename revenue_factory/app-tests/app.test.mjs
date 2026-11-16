@@ -61,3 +61,21 @@ test('private tailnet HTTPS proxy accepts exact host while rejecting spoofed hos
  });
  assert.equal(logged.status,200); assert.match(logged.cookie,/Secure/);
 });
+
+test('owner mobile preview starts PC rendering without misrepresenting a real payment; customer forbidden',async t=>{
+ const {base,app}=await setup(t);
+ const admin=await login(base,'admin@example.com','some_secure_password_123');
+ const customerCreated=await send(base,'/api/app/customers',{method:'POST',body:{email:'mobile@example.com',password:'mobile_secure_password_123'},...admin});
+ assert.equal(customerCreated.status,201);
+ const customer=await login(base,'mobile@example.com','mobile_secure_password_123');
+ const img=(n)=>'data:image/png;base64,'+Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(1800,n)]).toString('base64');
+ const input={name:'스시 도시락',brand:'오늘',audience:'점심 식사 고객',features:['모둠초밥 구성','포장 도시락'],imageDataUrls:[img(1),img(2)]};
+ assert.equal((await send(base,'/api/app/owner-preview',{method:'POST',body:{input},...customer})).status,403);
+ const first=await send(base,'/api/app/owner-preview',{method:'POST',body:{input,idempotencyKey:'mobile_preview_123'},...admin});
+ assert.equal(first.status,201);assert.equal(first.data.order.priceKrw,0);
+ assert.equal(first.data.order.internalPreview,true);
+ assert.equal(first.data.order.paymentStatus,'PAID');
+ const repeat=await send(base,'/api/app/owner-preview',{method:'POST',body:{input,idempotencyKey:'mobile_preview_123'},...admin});
+ assert.equal(repeat.data.order.id,first.data.order.id);
+ const state=await app.store.read();assert.equal(state.payments.length,0);
+});

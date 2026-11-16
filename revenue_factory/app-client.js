@@ -12,9 +12,49 @@ $('login-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.tar
 $('logout').onclick=async()=>{try{await api('/api/app/logout',{});}finally{await showLogin();}};
 $('password-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),target=$('password-message');target.textContent='';try{await api('/api/app/password',{currentPassword:f.get('currentPassword'),newPassword:f.get('newPassword')});target.textContent='비밀번호가 변경됐습니다. 다시 로그인해 주세요.';e.target.reset();await showLogin();}catch(err){target.textContent=err.message;}};
 const idempotency=()=>Array.from(crypto.getRandomValues(new Uint8Array(16))).map(v=>v.toString(16).padStart(2,'0')).join('');
-const fileData=async file=>{if(file.size>5_000_000)throw Error('사진은 최대 5MB입니다.');return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('사진 읽기 실패'));r.readAsDataURL(file);});};
-async function submitOrder(form,kind,build,target){const button=form.querySelector('button[type=submit]');button.disabled=true;target.textContent='주문을 확인하는 중입니다.';try{const input=await build(new FormData(form));const key=idempotency();const x=await api('/api/app/orders',{kind,input,idempotencyKey:key});target.textContent=`주문 ${x.order.id}이(가) 접수됐습니다. 실제 결제 처리 전이며 운영자에게 결제 방법을 확인하세요.`;form.reset();await refreshOrders();}catch(err){target.textContent='오류: '+err.message;}finally{button.disabled=false;}};
-$('creative-form').onsubmit=e=>{e.preventDefault();void submitOrder(e.target,'creative',async f=>{const photos=f.getAll('photos').filter(x=>x instanceof File&&x.size);if(photos.length<2||photos.length>6)throw Error('서로 다른 상품 사진 2~6장을 등록하세요.');const imageDataUrls=await Promise.all(photos.map(fileData));return{imageDataUrls,brand:f.get('brand'),name:f.get('name'),audience:f.get('audience'),priceKrw:f.get('priceKrw'),features:String(f.get('features')).split('\n').map(x=>x.trim()).filter(Boolean),landingUrl:f.get('landingUrl')};},$('creative-message'));};
+async function fileData(file){
+ if(!file.type.startsWith('image/'))throw Error('이미지 파일만 등록할 수 있습니다.');
+ if(file.size>20_000_000)throw Error('원본 사진은 20MB 이하여야 합니다.');
+ // Phone camera HEIC/large JPEG -> supported JPEG, resized before transfer to PC.
+ const bitmap=await createImageBitmap(file).catch(()=>{throw Error('사진을 변환할 수 없습니다. 휴대폰 사진을 JPG로 저장해 등록하세요.');});
+ try{
+  const max=1600,scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height));
+  const canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);
+  const context=canvas.getContext('2d');if(!context)throw Error('이미지 처리 기능을 사용할 수 없습니다.');
+  context.drawImage(bitmap,0,0,canvas.width,canvas.height);
+  const data=canvas.toDataURL('image/jpeg',0.88);
+  if(data.length>6_600_000)throw Error('사진이 너무 큽니다. 더 작은 사진을 등록하세요.');
+  return data;
+ }finally{bitmap.close();}
+}
+async function submitOrder(form,kind,build,target,ownerPreview=false){
+ const buttons=[...form.querySelectorAll('button[type=submit]')];buttons.forEach(x=>x.disabled=true);
+ target.textContent='사진 전송과 요청을 준비하는 중입니다.';
+ try{
+  const input=await build(new FormData(form)),key=idempotency();
+  const url=ownerPreview?'/api/app/owner-preview':'/api/app/orders';
+  const x=await api(url,ownerPreview?{input,idempotencyKey:key}:{kind,input,idempotencyKey:key});
+  target.textContent=ownerPreview?'PC의 ShortsAI 제작 대기열에 등록했습니다. 주문 목록에서 진행 상황을 확인하세요.':`주문 ${x.order.id} 접수 완료. 운영자 결제 확인을 기다립니다.`;
+  form.reset();$('photo-preview')?.replaceChildren();await refreshOrders();go('orders');
+ }catch(err){target.textContent='오류: '+err.message;}finally{buttons.forEach(x=>x.disabled=false);}
+}
+async function buildCreativeInput(f){
+ const photos=f.getAll('photos').filter(x=>x instanceof File&&x.size);
+ if(photos.length<2||photos.length>6)throw Error('서로 다른 상품 사진 2~6장을 등록하세요.');
+ const imageDataUrls=await Promise.all(photos.map(fileData));
+ return {imageDataUrls,brand:f.get('brand'),name:f.get('name'),audience:f.get('audience'),
+ priceKrw:f.get('priceKrw'),features:String(f.get('features')).split('\n').map(x=>x.trim()).filter(Boolean),
+ landingUrl:f.get('landingUrl')};
+}
+$('creative-form').onsubmit=e=>{e.preventDefault();void submitOrder(e.target,'creative',buildCreativeInput,$('creative-message'),e.submitter?.id==='start-owner-preview');};
+$('photos').addEventListener('change',e=>{
+ const preview=$('photo-preview');preview.replaceChildren();
+ const files=[...e.target.files];$('photo-count').textContent=files.length+'장 선택됨';
+ for(const f of files.slice(0,6)){
+  const img=el('img');img.alt=f.name;img.src=URL.createObjectURL(f);
+  img.onload=()=>URL.revokeObjectURL(img.src);preview.append(img);
+ }
+});
 $('report-form').onsubmit=e=>{e.preventDefault();void submitOrder(e.target,'report',async f=>{const file=f.get('file');const csv=file?.size?await file.text():String(f.get('csv'));if(csv.length>500000)throw Error('CSV 최대 500KB');return{csv};},$('report-message'));};
 $('customer-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{const x=await api('/api/app/customers',{email:f.get('email'),password:f.get('password')});$('customer-message').textContent=`계정 ${x.customer.email} 생성 완료. 비밀번호는 별도로 안전하게 전달하세요.`;e.target.reset();}catch(err){$('customer-message').textContent=err.message;}};
 const labels={AWAITING_PAYMENT:'입금 확인 대기',QUEUED:'제작 대기',PROCESSING:'제작 중',NEEDS_REVIEW:'광고 검수 대기',DELIVERED:'납품 완료',FAILED:'작업 실패'};

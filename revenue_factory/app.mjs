@@ -4,7 +4,7 @@ import path from 'node:path';
 import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.mjs';
-import { createOrder, listOrders, getOrder, recordPayment, approveOrder, retryOrder, runOrder, productFilePath, previewVideoPath, createCustomer, PRODUCTS } from './commerce.mjs';
+import { createOrder, listOrders, getOrder, recordPayment, approveOrder, retryOrder, runOrder, productFilePath, previewVideoPath, createCustomer, startOwnerPreview, PRODUCTS } from './commerce.mjs';
 import { renderStatus } from './render.mjs';
 import { directorAvailability } from './director-pipeline.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +58,15 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
    if(req.method==='GET'&&url.pathname==='/api/app/orders')return json(res,200,{orders:await listOrders(store,user)});
    if(req.method==='POST'&&url.pathname==='/api/app/orders'){
     const b=await body(req,44_000_000);const o=await createOrder(store,{user,kind:b.kind,input:b.input,idempotencyKey:req.headers['idempotency-key']||b.idempotencyKey});await store.audit(user.id,'order-created',o.id);return json(res,201,{order:safeOrder(o),payment:{status:'AWAITING_MANUAL_VERIFICATION',amountKrw:o.priceKrw,notice:'결제는 운영자가 외부 입금 내역을 확인한 뒤 승인합니다. 이 앱은 카드 결제를 처리하지 않습니다.'}});
+   }
+
+   if(req.method==='POST'&&url.pathname==='/api/app/owner-preview'){
+    if(user.role!=='admin')return json(res,403,{error:'운영자 전용 시험 제작입니다.'});
+    const b=await body(req,44_000_000);
+    const o=await startOwnerPreview(store,user,{input:b.input,idempotencyKey:b.idempotencyKey});
+    await store.audit(user.id,'owner-test-production',o.id);
+    void runPending();
+    return json(res,201,{order:safeOrder(o),notice:'운영자 내부 시험 제작: 실제 결제/매출이 발생하지 않습니다.'});
    }
    if(req.method==='POST'&&url.pathname==='/api/app/customers'){
     if(user.role!=='admin')return json(res,403,{error:'운영자 전용'});const b=await body(req,5000);

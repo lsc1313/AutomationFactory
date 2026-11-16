@@ -60,3 +60,17 @@ export async function previewVideoPath(store,outputRoot,user,id){
  if(job.kind!=='creative'||!job.files?.includes('advertisement.mp4'))throw new Error('영상 파일이 존재하지 않습니다.');
  return path.resolve(outputRoot,order.jobId,'advertisement.mp4');
 }
+
+/** Explicit owner testing action. No financial transaction or real payment claim. */
+export async function startOwnerPreview(store,admin,{input,idempotencyKey}){
+ if(admin.role!=='admin')throw new Error('운영자만 시험 제작을 시작할 수 있습니다.');
+ const made=await createOrder(store,{user:admin,kind:'creative',input,idempotencyKey});
+ if(made.duplicated)return made;
+ return store.transaction(db=>{
+  const o=db.orders.find(x=>x.id===made.id&&x.userId===admin.id);
+  if(!o||o.status!=='AWAITING_PAYMENT')throw new Error('시험 제작을 시작할 수 없습니다.');
+  o.status='QUEUED';o.paymentStatus='PAID';o.priceKrw=0;o.internalPreview=true;
+  o.updatedAt=ISO();
+  return o;
+ });
+}
