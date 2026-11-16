@@ -54,6 +54,10 @@ test('private tailnet HTTPS proxy accepts exact host while rejecting spoofed hos
  assert.equal(await rawProxyGet(base,'revenue-box.example.ts.net','http'),403);
  assert.equal(await rawProxyGet(base,'other.example.ts.net','https'),403);
  assert.equal((await send(base,'/app')).status,200);
- const logged=await send(base,'/api/app/login',{method:'POST',headers:{...host,Origin:'https://revenue-box.example.ts.net'},body:{email:'admin@example.com',password:'some_secure_password_123'}});
+ const logged=await new Promise((resolve,reject)=>{
+  const target=new URL(base);const payload=JSON.stringify({email:'admin@example.com',password:'some_secure_password_123'});
+  const req=http.request({hostname:target.hostname,port:target.port,path:'/api/app/login',method:'POST',headers:{Host:'revenue-box.example.ts.net','X-Forwarded-Proto':'https',Origin:'https://revenue-box.example.ts.net','Content-Type':'application/json','Content-Length':Buffer.byteLength(payload)}},res=>{res.resume();res.on('end',()=>resolve({status:res.statusCode,cookie:res.headers['set-cookie']?.[0]||''}));});
+  req.on('error',reject);req.end(payload);
+ });
  assert.equal(logged.status,200); assert.match(logged.cookie,/Secure/);
 });
