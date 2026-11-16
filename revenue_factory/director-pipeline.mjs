@@ -38,15 +38,16 @@ export function validateDirectorMedia(raw) {
   return {product,images:items};
 }
 
-function run(exe,args,{cwd,timeoutMs=120000}={}) {
+function run(exe,args,{cwd,timeoutMs=120000,logFile=null,step='외부 실행'}={}) {
   return new Promise((resolve,reject)=>{
-    let stderr='';
-    const child=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','ignore','pipe']});
+    let stderr='',stdout='';
+    const child=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','pipe','pipe']});
+    child.stdout.on('data',b=>{stdout=(stdout+b.toString()).slice(-5000);});
     let expired=false;
     const timer=setTimeout(()=>{expired=true;child.kill();},timeoutMs);
     child.stderr.on('data',b=>{stderr=(stderr+b.toString()).slice(-2000);});
     child.on('error',e=>{clearTimeout(timer);reject(new Error(`${exe} 실행 실패: ${e.message}`));});
-    child.on('close',code=>{clearTimeout(timer);if(expired)reject(new Error(`${exe} 실행 시간 초과`));else if(code!==0)reject(new Error(`${exe} 종료 코드 ${code}: ${stderr.slice(-500)}`));else resolve();});
+    child.on('close',code=>{clearTimeout(timer);if(logFile)void writeFile(logFile,[`step=${step}`,`exit=${code}`,`timeout=${expired}`,`stderr=${stderr}`,`stdout=${stdout}`].join('\n'),'utf8').catch(()=>{});if(expired)reject(new Error(`${step} 시간 초과 (${Math.ceil(timeoutMs/1000)}초). ShortsAI AI 응답 지연 또는 API 제한 여부를 확인하세요. ${stderr.slice(-200)}`));else if(code!==0)reject(new Error(`${step} 종료 코드 ${code}: ${(stderr||stdout).slice(-500)}`));else resolve();});
   });
 }
 
@@ -68,7 +69,8 @@ export function validateDirectorPlan(plan,product) {
   return valid;
 }
 
-export async function runShortsDirector({shortsHome,product,images,jobDir,timeoutMs=90000}){
+export async function runShortsDirector({shortsHome,product,images,jobDir,timeoutMs=Number(process.env.REVENUE_DIRECTOR_TIMEOUT_MS||300000)}){
+  if(!Number.isFinite(timeoutMs)||timeoutMs<1000||timeoutMs>600000)throw new Error('잘못된 디렉터 실행 제한 시간입니다.');
   const home=path.resolve(shortsHome||'');
   if(!shortsHome)throw new Error('REVENUE_SHORTSAI_HOME이 설정되지 않았습니다. 쇼츠 제작 폴더를 지정하세요.');
   const director=path.join(home,'modules','shopping','director.js');
@@ -108,7 +110,7 @@ export async function runShortsDirector({shortsHome,product,images,jobDir,timeou
     `await writeFile(${JSON.stringify(output)},JSON.stringify({scenes}));`
   ].join('\n');
   await writeFile(script,bridge,{mode:0o600});
-  await run(process.execPath,[script],{cwd:home,timeoutMs});
+  await run(process.execPath,[script],{cwd:home,timeoutMs,logFile:path.join(jobDir,'director-run.log'),step:'ShortsAI AI 디렉터'});
   return validateDirectorPlan(JSON.parse(await readFile(output,'utf8')),product);
 }
 
@@ -184,8 +186,11 @@ export async function produceDirectorCreative(raw,outputRoot,{director=runShorts
     await writeFile(path.join(dir,filename),media[i].data,{mode:0o600});
     staged.push(path.join(dir,filename));
   }
+  await writeFile(path.join(dir,'phase.txt'),'DIRECTOR');
   const scenes=await director({shortsHome:process.env.REVENUE_SHORTSAI_HOME,product,images:staged,jobDir:dir});
+  await writeFile(path.join(dir,'phase.txt'),'NARRATION_RENDER');
   const video=await renderer({jobDir:dir,scenes,images:staged});
+  await writeFile(path.join(dir,'phase.txt'),'REVIEW_READY');
   const brief={product:{name:product.name,brand:product.brand,audience:product.audience,features:product.features,priceKrw:product.priceKrw},scenes,video,engine:'ShortsAI Shopping Director + isolated TTS/FFmpeg renderer'};
   await writeFile(path.join(dir,'brief.json'),JSON.stringify(brief,null,2));
   await writeFile(path.join(dir,'captions.txt'),scenes.map((s,i)=>`${i+1}. ${s.subtitle}`).join('\n'));

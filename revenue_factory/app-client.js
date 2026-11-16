@@ -62,7 +62,7 @@ function action(text,cb,cls='secondary'){const b=el('button',text,cls);b.type='b
 const dl=(id,filename,label)=>{const a=el('a',label);a.href=`/api/app/download/${id}/${filename}`;a.download=filename;return a;};
 function renderOrders(element,all=false){element.replaceChildren();const items=all?orders:orders.filter(o=>o.userId===current.id);if(!items.length){element.append(el('p','아직 주문이 없습니다.','muted'));return;}for(const o of items){const card=el('article',undefined,'order'),head=el('div',undefined,'order-head');const title=el('strong',o.kind==='creative'?'상품 광고 제작':'매출 자동화 보고서');head.append(title,el('span',labels[o.status]||o.status,'status'));card.append(head,el('div',`${o.id} · ${o.priceKrw.toLocaleString('ko-KR')}원 · ${new Date(o.createdAt).toLocaleString('ko-KR')}${all?' · 고객ID '+o.userId:''}`,'desc'));
  if(o.status==='AWAITING_PAYMENT')card.append(el('p','결제 미연동: 운영자에게 입금 확인을 요청하세요.','muted-tag'));
- if(o.status==='FAILED')card.append(el('p',`작업 오류: ${o.error||'알 수 없음'}`,'error'));
+ if(o.status==='FAILED')card.append(el('p',`작업 오류: ${o.error||'알 수 없음'} · 작업 실패 원인을 확인한 뒤 재시도하세요.`,'error'));
  const acts=el('div',undefined,'actions');if(o.status==='DELIVERED'){acts.append(dl(o.id,'delivery.zip','결과물 ZIP 다운로드'));if(o.kind==='creative')acts.append(dl(o.id,'advertisement.mp4','MP4 다운로드'));}
  if(all && current.role==='admin'){
   if(o.status==='AWAITING_PAYMENT'){

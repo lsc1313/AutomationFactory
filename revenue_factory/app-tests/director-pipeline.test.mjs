@@ -36,3 +36,10 @@ test('portrait composition is 9:16 and removes giant subtitle slab',()=>{
  assert.match(buildPortraitSceneFilter({fontPath:'font.ttf',captionPath:'caption.txt',width:720,sceneIndex:1}),/s=720x1280/);
  assert.throws(()=>buildPortraitSceneFilter({fontPath:'a',captionPath:'b',width:640}),/720 또는 1080/);
 });
+
+test('director timeout accepts slower multi-provider AI planning but has a hard limit',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'rf-director-timeout-'));
+ try{
+  await assert.rejects(()=>runShortsDirector({shortsHome:root,product:good,images:[],jobDir:root,timeoutMs:600001}),/잘못된 디렉터 실행 제한 시간/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
