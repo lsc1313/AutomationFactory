@@ -27,7 +27,7 @@ $process.WaitForExit()
 if ($process.ExitCode -ne 0) { throw "Tailscale status failed: $errorOutput" }
 try { $status = ConvertFrom-Json -InputObject $rawJson -ErrorAction Stop }
 catch { throw 'Tailscale status JSON could not be decoded as UTF-8. Verify the Tailscale installation.' }
-if ($LASTEXITCODE -ne 0 -or -not $status.Self -or -not $status.Self.DNSName) { throw 'Tailscale must be connected before mobile access can be enabled.' }
+if ($status.BackendState -ne 'Running' -or -not $status.Self -or -not $status.Self.DNSName) { throw "Tailscale is not connected (BackendState=$($status.BackendState)). Open Tailscale and connect before running setup." }
 $dns = $status.Self.DNSName.TrimEnd('.').ToLowerInvariant()
 if ($dns -notmatch '^[a-z0-9-]+(\.[a-z0-9-]+)+\.ts\.net$') { throw "Invalid Tailscale device hostname: $dns" }
 $private = Join-Path $root 'private'
