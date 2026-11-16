@@ -20,7 +20,7 @@ export function validateArchitecture(input){
   const {id:assetId,type,width,height}=raw;
   if(typeof assetId!=="string"||!id.test(assetId)||ids.has(assetId))throw Error("invalid or duplicate asset id: "+assetId);
   if(!["wallpaper","lockscreen","icon","banner","preview","other"].includes(type))throw Error("unsupported asset type: "+type);
-  if(!Number.isInteger(width)||!Number.isInteger(height)||width<128||height<6000||width>6000||height>8000)throw Error("invalid dimensions for "+assetId);
+  if(!Number.isInteger(width)||!Number.isInteger(height)||width<128||height<128||width>6000||height>8000)throw Error("invalid dimensions for "+assetId);
   const detail=String(raw.prompt||"").trim();
   if(!detail||detail.length>1500)throw Error("asset prompt required: "+assetId);
   const file="assets/"+assetId+".png";
