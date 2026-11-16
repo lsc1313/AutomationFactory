@@ -70,7 +70,7 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
    }
    // Operator-only video preview is intentionally available before final approval.
    // Customers cannot access creative files until an approved delivery exists.
-   const preview=url.pathname.match(/^\\/api\\/app\\/preview\\/(ord_[0-9a-f]{24})\\/advertisement\\.mp4$/);
+   const preview=url.pathname.match(/^\/api\/app\/preview\/(ord_[0-9a-f]{24})\/advertisement\.mp4$/);
    if(preview&&req.method==='GET'){
     if(user.role!=='admin')return json(res,403,{error:'운영자만 검수 영상을 볼 수 있습니다.'});
     const filename=await previewVideoPath(store,outputRoot,user,preview[1]);
