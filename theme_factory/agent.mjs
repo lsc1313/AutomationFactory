@@ -26,7 +26,7 @@ async function aiDescription(concept){
  }finally{clearTimeout(timeout)}
 }
 async function runOne(j){
- const result=await aiDescription(j.concept);
+ const result=await aiDescription(j.concept).catch(error=>({description:"Premium mobile wallpaper collection featuring "+j.concept+". Includes coordinated lock screen and curated theme assets.",source:"template-fallback",modelError:String(error.message||error).slice(0,200)}));
  const plan=makeGenerationPlan({slug:j.slug,concept:j.concept,style:j.style,wallpapers:j.wallpapers,icons:j.icons});
  const product={slug:j.slug,title:j.concept,description:result.description,wallpapers:plan.tasks.filter(t=>t.type!=="icon").map(t=>({file:t.file,width:t.width,height:t.height})),icons:plan.tasks.filter(t=>t.type==="icon").map(t=>({file:t.file,width:t.width,height:t.height}))};
  const dir=join(root,"drafts",j.slug);await mkdir(dir,{recursive:true});
@@ -46,7 +46,17 @@ const cmd=process.argv[2]||"run";
 try{
  const s=await load();
  if(cmd==="enqueue"){const concept=process.argv.slice(3).join(" ");const created=enqueue(s,concept);await save(s);console.log(JSON.stringify({created,concept}));}
- else if(cmd==="seed"){for(const c of ["Moonlit botanical garden","Obsidian dragon sanctuary","Celestial ocean","Autumn watercolor village"])enqueue(s,c);await save(s);console.log("Seeded "+s.jobs.length+" jobs");}
+ else if(cmd==="seed"){
+ const starters=["Moonlit botanical garden","Obsidian dragon sanctuary","Celestial ocean","Autumn watercolor village"];
+ for(const concept of starters)enqueue(s,concept);
+ const pending=s.jobs.filter(j=>["queued","deferred","running","draft_ready","render_deferred"].includes(j.status)).length;
+ if(pending<2){
+  const moods=["Twilight","Aurora","Velvet","Golden","Misty","Dreamlike","Crystal","Midnight"];
+  const places=["forest lanterns","desert oasis","mountain shrine","floating islands","rain garden","deep sea","snowy village","star observatory"];
+  for(let i=0;i<moods.length*places.length;i++){const index=(s.jobs.length+i)%64;const title=moods[Math.floor(index/places.length)]+" "+places[index%places.length];if(enqueue(s,title))break}
+ }
+ await save(s);console.log("Seeded "+s.jobs.length+" jobs");
+}
  else if(cmd==="status"){console.log(JSON.stringify(s,null,2));}
  else if(cmd==="run"){
   const limit=Math.min(20,Math.max(1,Number(process.env.THEME_MAX_JOBS||3)||3));
