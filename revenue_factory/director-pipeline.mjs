@@ -142,3 +142,14 @@ export async function produceDirectorCreative(raw,outputRoot,{director=runShorts
   await writeFile(path.join(dir,'captions.txt'),scenes.map((s,i)=>`${i+1}. ${s.subtitle}`).join('\n'));
   return {job,files:[...staged.map(x=>path.basename(x)),VIDEO_NAME,'brief.json','captions.txt'],preview:null,status:'DRAFT_REVIEW_REQUIRED',video};
 }
+/** Lightweight configuration health probe: does not call billable AI services. */
+export async function directorAvailability(){
+ const home=process.env.REVENUE_SHORTSAI_HOME;
+ if(!home)return {configured:false,ready:false,reason:'ShortsAI 폴더 연결 필요 (REVENUE_SHORTSAI_HOME)'};
+ try{
+  await access(path.join(path.resolve(home),'modules','shopping','director.js'));
+  return {configured:true,ready:true,reason:'디렉터 경로 확인됨 (AI 키/음성 명령은 제작 시 검사)'};
+ }catch{
+  return {configured:true,ready:false,reason:'ShortsAI 디렉터 파일을 찾을 수 없습니다.'};
+ }
+}

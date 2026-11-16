@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Store } from './store.mjs';
 import { createOrder, listOrders, getOrder, recordPayment, approveOrder, retryOrder, runOrder, productFilePath, previewVideoPath, createCustomer, PRODUCTS } from './commerce.mjs';
 import { renderStatus } from './render.mjs';
+import { directorAvailability } from './director-pipeline.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const hardHeaders={'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Permissions-Policy':'camera=(), microphone=(), geolocation=()', 'Content-Security-Policy':"default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; media-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"};
 const json=(res,status,value,extra={})=>{res.writeHead(status,{...hardHeaders,...extra,'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
@@ -35,7 +36,7 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
     const filename=path.resolve(root,publicAssets[url.pathname]);const content=await readFile(filename);
     res.writeHead(200,{...hardHeaders,'Content-Type':types[path.extname(filename)]||'application/octet-stream',...(url.pathname==='/app-sw.js'?{'Service-Worker-Allowed':'/'}:{})});res.end(content);return;
    }
-   if(req.method==='GET'&&url.pathname==='/api/app/health')return json(res,200,{ok:true,mode:publicHost?'https-proxy':'local',renderer:await renderStatus(),payment:'manual-approval'});
+   if(req.method==='GET'&&url.pathname==='/api/app/health')return json(res,200,{ok:true,mode:publicHost?'https-proxy':'local',renderer:await renderStatus(),director:await directorAvailability(),payment:'manual-approval'});
    if(req.method==='GET'&&url.pathname==='/api/app/setup-status'){const db=await store.read();return json(res,200,{setupAllowed:local&&!db.users.some(u=>u.role==='admin')});}
    if(req.method==='POST'&&url.pathname==='/api/app/setup'){
     const db=await store.read();if(!local||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)||db.users.some(u=>u.role==='admin'))return json(res,403,{error:'첫 설치는 PC에서만 가능합니다.'});

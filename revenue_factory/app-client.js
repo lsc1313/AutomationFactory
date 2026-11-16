@@ -44,5 +44,5 @@ for(const [key,label]of [['rights','사진·콘텐츠 사용권 확인'],['accur
  card.append(acts);element.append(card);}}
 async function refreshOrders(){if(!current)return;const x=await api('/api/app/orders');orders=x.orders;const total=current.role==='admin'?orders:orders.filter(o=>o.userId===current.id);$('metric-all').textContent=total.length;$('metric-work').textContent=total.filter(o=>['QUEUED','PROCESSING','NEEDS_REVIEW'].includes(o.status)).length;$('metric-done').textContent=total.filter(o=>o.status==='DELIVERED').length;renderOrders($('order-list'));if(current.role==='admin')renderOrders($('admin-orders'),true);}
 $('refresh-orders').onclick=()=>refreshOrders().catch(e=>alert(e.message));
-api('/api/app/health').then(x=>{$('system-health').textContent=x.renderer.available?'영상 렌더러 정상':'영상 렌더러 설치 필요';}).catch(()=>{$('system-health').textContent='서버 연결 오류';});
+api('/api/app/health').then(x=>{$('system-health').textContent=!x.renderer.available?'영상 렌더러 설치 필요':!x.director?.ready?'ShortsAI 디렉터 연결 필요':'렌더러 · ShortsAI 경로 확인됨';}).catch(()=>{$('system-health').textContent='서버 연결 오류';});
 void loadSession();if('serviceWorker'in navigator)navigator.serviceWorker.register('/app-sw.js').catch(()=>{});
