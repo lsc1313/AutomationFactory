@@ -17,7 +17,7 @@ async function body(req,max=7_500_000){let size=0;const chunks=[];for await(cons
 const publicAssets={'/app':'app.html','/app.css':'app.css','/app.js':'app-client.js','/app.webmanifest':'app.webmanifest','/app-sw.js':'app-sw.js','/icons/icon-192.png':'icons/icon-192.png','/icons/icon-512.png':'icons/icon-512.png'};
 const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.webmanifest':'application/manifest+json','.png':'image/png'};
 function safeOrder(o){if(!o)return o;const {brief,...meta}=o;return meta;}
-export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'private','app.json'),outputRoot=process.env.REVENUE_OUT || path.join(root,'output'),secureCookie=process.env.REVENUE_SECURE_COOKIE==='1',publicHost=process.env.REVENUE_PUBLIC_HOST||null}={}){
+export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'private','app.json'),outputRoot=process.env.REVENUE_OUT || path.join(root,'output'),secureCookie=process.env.REVENUE_SECURE_COOKIE==='1',publicHost=process.env.REVENUE_PUBLIC_HOST||null,trustProxy=process.env.REVENUE_TRUST_PROXY==='1'}={}){
  const store=new Store(dataFile);const busy=new Set();const attempts=new Map();let closed=false;
  const runPending=async()=>{if(closed)return;const db=await store.read();for(const order of db.orders.filter(o=>o.status==='QUEUED')){if(busy.has(order.id))continue;if(busy.size>=1)break;busy.add(order.id);void runOrder(store,outputRoot,order.id).catch(e=>console.error('Order processing:',e.message)).finally(()=>{busy.delete(order.id);void runPending();});}};
  const serve=async(req,res)=>{
@@ -25,7 +25,7 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
   try{
    const host=String(req.headers.host||'').toLowerCase();const hostname=host.split(':')[0];const local=['127.0.0.1','localhost'].includes(hostname);
    if(!local && (!publicHost||hostname!==publicHost.toLowerCase()))return json(res,403,{error:'승인되지 않은 호스트입니다.'});
-   if(!local && (!secureCookie||process.env.REVENUE_TRUST_PROXY!=='1'||req.headers['x-forwarded-proto']!=='https'||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))return json(res,403,{error:'공개 서비스는 로컬 HTTPS 프록시만 허용합니다.'});
+   if(!local && (!secureCookie||!trustProxy||req.headers['x-forwarded-proto']!=='https'||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))return json(res,403,{error:'공개 서비스는 로컬 HTTPS 프록시만 허용합니다.'});
    if(!['GET','POST'].includes(req.method))return json(res,405,{error:'지원하지 않는 메서드입니다.'});
    if(req.method==='POST'){
     if(!allowCredentials(req,res,host))return json(res,403,{error:'외부 출처 요청 차단'});
