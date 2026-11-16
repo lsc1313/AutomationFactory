@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { validateDirectorMedia,validateDirectorPlan,produceDirectorCreative,runShortsDirector } from '../director-pipeline.mjs';
+import { validateDirectorMedia,validateDirectorPlan,produceDirectorCreative,runShortsDirector,buildPortraitSceneFilter } from '../director-pipeline.mjs';
 const png=(seed)=>'data:image/png;base64,'+Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(1800,seed)]).toString('base64');
 const good={name:'텀블러',brand:'온유',audience:'직장인',features:['500ml 용량','뚜껑이 있습니다'],priceKrw:19900,imageDataUrls:[png(1),png(2)]};
 const scenes=[{tts:'직장인을 위한 텀블러 상품을 소개합니다.',subtitle:'텀블러 소개'},{tts:'이 제품은 500ml 용량으로 안내되어 있습니다.',subtitle:'500ml 용량'},{tts:'뚜껑이 있는 형태의 텀블러입니다.',subtitle:'뚜껑 구성'},{tts:'온유 텀블러 상세 정보를 확인해 보세요.',subtitle:'자세히 보기'}];
@@ -27,4 +27,12 @@ test('isolated Director subprocess invokes existing ShortsAI AI gateway and scen
   assert.ok(scenes[0].voice.includes('텀블러'));
   assert.match(await readFile(path.join(jobDir,'director-bridge.mjs'),'utf8'),/normalizeShoppingScenes/);
  }finally{await rm(root,{recursive:true,force:true});}
+});
+test('portrait composition is 9:16 and removes giant subtitle slab',()=>{
+ const filter=buildPortraitSceneFilter({fontPath:'/tmp/font.ttf',captionPath:'/tmp/caption.txt'});
+ assert.match(filter,/s=1080x1920/);assert.match(filter,/boxblur/);assert.match(filter,/overlay=/);
+ assert.match(filter,/zoompan/);assert.match(filter,/bordercolor=black/);
+ assert.doesNotMatch(filter,/drawbox|black@0\.70/);
+ assert.match(buildPortraitSceneFilter({fontPath:'font.ttf',captionPath:'caption.txt',width:720,sceneIndex:1}),/s=720x1280/);
+ assert.throws(()=>buildPortraitSceneFilter({fontPath:'a',captionPath:'b',width:640}),/720 또는 1080/);
 });

@@ -121,6 +121,23 @@ async function audioDuration(filename){
   });
 }
 
+/** Full-screen 9:16 composition with subtle portrait motion and clean caption. */
+export function buildPortraitSceneFilter({fontPath,captionPath,sceneIndex=0,width=1080}){
+  if(![720,1080].includes(width))throw new Error('영상 너비는 720 또는 1080만 지원합니다.');
+  const height=Math.round(width*16/9),baseW=Math.round(width*1.25),baseH=Math.round(height*1.25);
+  const fgW=Math.round(width*1.09),fgH=Math.round(height*1.09);
+  const safePath=value=>String(value).replaceAll('\\','/').replaceAll(':','\\:').replaceAll("'","\\'");
+  const zoom=sceneIndex%2===0?'min(zoom+0.0025,1.17)':'if(lte(on,1),1.17,max(zoom-0.0025,1.0))';
+  const x=sceneIndex%3===0?'iw/2-(iw/zoom/2)+sin(on/12)*20':sceneIndex%3===1?'iw/2-(iw/zoom/2)-sin(on/12)*20':'iw/2-(iw/zoom/2)';
+  const y=sceneIndex%3===2?'ih/2-(ih/zoom/2)+sin(on/14)*22':'ih/2-(ih/zoom/2)';
+  const stages=[
+    '[0:v]split=2[bgsrc][fgsrc]',
+    `[bgsrc]scale=${baseW}:${baseH}:force_original_aspect_ratio=increase,crop=${baseW}:${baseH},boxblur=22:2,eq=brightness=-0.13[bg]`,
+    `[fgsrc]scale=${fgW}:${fgH}:force_original_aspect_ratio=decrease,format=rgba[fg]`,
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p,zoompan=z='${zoom}':x='${x}':y='${y}':d=1:s=${width}x${height}:fps=24,drawtext=fontfile='${safePath(fontPath)}':textfile='${safePath(captionPath)}':fontcolor=white:fontsize=${Math.round(width*0.052)}:borderw=${Math.max(2,Math.round(width*0.003))}:bordercolor=black@0.9:shadowcolor=black@0.65:shadowx=2:shadowy=3:line_spacing=${Math.round(width*0.015)}:x=(w-text_w)/2:y=h*0.80[v]`
+  ];
+  return stages.join(';');
+}
 export async function renderNarratedScenes({jobDir,scenes,images,ttsCommand='edge-tts',fontPath,voice='ko-KR-SunHiNeural'}){
   if(images.length<2)throw new Error('상품 사진 부족');
   const font=fontPath||await locateFont();
@@ -133,11 +150,14 @@ export async function renderNarratedScenes({jobDir,scenes,images,ttsCommand='edg
     const textFile=path.join(jobDir,`caption-${n}.txt`);
     await writeFile(textFile,caption(scenes[i].subtitle),'utf8');
     const image=images[i%images.length];
-    // True visual motion (zoom in/out) from the customer's actual product photos.
-    const zoom=i%2===0?"min(zoom+0.0008,1.14)":"if(lte(on,1),1.14,max(zoom-0.0008,1.0))";
-    const escaped=font.replaceAll('\\','/').replaceAll(':','\\:').replaceAll("'","\\'");
-    const filter=`scale=820:1480:force_original_aspect_ratio=increase,crop=820:1480,zoompan=z='${zoom}':d=1:s=720x1280:fps=24,drawbox=x=24:y=945:w=672:h=238:color=black@0.70:t=fill,drawtext=fontfile='${escaped}':textfile='${textFile.replaceAll('\\','/').replaceAll(':','\\:')}':fontcolor=white:fontsize=43:x=(w-text_w)/2:y=1000:line_spacing=12`;
-    await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-loop','1','-framerate','24','-i',image,'-i',mp3,'-filter_complex',`[0:v]${filter}[v]`,'-map','[v]','-map','1:a:0','-c:v','libx264','-preset','veryfast','-crf','25','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-t',String(duration),'-shortest',segment],{cwd:jobDir,timeoutMs:120000});
+    // Compose a full 9:16 portrait background from the SAME authorized product photo.
+    // Keep the original product centered, animate the composed frame, and use outlined subtitles.
+    const filter=buildPortraitSceneFilter({fontPath:font,captionPath:textFile,sceneIndex:i,width:Number(process.env.REVENUE_VIDEO_WIDTH||1080)});
+    await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-loop','1','-framerate','24','-i',image,'-i',mp3,
+      '-filter_complex',filter,'-map','[v]','-map','1:a:0',
+      '-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p',
+      '-c:a','aac','-b:a','160k','-t',String(duration),'-shortest','-movflags','+faststart',segment],
+      {cwd:jobDir,timeoutMs:180000});
     const s=await stat(segment);if(s.size<5000)throw new Error(`장면 ${n} 영상 렌더링 실패`);
     segments.push(segment);
   }

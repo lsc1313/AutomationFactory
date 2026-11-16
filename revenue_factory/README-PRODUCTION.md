@@ -89,3 +89,6 @@ Current limits: customer media is only verified by format and duplicate detectio
 The in-app header now reports whether the local ShortsAI Director path is configured; `ready` means that its file exists, **not** that an AI account, free quota or TTS voice provider is operational. A paid customer campaign must be test-rendered and visually approved before public sales.
 
 The customer-specific creative Director reuses the ShortsAI AI gateway and Shopping Director scene normalization but explicitly replaces the affiliate/curator advertising instructions with a B2B commissioned-ad prompt. It rejects orders without two factual features and does not insert unrelated stock photography. This is a dedicated director adapter, not an invocation of the uploader-enabled `createShort` function.
+
+## Full-screen vertical layout (2026-11-17)
+Video defaults to 1080×1920 (true 9:16), using a blurred copy of the SAME customer photo behind the original product image, no solid black bars. Stronger zoom/pan, no opaque subtitle rectangle; caption outlined instead. Player CSS now respects actual 9:16 dimensions. Low-spec PC may set `REVENUE_VIDEO_WIDTH=720` for 720×1280. Existing videos remain unchanged: submit a new job to see the revised rendering.
