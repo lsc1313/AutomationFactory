@@ -30,7 +30,15 @@ function renderOrders(element,all=false){element.replaceChildren();const items=a
   }
   if(o.status==='FAILED')acts.append(action('실패 주문 재시도',()=>api(`/api/app/orders/${o.id}/retry`,{})));
   if(o.status==='NEEDS_REVIEW'){
-   const box=el('div',undefined,'review'),checks={};box.append(el('strong','광고 검수 및 최종 납품 승인'));for(const [key,label]of [['rights','사진·콘텐츠 사용권 확인'],['accuracy','상품 정보·가격 검증'],['claims','과장·허위 주장 검증'],['channels','채널별 광고 표시 확인']]){const l=el('label',undefined,'checkline'),input=el('input');input.type='checkbox';checks[key]=input;l.append(input,document.createTextNode(label));box.append(l);}box.append(action('검수 승인 · ZIP 납품',async()=>{await api(`/api/app/orders/${o.id}/approve`,{checks:Object.fromEntries(Object.entries(checks).map(([k,v])=>[k,v.checked]))});}));card.append(box);
+   const box=el('div',undefined,'review'),checks={};
+   box.append(el('strong','제작 영상 미리보기 · 승인 전 확인'));
+   const help=el('p','아래 영상을 재생해 화면·자막·상품정보를 실제로 확인한 뒤 검수 항목을 선택하세요. 고객에게는 승인 전 공개되지 않습니다.','muted small');
+   const video=el('video');video.controls=true;video.preload='metadata';video.playsInline=true;video.className='review-player';video.setAttribute('aria-label','검수용 광고 영상');
+   video.src=`/api/app/preview/${o.id}/advertisement.mp4`;
+   const fallback=el('p','영상 재생이 안 되면 새로고침 후 확인하거나 검수 영상 파일을 열어 주세요.','muted small');
+   const previewLink=el('a','검수 영상 새 탭에서 열기');previewLink.href=video.src;previewLink.target='_blank';previewLink.rel='noopener noreferrer';
+   box.append(help,video,previewLink,fallback,el('strong','광고 검수 및 최종 납품 승인'));
+for(const [key,label]of [['rights','사진·콘텐츠 사용권 확인'],['accuracy','상품 정보·가격 검증'],['claims','과장·허위 주장 검증'],['channels','채널별 광고 표시 확인']]){const l=el('label',undefined,'checkline'),input=el('input');input.type='checkbox';checks[key]=input;l.append(input,document.createTextNode(label));box.append(l);}box.append(action('검수 승인 · ZIP 납품',async()=>{await api(`/api/app/orders/${o.id}/approve`,{checks:Object.fromEntries(Object.entries(checks).map(([k,v])=>[k,v.checked]))});}));card.append(box);
   }
  }
  card.append(acts);element.append(card);}}

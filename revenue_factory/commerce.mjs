@@ -47,3 +47,12 @@ export async function approveOrder(store,outputRoot,admin,id,checks){if(admin.ro
 export async function retryOrder(store,admin,id){if(admin.role!=='admin')throw new Error('운영자만 재시도할 수 있습니다.');return store.transaction(db=>{const o=db.orders.find(x=>x.id===validOrderId(id));if(!o||o.status!=='FAILED'||o.paymentStatus!=='PAID')throw new Error('실패한 결제 완료 주문만 재시도할 수 있습니다.');o.status='QUEUED';o.error=null;o.updatedAt=ISO();return o;});}
 export async function productFilePath(store,outputRoot,user,id,filename){const o=await getOrder(store,user,id);if(o.status!=='DELIVERED'||!o.jobId)throw new Error('아직 납품 가능한 주문이 아닙니다.');if(!['delivery.zip','advertisement.mp4','report.html'].includes(filename))throw new Error('해당 파일은 다운로드할 수 없습니다.');const job=await getJob(outputRoot,o.jobId);if(!job)throw new Error('작업이 없습니다.');return path.resolve(outputRoot,o.jobId,filename);}
 export async function createCustomer(store,admin,email,password){if(admin.role!=='admin')throw new Error('운영자만 고객 계정을 만들 수 있습니다.');return store.createUser(email,password,'customer');}
+// Operator-only preview. Never reuse customer delivery authorization for unapproved material.
+export async function previewVideoPath(store,outputRoot,user,id){
+ if(user.role!=='admin')throw new Error('운영자만 검수 영상을 볼 수 있습니다.');
+ const order=await getOrder(store,user,id);
+ if(order.kind!=='creative'||!order.jobId||order.status!=='NEEDS_REVIEW')throw new Error('광고 검수 대기 중에만 영상을 미리 볼 수 있습니다.');
+ const job=await getJob(outputRoot,order.jobId);
+ if(job.kind!=='creative'||!job.files?.includes('advertisement.mp4'))throw new Error('영상 파일이 존재하지 않습니다.');
+ return path.resolve(outputRoot,order.jobId,'advertisement.mp4');
+}

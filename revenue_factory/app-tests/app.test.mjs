@@ -29,6 +29,15 @@ test('paid creative produces actual MP4 and approved ZIP includes MP4',async t=>
  const pay=await send(base,`/api/app/orders/${id}/payment`,{method:'POST',body:{reference:'verified test payment 123'},...admin});assert.equal(pay.status,200);
  let job;for(let i=0;i<200;i++){await sleep(50);const r=await send(base,`/api/app/orders/${id}`,admin);job=r.data.order;if(job.status==='NEEDS_REVIEW'||job.status==='FAILED')break;}
  assert.equal(job.status,'NEEDS_REVIEW',job.error);assert.ok(job.jobId);
+ // A pending creative must remain private to customers but visible to the operator for human QA.
+ const preview=await send(base,`/api/app/preview/${id}/advertisement.mp4`,admin);
+ assert.equal(preview.status,200);assert.ok(preview.data.byteLength>5000);
+ assert.equal((await send(base,`/api/app/download/${id}/advertisement.mp4`,admin)).status,400);
+ assert.equal((await send(base,`/api/app/preview/${id}/advertisement.mp4`)).status,401);
+ const customerCreated=await send(base,'/api/app/customers',{method:'POST',body:{email:'viewer@example.com',password:'secure_customer_password_123'},...admin});
+ assert.equal(customerCreated.status,201);
+ const customer=await login(base,'viewer@example.com','secure_customer_password_123');
+ assert.equal((await send(base,`/api/app/preview/${id}/advertisement.mp4`,customer)).status,403);
  const approve=await send(base,`/api/app/orders/${id}/approve`,{method:'POST',body:{checks:{rights:true,accuracy:true,claims:true,channels:true}},...admin});assert.equal(approve.status,200);
  const video=await send(base,`/api/app/download/${id}/advertisement.mp4`,admin);assert.equal(video.status,200);assert.ok(video.data.byteLength>5000);
  const zip=await send(base,`/api/app/download/${id}/delivery.zip`,admin);assert.equal(zip.status,200);const data=Buffer.from(zip.data);assert.ok(data.includes(Buffer.from('advertisement.mp4')));

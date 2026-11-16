@@ -4,10 +4,10 @@ import path from 'node:path';
 import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.mjs';
-import { createOrder, listOrders, getOrder, recordPayment, approveOrder, retryOrder, runOrder, productFilePath, createCustomer, PRODUCTS } from './commerce.mjs';
+import { createOrder, listOrders, getOrder, recordPayment, approveOrder, retryOrder, runOrder, productFilePath, previewVideoPath, createCustomer, PRODUCTS } from './commerce.mjs';
 import { renderStatus } from './render.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
-const hardHeaders={'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Permissions-Policy':'camera=(), microphone=(), geolocation=()', 'Content-Security-Policy':"default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"};
+const hardHeaders={'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Permissions-Policy':'camera=(), microphone=(), geolocation=()', 'Content-Security-Policy':"default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; media-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"};
 const json=(res,status,value,extra={})=>{res.writeHead(status,{...hardHeaders,...extra,'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
 const cookieToken=req=>(String(req.headers.cookie||'').match(/(?:^|;\s*)rf_session=([^;]+)/)||[])[1]||null;
 const invalid=msg=>{const e=new Error(msg);e.status=400;return e;};
@@ -67,6 +67,16 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
     if(action==='payment'){const o=await recordPayment(store,user,id,b.reference);await store.audit(user.id,'manual-payment-approved',id);void runPending();return json(res,200,{order:safeOrder(o)});}
     if(action==='approve'){const o=await approveOrder(store,outputRoot,user,id,b.checks);await store.audit(user.id,'delivery-approved',id);return json(res,200,{order:safeOrder(o)});}
     if(action==='retry'){const o=await retryOrder(store,user,id);void runPending();return json(res,200,{order:safeOrder(o)});}
+   }
+   // Operator-only video preview is intentionally available before final approval.
+   // Customers cannot access creative files until an approved delivery exists.
+   const preview=url.pathname.match(/^\\/api\\/app\\/preview\\/(ord_[0-9a-f]{24})\\/advertisement\\.mp4$/);
+   if(preview&&req.method==='GET'){
+    if(user.role!=='admin')return json(res,403,{error:'운영자만 검수 영상을 볼 수 있습니다.'});
+    const filename=await previewVideoPath(store,outputRoot,user,preview[1]);
+    const file=await readFile(filename);
+    res.writeHead(200,{...hardHeaders,'Content-Type':'video/mp4','Content-Length':file.length,'Accept-Ranges':'none','Content-Disposition':'inline; filename="advertisement.mp4"'});
+    res.end(file);return;
    }
    const d=url.pathname.match(/^\/api\/app\/download\/(ord_[0-9a-f]{24})\/(delivery\.zip|advertisement\.mp4|report\.html)$/);
    if(d&&req.method==='GET'){
