@@ -43,3 +43,12 @@ test('director timeout accepts slower multi-provider AI planning but has a hard 
   await assert.rejects(()=>runShortsDirector({shortsHome:root,product:good,images:[],jobDir:root,timeoutMs:600001}),/잘못된 디렉터 실행 제한 시간/);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('scene filter creates distinct caption placements and framing for successive real-photo shots',()=>{
+  const a=buildPortraitSceneFilter({fontPath:'font.ttf',captionPath:'caption.txt',sceneIndex:0,width:720});
+  const b=buildPortraitSceneFilter({fontPath:'font.ttf',captionPath:'caption.txt',sceneIndex:1,width:720});
+  assert.notEqual(a,b);
+  assert.match(a,/y=h\*0\.16/);
+  assert.match(b,/y=h\*0\.77/);
+  assert.match(a,/zoompan/);
+});

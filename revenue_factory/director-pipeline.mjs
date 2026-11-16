@@ -127,22 +127,37 @@ async function audioDuration(filename){
 export function buildPortraitSceneFilter({fontPath,captionPath,sceneIndex=0,width=1080}){
   if(![720,1080].includes(width))throw new Error('영상 너비는 720 또는 1080만 지원합니다.');
   const height=Math.round(width*16/9),baseW=Math.round(width*1.25),baseH=Math.round(height*1.25);
-  const fgW=Math.round(width*1.09),fgH=Math.round(height*1.09);
+  const fgW=Math.round(width*(sceneIndex%3===1?1.25:1.09)),fgH=Math.round(height*(sceneIndex%3===1?1.25:1.09));
   const safePath=value=>String(value).replaceAll('\\','/').replaceAll(':','\\:').replaceAll("'","\\'");
-  const zoom=sceneIndex%2===0?'min(zoom+0.0025,1.17)':'if(lte(on,1),1.17,max(zoom-0.0025,1.0))';
+  const zoom=sceneIndex%2===0?'min(zoom+0.0040,1.24)':'if(lte(on,1),1.24,max(zoom-0.0040,1.0))';
   const x=sceneIndex%3===0?'iw/2-(iw/zoom/2)+sin(on/12)*20':sceneIndex%3===1?'iw/2-(iw/zoom/2)-sin(on/12)*20':'iw/2-(iw/zoom/2)';
   const y=sceneIndex%3===2?'ih/2-(ih/zoom/2)+sin(on/14)*22':'ih/2-(ih/zoom/2)';
+  const placements=[
+    {y:'h*0.16',color:'0xFFE4B5',size:0.066,outline:0.0038},
+    {y:'h*0.77',color:'white',size:0.053,outline:0.003},
+    {y:'h*0.66',color:'0xDDFCF7',size:0.056,outline:0.003},
+    {y:'h*0.22',color:'0xFFF2D6',size:0.062,outline:0.0038}
+  ];
+  const style=placements[sceneIndex%placements.length];
   const stages=[
     '[0:v]split=2[bgsrc][fgsrc]',
     `[bgsrc]scale=${baseW}:${baseH}:force_original_aspect_ratio=increase,crop=${baseW}:${baseH},boxblur=22:2,eq=brightness=-0.13[bg]`,
     `[fgsrc]scale=${fgW}:${fgH}:force_original_aspect_ratio=decrease,format=rgba[fg]`,
-    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p,zoompan=z='${zoom}':x='${x}':y='${y}':d=1:s=${width}x${height}:fps=24,drawtext=fontfile='${safePath(fontPath)}':textfile='${safePath(captionPath)}':fontcolor=white:fontsize=${Math.round(width*0.052)}:borderw=${Math.max(2,Math.round(width*0.003))}:bordercolor=black@0.9:shadowcolor=black@0.65:shadowx=2:shadowy=3:line_spacing=${Math.round(width*0.015)}:x=(w-text_w)/2:y=h*0.80[v]`
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p,zoompan=z='${zoom}':x='${x}':y='${y}':d=1:s=${width}x${height}:fps=24,drawtext=fontfile='${safePath(fontPath)}':textfile='${safePath(captionPath)}':fontcolor=${style.color}:fontsize=${Math.round(width*style.size)}:borderw=${Math.max(2,Math.round(width*style.outline))}:bordercolor=black@0.85:shadowcolor=black@0.6:shadowx=2:shadowy=3:line_spacing=${Math.round(width*0.013)}:x=(w-text_w)/2:y=${style.y}[v]`
   ];
   return stages.join(';');
 }
 export async function renderNarratedScenes({jobDir,scenes,images,ttsCommand='edge-tts',fontPath,voice='ko-KR-SunHiNeural'}){
   if(images.length<2)throw new Error('상품 사진 부족');
   const font=fontPath||await locateFont();
+  const fonts=[font];
+  // Use alternate Korean-capable faces when installed, with safe fallback.
+  const winFonts=process.env.WINDIR?path.join(process.env.WINDIR,'Fonts'):null;
+  for(const name of ['malgunbd.ttf','batang.ttc','malgun.ttf']){
+    if(!winFonts)break;
+    const candidate=path.join(winFonts,name);
+    try{await access(candidate);if(!fonts.includes(candidate))fonts.push(candidate);}catch{}
+  }
   const durations=[],segments=[];
   for(let i=0;i<scenes.length;i++){
     const n=i+1,mp3=path.join(jobDir,`voice-${n}.mp3`),segment=path.join(jobDir,`segment-${n}.mp4`);
@@ -151,12 +166,24 @@ export async function renderNarratedScenes({jobDir,scenes,images,ttsCommand='edg
     durations.push(duration);
     const textFile=path.join(jobDir,`caption-${n}.txt`);
     await writeFile(textFile,caption(scenes[i].subtitle),'utf8');
-    const image=images[i%images.length];
-    // Compose a full 9:16 portrait background from the SAME authorized product photo.
-    // Keep the original product centered, animate the composed frame, and use outlined subtitles.
-    const filter=buildPortraitSceneFilter({fontPath:font,captionPath:textFile,sceneIndex:i,width:Number(process.env.REVENUE_VIDEO_WIDTH||1080)});
-    await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-loop','1','-framerate','24','-i',image,'-i',mp3,
-      '-filter_complex',filter,'-map','[v]','-map','1:a:0',
+    const shotDuration=duration/2;
+    const sources=[images[(2*i)%images.length],images[(2*i+1)%images.length]];
+    // Every narration scene now has TWO distinct real-product shots, with a hard cut.
+    // This guarantees a visual change even for very short scripts.
+    const filters=sources.map((source,shotIndex)=>{
+      const styleIndex=i+shotIndex;
+      const raw=buildPortraitSceneFilter({
+        fontPath:fonts[(i+shotIndex)%fonts.length],
+        captionPath:textFile,sceneIndex:styleIndex,
+        width:Number(process.env.REVENUE_VIDEO_WIDTH||1080)
+      });
+      return raw.replace('[0:v]',`[${shotIndex}:v]`).replace(/\[v\]$/,`,trim=duration=${shotDuration.toFixed(3)},setpts=PTS-STARTPTS[shot${shotIndex}]`);
+    });
+    const graph=[...filters,'[shot0][shot1]concat=n=2:v=1:a=0[v]'].join(';');
+    await run('ffmpeg',['-hide_banner','-loglevel','error','-y',
+      '-loop','1','-framerate','24','-i',sources[0],
+      '-loop','1','-framerate','24','-i',sources[1],
+      '-i',mp3,'-filter_complex',graph,'-map','[v]','-map','2:a:0',
       '-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p',
       '-c:a','aac','-b:a','160k','-t',String(duration),'-shortest','-movflags','+faststart',segment],
       {cwd:jobDir,timeoutMs:180000});
