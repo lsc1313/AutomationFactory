@@ -94,7 +94,7 @@ export async function runShortsDirector({shortsHome,product,images,jobDir,timeou
     '첫 장면에 실제 상품명을 반드시 포함하며 자막은 음성의 정확한 핵심을 표현합니다.',
     'JSON만 반환하세요. {"work_instructions":{"scenes":[{"tts":"한국어 자연스러운 음성 대본","subtitle":"짧은 화면 자막","duration":4,"direction":"hook"}]}}',
     '확인된 원본 상품 정보: '+facts
-  ].join('\\n');
+  ].join('\n');
   const bridge=[
     "import {writeFile} from 'node:fs/promises';",
     `import {callAI} from ${JSON.stringify(pathToFileURL(ai).href)};`,
@@ -106,7 +106,7 @@ export async function runShortsDirector({shortsHome,product,images,jobDir,timeou
     "const result=JSON.parse(clean);",
     "const scenes=normalizeShoppingScenes(result,product);",
     `await writeFile(${JSON.stringify(output)},JSON.stringify({scenes}));`
-  ].join('\\n');
+  ].join('\n');
   await writeFile(script,bridge,{mode:0o600});
   await run(process.execPath,[script],{cwd:home,timeoutMs});
   return validateDirectorPlan(JSON.parse(await readFile(output,'utf8')),product);
