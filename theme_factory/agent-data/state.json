@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "slug": "moonlit-botanical-garden",
+      "concept": "Moonlit botanical garden",
+      "style": "premium cohesive illustration",
+      "wallpapers": 3,
+      "icons": 10,
+      "status": "ready_for_review",
+      "attempts": 0,
+      "createdAt": "2026-11-16T15:45:30.425Z",
+      "updatedAt": "2026-11-16T15:45:32.897Z",
+      "nextRunAt": null,
+      "error": null,
+      "output": {
+        "path": "/home/runner/work/AutomationFactory/AutomationFactory/theme_factory/agent-data/drafts/moonlit-botanical-garden",
+        "descriptionSource": "template"
+      },
+      "product": {
+        "archive": "/home/runner/work/AutomationFactory/AutomationFactory/theme_factory/agent-data/products/moonlit-botanical-garden.zip",
+        "assets": 14,
+        "provider": "procedural"
+      }
+    },
+    {
+      "slug": "obsidian-dragon-sanctuary",
+      "concept": "Obsidian dragon sanctuary",
+      "style": "premium cohesive illustration",
+      "wallpapers": 3,
+      "icons": 10,
+      "status": "draft_ready",
+      "attempts": 0,
+      "createdAt": "2026-11-16T15:45:30.425Z",
+      "updatedAt": "2026-11-16T15:45:30.489Z",
+      "nextRunAt": null,
+      "error": null,
+      "output": {
+        "path": "/home/runner/work/AutomationFactory/AutomationFactory/theme_factory/agent-data/drafts/obsidian-dragon-sanctuary",
+        "descriptionSource": "template"
+      }
+    },
+    {
+      "slug": "celestial-ocean",
+      "concept": "Celestial ocean",
+      "style": "premium cohesive illustration",
+      "wallpapers": 3,
+      "icons": 10,
+      "status": "draft_ready",
+      "attempts": 0,
+      "createdAt": "2026-11-16T15:45:30.425Z",
+      "updatedAt": "2026-11-16T15:45:30.490Z",
+      "nextRunAt": null,
+      "error": null,
+      "output": {
+        "path": "/home/runner/work/AutomationFactory/AutomationFactory/theme_factory/agent-data/drafts/celestial-ocean",
+        "descriptionSource": "template"
+      }
+    },
+    {
+      "slug": "autumn-watercolor-village",
+      "concept": "Autumn watercolor village",
+      "style": "premium cohesive illustration",
+      "wallpapers": 3,
+      "icons": 10,
+      "status": "queued",
+      "attempts": 0,
+      "createdAt": "2026-11-16T15:45:30.425Z",
+      "updatedAt": "2026-11-16T15:45:30.425Z",
+      "nextRunAt": null,
+      "error": null
+    }
+  ]
+}
