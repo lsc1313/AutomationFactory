@@ -92,3 +92,11 @@ The customer-specific creative Director reuses the ShortsAI AI gateway and Shopp
 
 ## Full-screen vertical layout (2026-11-17)
 Video defaults to 1080×1920 (true 9:16), using a blurred copy of the SAME customer photo behind the original product image, no solid black bars. Stronger zoom/pan, no opaque subtitle rectangle; caption outlined instead. Player CSS now respects actual 9:16 dimensions. Low-spec PC may set `REVENUE_VIDEO_WIDTH=720` for 720×1280. Existing videos remain unchanged: submit a new job to see the revised rendering.
+
+## Easy Windows desktop and private phone access
+
+- **No black terminal:** double-click `revenue_factory/windows/start-app-hidden.vbs`; the backend runs as a hidden user process and opens the browser. Logs and its PID live under `revenue_factory/private/`.
+- **Start with Windows:** run `revenue_factory/windows/install-autostart.ps1` once, which adds a per-user Startup shortcut. The Windows user must be signed in.
+- **Personal mobile editing/administration:** use Tailscale on Windows and your phone; follow `revenue_factory/PHONE-AND-BACKGROUND.md`. On Windows run `windows/enable-phone.ps1` from an elevated terminal once, then restart the hidden app. Tailscale Serve provides HTTPS access only within your tailnet, not public internet.
+- **PC must remain on and awake** for phone access. For always-on public customers, a separate hosted deployment and stronger operational safeguards are required.
+- The background launcher and Tailscale setup are Windows-specific and must be verified on the user's PC; GitHub Actions verifies Node API behavior but does not install or execute Tailscale on Windows.
