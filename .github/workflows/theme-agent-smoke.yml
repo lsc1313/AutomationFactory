@@ -34,8 +34,16 @@ jobs:
           node theme_factory/fulfill.mjs
           node --input-type=module -e "import {readFile} from 'node:fs/promises';const s=JSON.parse(await readFile('theme_factory/agent-smoke/state.json')); if(s.jobs[0].status!=='ready_for_review')throw Error(JSON.stringify(s.jobs[0]));"
           test -s theme_factory/agent-smoke/products/moonlit-botanical-garden.zip
+      - name: End-to-end architecture build to ZIP
+        env:
+          THEME_IMAGE_PROVIDER: procedural
+        run: |
+          node theme_factory/build_architecture.mjs theme_factory/architectures/moonlit-jade-garden.json ./theme-output
+          test -s theme-output/moonlit-jade-garden.zip
       - uses: actions/upload-artifact@v4
         with:
           name: theme-smoke-sample
-          path: theme_factory/agent-smoke/products/*.zip
+          path: |
+            theme_factory/agent-smoke/products/*.zip
+            theme-output/*.zip
           retention-days: 7
