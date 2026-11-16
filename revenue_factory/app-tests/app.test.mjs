@@ -77,5 +77,13 @@ test('owner mobile preview starts PC rendering without misrepresenting a real pa
  assert.equal(first.data.order.paymentStatus,'PAID');
  const repeat=await send(base,'/api/app/owner-preview',{method:'POST',body:{input,idempotencyKey:'mobile_preview_123'},...admin});
  assert.equal(repeat.data.order.id,first.data.order.id);
- const state=await app.store.read();assert.equal(state.payments.length,0);
+ let state=await app.store.read();assert.equal(state.payments.length,0);
+ // The owner preview queue runs asynchronously. Wait for the test's missing
+ // ShortsAI dependency to fail before deleting the temporary output folder.
+ for(let i=0;i<100;i++){
+  state=await app.store.read();
+  if(state.orders.find(o=>o.id===first.data.order.id)?.status==='FAILED')break;
+  await sleep(50);
+ }
+ assert.equal(state.orders.find(o=>o.id===first.data.order.id)?.status,'FAILED');
 });
