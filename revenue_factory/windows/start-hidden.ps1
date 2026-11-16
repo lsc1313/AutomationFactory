@@ -6,9 +6,9 @@ $private = Join-Path $root 'private'
 New-Item -ItemType Directory -Path $private -Force | Out-Null
 $pidFile = Join-Path $private 'background-pid.txt'
 $target = Join-Path $root 'app.mjs'
-function IsOurProcess($id) {
- if (-not $id) { return $false }
- $p = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue
+function IsOurProcess($processNumber) {
+ if (-not $processNumber) { return $false }
+ $p = Get-CimInstance Win32_Process -Filter "ProcessId=$processNumber" -ErrorAction SilentlyContinue
  return ($null -ne $p -and $p.Name -match '^node(\.exe)?$' -and $p.CommandLine -like "*app.mjs*")
 }
 if (Test-Path $pidFile) {
