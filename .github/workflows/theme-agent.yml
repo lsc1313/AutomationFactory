@@ -1,0 +1,105 @@
+name: Theme Factory Autonomous Agent
+on:
+  workflow_dispatch:
+    inputs:
+      concept:
+        description: "Original theme concept (optional)"
+        required: false
+        type: string
+      image_provider:
+        description: "Image engine: procedural is zero-key; Gemini/Cloudflare require credentials and metered opt-in"
+        required: true
+        default: procedural
+        type: choice
+        options:
+          - procedural
+          - gemini
+          - cloudflare
+  schedule:
+    - cron: "17 */6 * * *"
+permissions:
+  contents: write
+concurrency:
+  group: theme-agent-state
+  cancel-in-progress: false
+jobs:
+  make-products:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Restore previous queue
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin theme-agent-state >/dev/null; then
+            git fetch origin theme-agent-state
+            mkdir -p theme_factory/agent-data
+            git show origin/theme-agent-state:theme_factory/agent-data/state.json > theme_factory/agent-data/state.json || true
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install image renderer
+        run: npm install --no-save --ignore-scripts=false sharp
+      - name: Tests
+        run: |
+          node --check theme_factory/agent.mjs
+          node --check theme_factory/fulfill.mjs
+          node --check theme_factory/image_providers.mjs
+          npm test
+      - name: Enqueue original themes
+        env:
+          NEW_CONCEPT: ${{ inputs.concept }}
+        shell: bash
+        run: |
+          node theme_factory/agent.mjs seed
+          if [ -n "$NEW_CONCEPT" ]; then node theme_factory/agent.mjs enqueue "$NEW_CONCEPT"; fi
+      - name: Create descriptions and plans
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          THEME_MAX_JOBS: "3"
+        run: node theme_factory/agent.mjs run
+      - name: Render, quality check and ZIP product
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
+          THEME_IMAGE_PROVIDER: ${{ inputs.image_provider || 'procedural' }}
+          THEME_ALLOW_METERED: ${{ vars.THEME_ALLOW_METERED || '0' }}
+          THEME_RENDER_LIMIT: "1"
+        run: node theme_factory/fulfill.mjs
+      - name: Upload completed ZIP products and draft specifications
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-factory-products
+          path: |
+            theme_factory/agent-data/products/**/*.zip
+            theme_factory/agent-data/drafts/
+            theme_factory/agent-data/state.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Persist queue separately from main code
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "theme-agent[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp theme_factory/agent-data/state.json /tmp/theme-agent-state.json
+          git fetch origin theme-agent-state || true
+          if git show-ref --verify --quiet refs/remotes/origin/theme-agent-state; then
+            git switch -C theme-agent-state origin/theme-agent-state
+          else
+            git switch --orphan theme-agent-state
+            git rm -rf --cached . >/dev/null 2>&1 || true
+          fi
+          mkdir -p theme_factory/agent-data
+          cp /tmp/theme-agent-state.json theme_factory/agent-data/state.json
+          git add theme_factory/agent-data/state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(theme-agent): checkpoint generation queue"
+            git push origin HEAD:refs/heads/theme-agent-state
+          fi

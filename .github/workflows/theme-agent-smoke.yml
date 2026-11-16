@@ -1,0 +1,41 @@
+name: Theme Factory smoke test
+on:
+  pull_request:
+    paths:
+      - "theme_factory/**"
+      - ".github/workflows/theme-agent.yml"
+      - ".github/workflows/theme-agent-smoke.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install renderer
+        run: npm install --no-save sharp
+      - name: Run unit tests
+        run: npm test
+      - name: Produce an actual ZIP without keys
+        env:
+          THEME_AGENT_DIR: theme_factory/agent-smoke
+          THEME_IMAGE_PROVIDER: procedural
+          THEME_MAX_JOBS: "1"
+          THEME_RENDER_LIMIT: "1"
+        shell: bash
+        run: |
+          node theme_factory/agent.mjs enqueue "Moonlit botanical garden"
+          node theme_factory/agent.mjs run
+          node theme_factory/fulfill.mjs
+          node --input-type=module -e "import {readFile} from 'node:fs/promises';const s=JSON.parse(await readFile('theme_factory/agent-smoke/state.json')); if(s.jobs[0].status!=='ready_for_review')throw Error(JSON.stringify(s.jobs[0]));"
+          test -s theme_factory/agent-smoke/products/moonlit-botanical-garden.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: theme-smoke-sample
+          path: theme_factory/agent-smoke/products/*.zip
+          retention-days: 7
