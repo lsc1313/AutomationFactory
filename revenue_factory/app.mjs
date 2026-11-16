@@ -25,7 +25,7 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
   try{
    const host=String(req.headers.host||'').toLowerCase();const hostname=host.split(':')[0];const local=['127.0.0.1','localhost'].includes(hostname);
    if(!local && (!publicHost||hostname!==publicHost.toLowerCase()))return json(res,403,{error:'승인되지 않은 호스트입니다.'});
-   if(!local && (!secureCookie||process.env.REVENUE_TRUST_PROXY!=='1'||req.headers['x-forwarded-proto']!=='https'))return json(res,403,{error:'공개 서비스는 HTTPS 프록시 설정이 필요합니다.'});
+   if(!local && (!secureCookie||process.env.REVENUE_TRUST_PROXY!=='1'||req.headers['x-forwarded-proto']!=='https'||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))return json(res,403,{error:'공개 서비스는 로컬 HTTPS 프록시만 허용합니다.'});
    if(!['GET','POST'].includes(req.method))return json(res,405,{error:'지원하지 않는 메서드입니다.'});
    if(req.method==='POST'){
     if(!allowCredentials(req,res,host))return json(res,403,{error:'외부 출처 요청 차단'});
@@ -46,14 +46,14 @@ export function createApp({dataFile=process.env.REVENUE_DB || path.join(root,'pr
     const key=req.socket.remoteAddress||'local';const now=Date.now();const a=attempts.get(key)||[];const active=a.filter(t=>now-t<15*60000);if(active.length>=10)return json(res,429,{error:'로그인 시도가 너무 많습니다. 15분 후 다시 시도하세요.'});active.push(now);attempts.set(key,active);if(attempts.size>1000)attempts.clear();
     const b=await body(req,2000);let auth;try{auth=await store.login(b.email,b.password);}catch{auth=null;}
     if(!auth)return json(res,401,{error:'로그인 정보를 확인하세요.'});attempts.delete(key);
-    return json(res,200,{user:auth.user,csrf:auth.csrf},{'Set-Cookie':`rf_session=${auth.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${secureCookie?'; Secure':''}`});
+    return json(res,200,{user:auth.user,csrf:auth.csrf},{'Set-Cookie':`rf_session=${auth.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${secureCookie&&!local?'; Secure':''}`});
    }
    const session=await store.session(cookieToken(req));
    if(req.method==='GET'&&url.pathname==='/api/app/me')return session?json(res,200,{user:session.user,csrf:session.session.csrf,products:PRODUCTS}):json(res,401,{error:'로그인이 필요합니다.'});
    if(!session)return json(res,401,{error:'로그인이 필요합니다.'});
    if(req.method==='POST' && req.headers['x-csrf-token']!==session.session.csrf)return json(res,403,{error:'CSRF 토큰 오류'});
    const user=session.user;
-   if(req.method==='POST'&&url.pathname==='/api/app/logout'){await store.logout(cookieToken(req));return json(res,200,{ok:true},{'Set-Cookie':`rf_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie?'; Secure':''}`});}
+   if(req.method==='POST'&&url.pathname==='/api/app/logout'){await store.logout(cookieToken(req));return json(res,200,{ok:true},{'Set-Cookie':`rf_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie&&!local?'; Secure':''}`});}
    if(req.method==='POST'&&url.pathname==='/api/app/password'){const b=await body(req,5000);await store.changePassword(user.id,b.currentPassword,b.newPassword);return json(res,200,{ok:true,relogin:true},{'Set-Cookie':'rf_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});}
    if(req.method==='GET'&&url.pathname==='/api/app/orders')return json(res,200,{orders:await listOrders(store,user)});
    if(req.method==='POST'&&url.pathname==='/api/app/orders'){
