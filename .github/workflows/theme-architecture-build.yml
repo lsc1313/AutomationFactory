@@ -1,0 +1,62 @@
+name: Theme Factory architecture build
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: "JSON path under theme_factory/architectures/"
+        required: true
+        type: string
+        default: "theme_factory/architectures/moonlit-jade-garden.json"
+      image_provider:
+        description: "procedural for a free smoke test; gemini/cloudflare require API credentials and metered opt-in"
+        required: true
+        type: choice
+        default: "procedural"
+        options:
+          - procedural
+          - gemini
+          - cloudflare
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check architecture path is local JSON
+        shell: bash
+        env:
+          ARCHITECTURE_PATH: ${{ inputs.architecture }}
+        run: |
+          case "$ARCHITECTURE_PATH" in
+            theme_factory/architectures/*.json) ;;
+            *) echo 'Architecture must be within theme_factory/architectures/' >&2; exit 2 ;;
+          esac
+          test -f "$ARCHITECTURE_PATH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install image normalization library
+        run: npm install --no-save sharp
+      - name: Unit tests
+        run: npm test
+      - name: Produce architecture exactly
+        env:
+          ARCHITECTURE_PATH: ${{ inputs.architecture }}
+          THEME_IMAGE_PROVIDER: ${{ inputs.image_provider }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          THEME_ALLOW_METERED: ${{ vars.THEME_ALLOW_METERED || '0' }}
+        run: node theme_factory/build_architecture.mjs "$ARCHITECTURE_PATH" theme-output
+      - name: Upload finished theme ZIP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-theme-zip
+          path: |
+            theme-output/*.zip
+            theme-output/*/progress.json
+          if-no-files-found: warn
+          retention-days: 30
