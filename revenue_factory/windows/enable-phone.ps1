@@ -1,7 +1,11 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $cli = Get-Command tailscale.exe -ErrorAction SilentlyContinue
-if (-not $cli) { throw 'Install and sign in to Tailscale on Windows first: https://tailscale.com/download/windows' }
+if (-not $cli) {
+ $installed = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+ if (Test-Path $installed) { $cli = [pscustomobject]@{Source=$installed} }
+}
+if (-not $cli) { throw 'Tailscale CLI not found. Existing Tailscale desktop installation path needs to be checked.' }
 $status = & $cli.Source status --json | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or -not $status.Self -or -not $status.Self.DNSName) { throw 'Tailscale must be connected before mobile access can be enabled.' }
 $dns = $status.Self.DNSName.TrimEnd('.').ToLowerInvariant()
