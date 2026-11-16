@@ -1,0 +1,78 @@
+name: Theme Factory Autonomous Agent
+on:
+  workflow_dispatch:
+    inputs:
+      concept:
+        description: "New original theme concept (optional)"
+        required: false
+        type: string
+      max_jobs:
+        description: "Maximum drafts to process"
+        required: false
+        default: "3"
+        type: string
+  schedule:
+    - cron: "17 */6 * * *"
+permissions:
+  contents: write
+concurrency:
+  group: theme-agent-state
+  cancel-in-progress: false
+jobs:
+  create-drafts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Switch to isolated state branch
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads origin theme-agent-state >/dev/null; then
+            git fetch origin theme-agent-state
+            git switch -C theme-agent-state origin/theme-agent-state
+          else
+            git switch -c theme-agent-state
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax and tests
+        run: |
+          node --check theme_factory/agent.mjs
+          npm test
+      - name: Seed and enqueue
+        env:
+          NEW_CONCEPT: ${{ inputs.concept }}
+        run: |
+          node theme_factory/agent.mjs seed
+          if [ -n "$NEW_CONCEPT" ]; then
+            node theme_factory/agent.mjs enqueue "$NEW_CONCEPT"
+          fi
+      - name: Build product blueprints
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          THEME_TEXT_MODEL: gemini-2.5-flash
+          THEME_MAX_JOBS: ${{ inputs.max_jobs || '3' }}
+        run: node theme_factory/agent.mjs run
+      - name: Save queue on dedicated state branch
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "theme-agent[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add theme_factory/agent-data/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(theme-agent): persist queue and draft outputs"
+            git push origin HEAD:refs/heads/theme-agent-state
+          fi
+      - name: Upload drafts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-agent-drafts
+          path: theme_factory/agent-data/
+          if-no-files-found: ignore
+          retention-days: 14
