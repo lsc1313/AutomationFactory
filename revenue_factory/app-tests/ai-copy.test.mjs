@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {enhanceBrief} from '../ai-copy.mjs';import {makeCreativeBrief} from '../core.mjs';
+const brief=()=>makeCreativeBrief({name:'500mL 텀블러',brand:'하루상점',audience:'직장인',features:['500mL 용량','스테인리스 외관'],priceKrw:12000});
+test('Gemini key missing: safe offline fallback',async()=>{const x=await enhanceBrief(brief(),{apiKey:''});assert.equal(x.ai.mode,'offline-template');assert.equal(x.ai.used,false);});
+test('Gemini returns structured copy, assigned storyboard and marked human review',async()=>{const x=await enhanceBrief(brief(),{apiKey:'test-api-key',model:'gemini-example',fetchImpl:async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({hook:'하루상점의 500mL 텀블러',feature1:'500mL 용량',feature2:'스테인리스 외관',cta:'상세정보를 확인하세요'})}]}}]})})});assert.equal(x.ai.used,true);assert.equal(x.storyboard[0].voice,'하루상점의 500mL 텀블러');assert.equal(x.review.aiReviewRequired,true);});
+test('reject unsupported fabricated numeric claims',async()=>{const x=await enhanceBrief(brief(),{apiKey:'test-key',fetchImpl:async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({hook:'매출 999% 증가',feature1:'500mL 용량',feature2:'스테인리스 외관',cta:'상세보기'})}]}}]})})});assert.equal(x.ai.used,false);assert.equal(x.ai.mode,'fallback');});

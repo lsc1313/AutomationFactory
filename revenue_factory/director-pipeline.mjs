@@ -1,0 +1,236 @@
+/** Customer-owned media -> ShortsAI Shopping Director -> isolated narrated ad.
+ * NEVER imports createShort(): that function can upload to the user's channels.
+ * Default behavior is fail closed if director or narration dependencies are absent.
+ */
+import { randomBytes, createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { mkdir, readFile, writeFile, stat, access } from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { validateProduct } from './core.mjs';
+import { locateFont } from './render.mjs';
+
+const PHOTO_EXT = {png:'png',jpeg:'jpg',webp:'webp'};
+const VIDEO_NAME = 'advertisement.mp4';
+const MAX_DURATION = 60;
+const MIN_DURATION = 15;
+const NO_GO = /최저가|무조건|완치|100\s*%|효과\s*보장|판매\s*1위|확정\s*수익/;
+
+export function validateDirectorMedia(raw) {
+  const product = validateProduct(raw);
+  const photos = Array.isArray(raw.imageDataUrls) ? raw.imageDataUrls : [];
+  if (photos.length < 2 || photos.length > 6) throw new Error('판매용 영상은 서로 다른 실제 상품 사진 2~6장이 필요합니다.');
+  if(product.features.length<2)throw new Error('판매용 광고에는 확인 가능한 제품 특징이 최소 2개 필요합니다.');
+  const seen = new Set();
+  const items = photos.map((s,i)=>{
+    if(typeof s!=='string' || s.length > 7_000_000)throw new Error(`상품 사진 ${i+1}이 너무 큽니다.`);
+    const m=s.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+    if(!m)throw new Error('사진은 PNG, JPEG, WEBP만 지원합니다.');
+    const data=Buffer.from(m[2],'base64');
+    if(data.length < 1500 || data.length > 5_000_000)throw new Error('사진은 각각 1.5KB~5MB 사이여야 합니다.');
+    const ok=m[1]==='jpeg'?(data[0]===255&&data[1]===216):m[1]==='png'?data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):data.toString('ascii',0,4)==='RIFF'&&data.toString('ascii',8,12)==='WEBP';
+    if(!ok)throw new Error(`상품 사진 ${i+1}의 실제 파일 형식이 잘못됐습니다.`);
+    const digest=createHash('sha256').update(data).digest('hex');
+    if(seen.has(digest))throw new Error('중복된 사진이 있습니다. 서로 다른 상품 사진을 등록하세요.');
+    seen.add(digest);
+    return {data,extension:PHOTO_EXT[m[1]]};
+  });
+  return {product,images:items};
+}
+
+function run(exe,args,{cwd,timeoutMs=120000,logFile=null,step='외부 실행'}={}) {
+  return new Promise((resolve,reject)=>{
+    let stderr='',stdout='';
+    const child=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','pipe','pipe']});
+    child.stdout.on('data',b=>{stdout=(stdout+b.toString()).slice(-5000);});
+    let expired=false;
+    const timer=setTimeout(()=>{expired=true;child.kill();},timeoutMs);
+    child.stderr.on('data',b=>{stderr=(stderr+b.toString()).slice(-2000);});
+    child.on('error',e=>{clearTimeout(timer);reject(new Error(`${exe} 실행 실패: ${e.message}`));});
+    child.on('close',code=>{clearTimeout(timer);if(logFile)void writeFile(logFile,[`step=${step}`,`exit=${code}`,`timeout=${expired}`,`stderr=${stderr}`,`stdout=${stdout}`].join('\n'),'utf8').catch(()=>{});if(expired)reject(new Error(`${step} 시간 초과 (${Math.ceil(timeoutMs/1000)}초). ShortsAI AI 응답 지연 또는 API 제한 여부를 확인하세요. ${stderr.slice(-200)}`));else if(code!==0)reject(new Error(`${step} 종료 코드 ${code}: ${(stderr||stdout).slice(-500)}`));else resolve();});
+  });
+}
+
+export function validateDirectorPlan(plan,product) {
+  const scenes=plan?.scenes;
+  if(!Array.isArray(scenes)||scenes.length<4||scenes.length>7)throw new Error('디렉터 결과에는 4~7개의 장면이 필요합니다.');
+  const allowed=[product.name,product.brand,...product.features].join(' ');
+  const valid=scenes.map((s,i)=>{
+    const voice=String(s.tts||s.voice||s.script||'').trim();
+    const subtitle=String(s.subtitle||voice).trim();
+    if(voice.length<8||voice.length>180||subtitle.length>100)throw new Error(`디렉터 ${i+1}번 장면의 대본이 너무 짧거나 깁니다.`);
+    if(NO_GO.test(voice) && !NO_GO.test(allowed))throw new Error('디렉터가 검증되지 않은 광고 주장을 만들었습니다.');
+    const nums=(voice.match(/\d[\d.,]*/g)||[]).filter(Boolean);
+    const provided=new Set((allowed+' '+(product.priceKrw??'')).match(/\d[\d.,]*/g)||[]);
+    if(nums.some(n=>!provided.has(n)))throw new Error('디렉터가 입력되지 않은 숫자를 추가했습니다.');
+    return {voice,subtitle,shot:String(s.shot||'medium').slice(0,40),move:String(s.cameraMove||'slow_zoom').slice(0,40)};
+  });
+  if(!valid.some(s=>s.voice.includes(product.name)))throw new Error('대본에 실제 상품명이 포함되지 않았습니다.');
+  return valid;
+}
+
+export async function runShortsDirector({shortsHome,product,images,jobDir,timeoutMs=Number(process.env.REVENUE_DIRECTOR_TIMEOUT_MS||300000)}){
+  if(!Number.isFinite(timeoutMs)||timeoutMs<1000||timeoutMs>600000)throw new Error('잘못된 디렉터 실행 제한 시간입니다.');
+  const home=path.resolve(shortsHome||'');
+  if(!shortsHome)throw new Error('REVENUE_SHORTSAI_HOME이 설정되지 않았습니다. 쇼츠 제작 폴더를 지정하세요.');
+  const director=path.join(home,'modules','shopping','director.js');
+  const ai=path.join(home,'modules','ai','index.js');
+  await Promise.all([access(director),access(ai)]);
+  const script=path.join(jobDir,'director-bridge.mjs');
+  // Reuse the existing ShortsAI model gateway and Shopping Director's scene normalizer
+  // without its affiliate/curator wording, uploads, shared media folders, or schedules.
+  const spec={name:product.name,brand:product.brand,audience:product.audience,
+    features:product.features,description:[product.brand,product.audience,...product.features].join('. '),
+    price:product.priceKrw,images,provider:'revenue-factory'};
+  const output=path.join(jobDir,'director-plan.json');
+  const facts=JSON.stringify({brand:product.brand,name:product.name,audience:product.audience,
+    features:product.features,priceKrw:product.priceKrw,landingUrl:product.landingUrl||null});
+  const prompt=[
+    '당신은 고객 의뢰형 상품 광고 제작 전문 디렉터입니다. 제휴 링크 홍보나 쿠팡 파트너스 언급은 절대 하지 마세요.',
+    '모든 장면은 고객이 실제로 제공한 동일 상품 사진을 사용합니다. 관련 없는 무료 이미지나 허위 후기, 가상 사용 장면을 추가하지 않습니다.',
+    '각 장면은 시각적인 촬영 구도, 줌·이동·컷 편집을 고려해 실제로 도움이 되는 제품 정보를 전달합니다.',
+    '먼저 상품의 사용 대상과 차별적 특징을 분석하세요. 첫 2~3초의 관심 유도, 제품 설명, 실제 입력된 특징 최소 두 가지, 마지막 행동 유도를 구성하세요.',
+    '4~7개의 서로 다른 장면. 한국어 장면 음성 대본은 12~110자, 자막은 50자 이하. 전체 길이 15~60초를 목표로 합니다.',
+    '입력에서 제공되지 않은 가격, 혜택, 할인, 효능, 안전성, 수상, 사용 후기, 배송이나 인증 사실을 창작하지 않습니다.',
+    '상품명이 특정 행사·용도(수능/합격/생일/졸업 등)를 포함하면 그 목적을 대본에 구체적으로 반영합니다.',
+    '첫 장면에 실제 상품명을 반드시 포함하며 자막은 음성의 정확한 핵심을 표현합니다.',
+    'JSON만 반환하세요. {"work_instructions":{"scenes":[{"tts":"한국어 자연스러운 음성 대본","subtitle":"짧은 화면 자막","duration":4,"direction":"hook"}]}}',
+    '확인된 원본 상품 정보: '+facts
+  ].join('\n');
+  const bridge=[
+    "import {writeFile} from 'node:fs/promises';",
+    `import {callAI} from ${JSON.stringify(pathToFileURL(ai).href)};`,
+    `import {normalizeShoppingScenes} from ${JSON.stringify(pathToFileURL(director).href)};`,
+    `const product=${JSON.stringify(spec)};`,
+    `const prompt=${JSON.stringify(prompt)};`,
+    "const raw=await callAI(prompt);",
+    "const clean=String(raw).replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();",
+    "const result=JSON.parse(clean);",
+    "const scenes=normalizeShoppingScenes(result,product);",
+    `await writeFile(${JSON.stringify(output)},JSON.stringify({scenes}));`
+  ].join('\n');
+  await writeFile(script,bridge,{mode:0o600});
+  await run(process.execPath,[script],{cwd:home,timeoutMs,logFile:path.join(jobDir,'director-run.log'),step:'ShortsAI AI 디렉터'});
+  return validateDirectorPlan(JSON.parse(await readFile(output,'utf8')),product);
+}
+
+const caption=v=>String(v).replace(/[\r\n\t]+/g,' ').trim().slice(0,85);
+async function audioDuration(filename){
+  return await new Promise((resolve,reject)=>{
+    let stdout='',stderr='';const p=spawn('ffprobe',['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',filename],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+    p.stdout.on('data',d=>stdout+=d);p.stderr.on('data',d=>stderr+=d);
+    p.on('error',reject);p.on('close',code=>{const n=Number(stdout.trim());code===0&&Number.isFinite(n)&&n>0?resolve(n):reject(new Error('TTS 음성 길이를 확인할 수 없습니다: '+stderr.slice(-100)));});
+  });
+}
+
+/** Full-screen 9:16 composition with subtle portrait motion and clean caption. */
+export function buildPortraitSceneFilter({fontPath,captionPath,sceneIndex=0,width=1080}){
+  if(![720,1080].includes(width))throw new Error('영상 너비는 720 또는 1080만 지원합니다.');
+  const height=Math.round(width*16/9),baseW=Math.round(width*1.25),baseH=Math.round(height*1.25);
+  const fgW=Math.round(width*(sceneIndex%3===1?1.25:1.09)),fgH=Math.round(height*(sceneIndex%3===1?1.25:1.09));
+  const safePath=value=>String(value).replaceAll('\\','/').replaceAll(':','\\:').replaceAll("'","\\'");
+  const zoom=sceneIndex%2===0?'min(zoom+0.0040,1.24)':'if(lte(on,1),1.24,max(zoom-0.0040,1.0))';
+  const x=sceneIndex%3===0?'iw/2-(iw/zoom/2)+sin(on/12)*20':sceneIndex%3===1?'iw/2-(iw/zoom/2)-sin(on/12)*20':'iw/2-(iw/zoom/2)';
+  const y=sceneIndex%3===2?'ih/2-(ih/zoom/2)+sin(on/14)*22':'ih/2-(ih/zoom/2)';
+  const placements=[
+    {y:'h*0.16',color:'0xFFE4B5',size:0.066,outline:0.0038},
+    {y:'h*0.77',color:'white',size:0.053,outline:0.003},
+    {y:'h*0.66',color:'0xDDFCF7',size:0.056,outline:0.003},
+    {y:'h*0.22',color:'0xFFF2D6',size:0.062,outline:0.0038}
+  ];
+  const style=placements[sceneIndex%placements.length];
+  const stages=[
+    '[0:v]split=2[bgsrc][fgsrc]',
+    `[bgsrc]scale=${baseW}:${baseH}:force_original_aspect_ratio=increase,crop=${baseW}:${baseH},boxblur=22:2,eq=brightness=-0.13[bg]`,
+    `[fgsrc]scale=${fgW}:${fgH}:force_original_aspect_ratio=decrease,format=rgba[fg]`,
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p,zoompan=z='${zoom}':x='${x}':y='${y}':d=1:s=${width}x${height}:fps=24,drawtext=fontfile='${safePath(fontPath)}':textfile='${safePath(captionPath)}':fontcolor=${style.color}:fontsize=${Math.round(width*style.size)}:borderw=${Math.max(2,Math.round(width*style.outline))}:bordercolor=black@0.85:shadowcolor=black@0.6:shadowx=2:shadowy=3:line_spacing=${Math.round(width*0.013)}:x=(w-text_w)/2:y=${style.y}[v]`
+  ];
+  return stages.join(';');
+}
+export async function renderNarratedScenes({jobDir,scenes,images,ttsCommand='edge-tts',fontPath,voice='ko-KR-SunHiNeural'}){
+  if(images.length<2)throw new Error('상품 사진 부족');
+  const font=fontPath||await locateFont();
+  const fonts=[font];
+  // Use alternate Korean-capable faces when installed, with safe fallback.
+  const winFonts=process.env.WINDIR?path.join(process.env.WINDIR,'Fonts'):null;
+  for(const name of ['malgunbd.ttf','batang.ttc','malgun.ttf']){
+    if(!winFonts)break;
+    const candidate=path.join(winFonts,name);
+    try{await access(candidate);if(!fonts.includes(candidate))fonts.push(candidate);}catch{}
+  }
+  const durations=[],segments=[];
+  for(let i=0;i<scenes.length;i++){
+    const n=i+1,mp3=path.join(jobDir,`voice-${n}.mp3`),segment=path.join(jobDir,`segment-${n}.mp4`);
+    await run(ttsCommand,['--voice',voice,'--text',scenes[i].voice,'--write-media',mp3],{cwd:jobDir,timeoutMs:60000});
+    const duration=Math.max(2,Math.ceil((await audioDuration(mp3)+0.25)*10)/10);
+    durations.push(duration);
+    const textFile=path.join(jobDir,`caption-${n}.txt`);
+    await writeFile(textFile,caption(scenes[i].subtitle),'utf8');
+    const shotDuration=duration/2;
+    const sources=[images[(2*i)%images.length],images[(2*i+1)%images.length]];
+    // Every narration scene now has TWO distinct real-product shots, with a hard cut.
+    // This guarantees a visual change even for very short scripts.
+    const filters=sources.map((source,shotIndex)=>{
+      const styleIndex=i+shotIndex;
+      const raw=buildPortraitSceneFilter({
+        fontPath:fonts[(i+shotIndex)%fonts.length],
+        captionPath:textFile,sceneIndex:styleIndex,
+        width:Number(process.env.REVENUE_VIDEO_WIDTH||1080)
+      });
+      return raw.replace('[0:v]',`[${shotIndex}:v]`).replace(/\[v\]$/,`,trim=duration=${shotDuration.toFixed(3)},setpts=PTS-STARTPTS[shot${shotIndex}]`);
+    });
+    const graph=[...filters,'[shot0][shot1]concat=n=2:v=1:a=0[v]'].join(';');
+    await run('ffmpeg',['-hide_banner','-loglevel','error','-y',
+      '-loop','1','-framerate','24','-i',sources[0],
+      '-loop','1','-framerate','24','-i',sources[1],
+      '-i',mp3,'-filter_complex',graph,'-map','[v]','-map','2:a:0',
+      '-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p',
+      '-c:a','aac','-b:a','160k','-t',String(duration),'-shortest','-movflags','+faststart',segment],
+      {cwd:jobDir,timeoutMs:180000});
+    const s=await stat(segment);if(s.size<5000)throw new Error(`장면 ${n} 영상 렌더링 실패`);
+    segments.push(segment);
+  }
+  const seconds=durations.reduce((a,b)=>a+b,0);
+  if(seconds<MIN_DURATION||seconds>MAX_DURATION)throw new Error(`음성 길이 ${seconds.toFixed(1)}초가 허용 범위(15~60초)를 벗어났습니다. 장면을 조정하세요.`);
+  const concat=path.join(jobDir,'concat.txt');
+  await writeFile(concat,segments.map(s=>`file '${path.basename(s)}'`).join('\n'));
+  await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i',concat,'-c','copy','-movflags','+faststart',VIDEO_NAME],{cwd:jobDir,timeoutMs:120000});
+  const file=path.join(jobDir,VIDEO_NAME),size=(await stat(file)).size;
+  if(size<50000)throw new Error('완성된 MP4 용량이 비정상적입니다.');
+  const probeAudio=await new Promise((resolve,reject)=>{let output='';const p=spawn('ffprobe',['-v','error','-select_streams','a','-show_entries','stream=codec_name','-of','csv=p=0',file],{windowsHide:true});p.stdout.on('data',b=>output+=b);p.on('error',reject);p.on('close',code=>code===0?resolve(output.trim()):reject(new Error('오디오 검사 실패')));});
+  if(!probeAudio.includes('aac'))throw new Error('음성이 없는 영상은 납품할 수 없습니다.');
+  return {filename:VIDEO_NAME,bytes:size,durationSeconds:seconds,hasAudio:true,scenes:scenes.length,qualityGate:'passed'};
+}
+
+export async function produceDirectorCreative(raw,outputRoot,{director=runShortsDirector,renderer=renderNarratedScenes}={}){
+  const {product,images:media}=validateDirectorMedia(raw);
+  const job=`creative-${randomBytes(6).toString('hex')}`;
+  const dir=path.resolve(outputRoot,job);
+  await mkdir(dir,{recursive:true,mode:0o700});
+  const staged=[];
+  for(let i=0;i<media.length;i++){
+    const filename=`photo-${i+1}.${media[i].extension}`;
+    await writeFile(path.join(dir,filename),media[i].data,{mode:0o600});
+    staged.push(path.join(dir,filename));
+  }
+  await writeFile(path.join(dir,'phase.txt'),'DIRECTOR');
+  const scenes=await director({shortsHome:process.env.REVENUE_SHORTSAI_HOME,product,images:staged,jobDir:dir});
+  await writeFile(path.join(dir,'phase.txt'),'NARRATION_RENDER');
+  const video=await renderer({jobDir:dir,scenes,images:staged});
+  await writeFile(path.join(dir,'phase.txt'),'REVIEW_READY');
+  const brief={product:{name:product.name,brand:product.brand,audience:product.audience,features:product.features,priceKrw:product.priceKrw},scenes,video,engine:'ShortsAI Shopping Director + isolated TTS/FFmpeg renderer'};
+  await writeFile(path.join(dir,'brief.json'),JSON.stringify(brief,null,2));
+  await writeFile(path.join(dir,'captions.txt'),scenes.map((s,i)=>`${i+1}. ${s.subtitle}`).join('\n'));
+  return {job,files:[...staged.map(x=>path.basename(x)),VIDEO_NAME,'brief.json','captions.txt'],preview:null,status:'DRAFT_REVIEW_REQUIRED',video};
+}
+/** Lightweight configuration health probe: does not call billable AI services. */
+export async function directorAvailability(){
+ const home=process.env.REVENUE_SHORTSAI_HOME;
+ if(!home)return {configured:false,ready:false,reason:'ShortsAI 폴더 연결 필요 (REVENUE_SHORTSAI_HOME)'};
+ try{
+  await access(path.join(path.resolve(home),'modules','shopping','director.js'));
+  return {configured:true,ready:true,reason:'디렉터 경로 확인됨 (AI 키/음성 명령은 제작 시 검사)'};
+ }catch{
+  return {configured:true,ready:false,reason:'ShortsAI 디렉터 파일을 찾을 수 없습니다.'};
+ }
+}

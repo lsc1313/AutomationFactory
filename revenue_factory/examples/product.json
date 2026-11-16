@@ -1,0 +1,8 @@
+{
+  "brand": "샘플 브랜드",
+  "name": "데일리 텀블러",
+  "audience": "매일 물병을 사용하는 분",
+  "features": ["500mL 용량", "이중벽 구조", "간편한 휴대"],
+  "priceKrw": 19900,
+  "landingUrl": "https://example.com/product"
+}

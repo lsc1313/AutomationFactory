@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: revenue_factory/Dockerfile
+    restart: unless-stopped
+    environment:
+      REVENUE_ADMIN_EMAIL: ${REVENUE_ADMIN_EMAIL:?Set administrator email}
+      REVENUE_ADMIN_PASSWORD: ${REVENUE_ADMIN_PASSWORD:?Set secure administrator password}
+      REVENUE_GEMINI_API_KEY: ${REVENUE_GEMINI_API_KEY:-}
+      REVENUE_GEMINI_MODEL: ${REVENUE_GEMINI_MODEL:-gemini-3.8-flash}
+      REVENUE_PUBLIC_HOST: ${REVENUE_PUBLIC_HOST:?Set a DNS hostname}
+      REVENUE_DB: /data/private/app.json
+      REVENUE_OUT: /data/output
+      REVENUE_APP_PORT: 8040
+      REVENUE_BIND: 0.0.0.0
+      REVENUE_TRUST_PROXY: 1
+      REVENUE_SECURE_COOKIE: 1
+    expose:
+      - '8040'
+    volumes:
+      - revenue_data:/data
+    security_opt:
+      - no-new-privileges:true
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      REVENUE_PUBLIC_HOST: ${REVENUE_PUBLIC_HOST:?Set a DNS hostname}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  revenue_data:
+  caddy_data:
+  caddy_config:
