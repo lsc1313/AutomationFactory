@@ -20,8 +20,9 @@
   for(const scene of project.scenes){
    if(scene.sourceType)continue;
    const f=fileOf(scene),isVideo=f?.group==='video';
-   scene.sourceType=isVideo?'video':'image';scene.sourceIn=0;
-   scene.sourceOut=isVideo?Math.min(safeNum(f.duration,scene.duration||4),scene.duration||4):0;
+   scene.sourceType=isVideo?'video':'image';scene.sourceIn=isVideo?Math.max(0,safeNum(scene.sourceIn,0)):0;
+   scene.sourceOut=isVideo?Math.max(scene.sourceIn+.1,Math.min(safeNum(f.duration,scene.sourceIn+(scene.duration||4)),safeNum(scene.sourceOut,scene.sourceIn+(scene.duration||4)))):0;
+   if(isVideo)scene.duration=scene.sourceOut-scene.sourceIn;
    scene.speed=1;scene.repeats=1;scene.volume=1;
    scene.audioMode=isVideo?'original':'narration';scene.captionStart=0;scene.captionEnd=scene.duration||4;
    scene.captionSize=56;scene.transition='cut';scene.fit='fill';
@@ -73,7 +74,8 @@
    const s=selectedScene(),v=get('preview-video');
    if(s?.sourceType==='video'&&!v.hidden&&v.readyState>=1){
     const single=duration({...s,repeats:1});
-    v.currentTime=s.sourceIn+((location.offset%single)*s.speed);
+    const seconds=s.sourceIn+((location.offset%single)*s.speed);
+    try{v.currentTime=seconds;}catch{v.addEventListener('loadedmetadata',()=>{v.currentTime=seconds},{once:true})}
    }
    updatePlayheadLabel();
   };
@@ -156,6 +158,7 @@
   const cards=[...get('timeline').children];cards.forEach((b,i)=>{
    const c=project.scenes[i];b.draggable=true;
    b.title=(i+1)+'번 클립 / '+duration(c).toFixed(1)+'초 / 드래그로 순서 이동';
+   b.addEventListener('click',()=>{playhead=sceneStart(i);updatePlayheadLabel();});
    b.style.flexBasis=clamp(Math.round(duration(c)*13),95,260)+'px';
    b.ondragstart=()=>{dragSource=i};
    b.ondragover=e=>e.preventDefault();
