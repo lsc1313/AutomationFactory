@@ -297,33 +297,51 @@ async function copyGuestLink(){
 }
 $('guest-copy-btn').onclick=copyGuestLink;
 $('guest-close-btn').onclick=()=>$('guest-share-dialog').close();
+function openGuestShareDialog(){
+ const d=$('guest-share-dialog');
+ if(!d)return null;
+ d.hidden=false;
+ if(!d.open){
+  try{d.showModal()}catch{d.setAttribute('open','')}
+ }
+ return d;
+}
+function guestShareStatus(message){
+ const target=$('guest-share-status');
+ if(target)target.textContent=message;
+}
 $('guest-link-btn').onclick=async()=>{
- const button=$('guest-link-btn'),original=button.textContent;
+ const button=$('guest-link-btn');
+ // Display progress before the first request: HTTPS prompts/clipboard dialogs
+ // are not dependable on Android and the tunnel may take some time to start.
+ openGuestShareDialog();
+ $('guest-share-url').value='';
+ $('guest-copy-btn').disabled=true;
+ guestShareStatus('기존 체험 링크를 확인 중입니다…');
  button.disabled=true;
  try{
   let x=await api('/api/guest/link');
   if(!x.active){
-   if(!confirm('지인이 Tailscale 없이 체험할 2시간짜리 비공개 링크를 만들까요? 지인은 테스트용 분리 공간만 사용합니다.'))return;
-   button.textContent='체험 링크 생성 중…';
-   await api('/api/guest/start','POST',{});
+   guestShareStatus('지인용 별도 서버와 외부 연결을 시작하고 있습니다. 연결에 문제가 생기면 이 창에 오류가 표시됩니다.');
+   const started=await api('/api/guest/start','POST',{});
+   if(!started?.started)throw Error('체험 서버가 시작되지 않았습니다.');
    for(let i=0;i<60;i++){
     await new Promise(resolve=>setTimeout(resolve,1500));
     x=await api('/api/guest/link');
     if(x.active)break;
+    if(i%6===5)guestShareStatus('체험 링크 연결 확인 중… ('+Math.round((i+1)*1.5)+'초 경과)');
    }
   }
-  if(!x.active)throw Error('PC에서 외부 접속 링크를 만들지 못했습니다. PC의 StudioEditor/private/guest-launch.log 로그를 확인해 주세요.');
+  if(!x.active)throw Error('체험 링크 생성이 완료되지 않았습니다. PC의 StudioEditor/private/guest-launch.log 파일을 확인하세요.');
   if(typeof x.url!=='string'||!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/invite\/[a-f0-9]{64}$/.test(x.url))
-   throw Error('체험 링크 주소가 올바르지 않습니다. 잠시 후 다시 생성하세요.');
+   throw Error('체험 링크 주소 검증에 실패했습니다.');
+  $('guest-share-url').value=x.url;
+  $('guest-copy-btn').disabled=false;
   $('guest-stop-btn').hidden=false;
-  button.textContent='🔗 체험 링크';
-  const dialog=$('guest-share-dialog');
-  const field=$('guest-share-url');
-  field.value=x.url;
-  $('guest-share-status').textContent='주소 전체를 확인하고 복사 버튼을 누르세요.';
-  if(!dialog.open)dialog.showModal();
- }catch(e){alert('체험 링크 생성 실패: '+e.message);}
- finally{button.disabled=false;button.textContent=original;}
+  guestShareStatus('체험 링크 생성 완료. 아래 주소 전체를 복사해 지인에게 보내세요. (자동 복사가 안 되면 길게 눌러 복사)');
+ }catch(e){
+  guestShareStatus('체험 링크 생성 실패: '+(e?.message||'알 수 없는 오류')+' — PC에서 실행 중인 편집기와 guest-launch.log를 확인하세요.');
+ }finally{button.disabled=false;}
 };
 $('guest-stop-btn').onclick=async()=>{
  if(!confirm('지인 체험 링크를 즉시 중지할까요? 테스트 중인 편집 작업에 접속할 수 없게 됩니다.'))return;
