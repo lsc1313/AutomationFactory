@@ -45,7 +45,7 @@ test('editor UI and localhost-only bootstrap',async t=>{
  response=await fetch(base+'/api/new',{method:'POST',headers:{Cookie:cookie},body:'{}'});assert.equal(response.status,403);
  // Registration and login must never expose legacy owner's workspace.
  response=await fetch(base+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tester1@example.test',password:'valid_private_password_12'})});
- assert.equal(response.status,201,await response.text());
+ assert.equal(response.status,201,await response.clone().text());
  const member1Cookie=response.headers.get('set-cookie').split(';')[0],member1=await response.json();
  const member1Headers={'Content-Type':'application/json','X-CSRF-Token':member1.csrf,Cookie:member1Cookie};
  response=await fetch(base+'/api/library',{headers:{Cookie:member1Cookie}});
