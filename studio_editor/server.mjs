@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 import {normalizeTimeline,renderTimeline,clipMs,timelineDuration,CANVASES} from './timeline-v2.mjs';
+import {transcribeLocal} from './stt-server.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const STATE=path.resolve(process.env.STUDIO_DATA_DIR||path.join(ROOT,'private'));
 const PORT=Number(process.env.STUDIO_PORT||8050);
@@ -62,6 +63,7 @@ const sessions=new Map();
 const loginFailures=new Map();
 let exportJob={status:'idle',error:null,filename:null,projectId:null,step:null};
 let draftJob={status:'idle',error:null,step:null,projectId:null,draft:null};
+let sttJob={status:'idle',error:null,step:null,projectId:null,clipId:null,segments:null};
 const keyPath=path.join(STATE,'ai-config.json');
 async function aiKey(){const cfg=await loadJson(keyPath,{});return cfg.geminiKey||await findExistingGeminiKey();}
 async function loadJson(filename,fallback){try{return JSON.parse(await readFile(filename,'utf8'));}catch(e){if(e.code==='ENOENT')return fallback;throw e;}}
@@ -203,6 +205,27 @@ if(req.method==='GET'&&sampleUrl){
  const filepath=path.join(voiceSampleDir,sampleUrl[1]+'.mp3');
  let bytes;try{bytes=await readFile(filepath)}catch{throw makeError(404,'음성 미리듣기가 아직 준비되지 않았습니다.')}
  res.writeHead(200,{...APP_HEADER,'Content-Type':'audio/mpeg'});res.end(bytes);return;
+}
+if(req.method==='GET'&&url.pathname==='/api/stt/status')return json(res,200,sttJob);
+if(req.method==='POST'&&url.pathname==='/api/stt'){
+ if(sttJob.status==='running')throw makeError(409,'다른 음성 인식 작업이 진행 중입니다.');
+ const b=await data(req),projects=await loadJson(projectsPath,[]),files=await enrichMedia(await loadJson(path.join(STATE,'media.json'),[]));
+ const project=projects.find(p=>p.id===b.projectId);
+ const clip=project?.scenes?.find(c=>c.id===b.clipId);
+ if(!project||!clip)throw makeError(404,'클립을 찾을 수 없습니다.');
+ const media=files.find(f=>f.id===clip.mediaId&&f.group==='video');
+ if(!media)throw makeError(400,'동영상 클립에서만 음성을 인식할 수 있습니다.');
+ if(media.hasAudio===false)throw makeError(400,'선택한 영상에 원본 음성 트랙이 없습니다.');
+ const begin=Math.max(0,Number(clip.sourceIn||0)),end=Math.min(media.duration||1200,Number(clip.sourceOut||clip.duration||60));
+ const duration=Math.max(0,end-begin);
+ if(duration<.2||duration>1200)throw makeError(400,'한 번에 0.2초~20분 구간의 음성을 인식할 수 있습니다.');
+ sttJob={status:'running',error:null,step:'CPU 음성 인식 준비',projectId:project.id,clipId:clip.id,segments:null};
+ void transcribeLocal({file:path.join(mediaDir,media.id+'.'+media.ext),start:begin,duration,workDir:path.join(STATE,'stt'),
+  onStep:step=>{sttJob.step=step}
+ }).then(result=>{
+  sttJob={status:'done',error:null,step:'음성 인식 완료',projectId:project.id,clipId:clip.id,segments:result.segments,language:result.language};
+ }).catch(e=>{sttJob={status:'failed',error:e.message.slice(0,650),step:'실패',projectId:project.id,clipId:clip.id,segments:null}});
+ return json(res,202,{status:'running'});
 }
 if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
 if(req.method==='POST'&&url.pathname==='/api/ai/config'){const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}

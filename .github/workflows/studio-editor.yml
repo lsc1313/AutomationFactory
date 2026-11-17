@@ -28,6 +28,7 @@ jobs:
         run: |
           node --check studio_editor/server.mjs
           node --check studio_editor/timeline-v2.mjs
+          node --check studio_editor/stt-server.mjs
           node --check studio_editor/public/timeline-ui.js
           node --check studio_editor/ai-draft.mjs
           node --check studio_editor/public/client.js

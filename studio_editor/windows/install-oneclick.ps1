@@ -4,14 +4,14 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.0.0'
+$version = 'v1.0.1'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
 $private = Join-Path $dest 'private'
 $log = Join-Path $env:TEMP 'StudioEditor-install.log'
 $files = @(
- 'server.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css',
+ 'server.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'stt-server.mjs', 'stt-local.py', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css',
  'tests/studio.test.mjs', 'tests/timeline-v2.test.mjs', 'windows/start-hidden.ps1',
  'windows/start-hidden.vbs', 'windows/stop-hidden.ps1',
  'windows/enable-phone.ps1', 'README.md', 'windows/install-oneclick.ps1'
@@ -133,6 +133,15 @@ try {
   } catch { Note "WARNING: TTS install failed: $($_.Exception.Message)" }
  } else {
   Note 'WARNING: Python was not detected. TTS preview will require manual repair.'
+ }
+ # Optional free/offline CPU speech-to-text: model downloads only on first use.
+ if ($python) {
+  try {
+   Note 'Preparing optional CPU Whisper STT engine (may require additional download)'
+   & $python -m pip install --user --disable-pip-version-check 'faster-whisper>=1.0,<2' 2>&1 |
+    ForEach-Object { Note "STT: $_" }
+   if ($LASTEXITCODE -ne 0) { Note 'WARNING: STT package setup incomplete. AI/editing remain available.' }
+  } catch { Note "WARNING: STT package setup skipped: $($_.Exception.Message)" }
  }
  # Private Tailscale Serve setup is best-effort; do not replace 443/8443.
  if (-not $NoPhone) {
