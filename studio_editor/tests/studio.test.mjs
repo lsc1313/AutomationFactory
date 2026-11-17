@@ -43,9 +43,10 @@ test('scene motion applies distinct left/right transforms with 1.2x tempo',()=>{
  assert.match(zoom,/0\.20\*min/);
 });
 test('voice renderer uses Edge CLI then Python module if PATH lacks script',async()=>{
- const p=path.join(dir,'test-speech.mp3');
+ const tmp=await mkdtemp(path.join(os.tmpdir(),'studio-voice-test-'));
+ const p=path.join(tmp,'test-speech.mp3');
  const attempts=[];
- await synthesizeVoice('ko-KR-SunHiNeural','미리 듣기입니다',p,dir,async(exe,args)=>{
+ await synthesizeVoice('ko-KR-SunHiNeural','미리 듣기입니다',p,tmp,async(exe,args)=>{
   attempts.push(exe);
   if(exe==='edge-tts')throw new Error('command not found');
   assert.equal(exe,'python');
@@ -53,4 +54,5 @@ test('voice renderer uses Edge CLI then Python module if PATH lacks script',asyn
   await writeFile(p,Buffer.alloc(1000,1));
  });
  assert.deepEqual(attempts,['edge-tts','python']);
+ await rm(tmp,{recursive:true,force:true});
 });
