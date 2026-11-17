@@ -66,8 +66,14 @@
     <small id="v2-hint">변경한 설정은 즉시 프로젝트에 반영되며 MP4 제작 시 사용됩니다.</small>
    </div>
    <div class="v2-subtitle-track"><div class="v2-heading"><b>독립 자막 트랙</b><button id="v2-add-text" type="button">+ 현재 위치에 자막 삽입</button></div><div class="v2-stt-bar"><button id="v2-stt" type="button">🎙 선택 영상 음성 → 자동 자막</button><small id="v2-stt-status">무료 CPU 음성 인식 (최초 실행 시 모델 다운로드)</small></div><div id="v2-text-clips" class="v2-text-clips"></div></div>`;
+  section.insertAdjacentHTML('beforeend',`<div class="v2-audio-track"><div class="v2-heading"><b>음악·효과음 오디오 트랙</b><button id="v2-add-audio" type="button">+ 음악·효과음 배치</button></div><div id="v2-audio-clips"></div></div>`);
   document.querySelector('.timeline-wrap').before(section);
   get('v2-ratio').onchange=e=>applyChange(()=>project.ratio=e.target.value);
+  get('v2-add-audio').onclick=()=>{
+   const audio=library.find(f=>f.id===selectedMediaId&&f.group==='music')||library.find(f=>f.group==='music');
+   if(!audio){alert('먼저 음악 또는 효과음 파일을 업로드하세요.');return;}
+   applyChange(()=>{project.audioClips=project.audioClips||[];project.audioClips.push({id:rand(),mediaId:audio.id,startMs:Math.round(playhead*1000),durationMs:Math.max(100,Math.min(3000,Math.round((total()-playhead)*1000))),volume:.3})});
+  };
   get('v2-stt').onclick=async()=>{
    const scene=selectedScene();if(!scene||scene.sourceType!=='video'){alert('영상 클립을 먼저 선택하세요.');return;}
    if(!confirm('원본 영상의 말소리를 CPU로 분석하고 시간별 자막을 생성할까요? (ASMR처럼 말이 없는 영상에는 필요하지 않습니다.)'))return;
@@ -182,6 +188,22 @@
   }
   if(!(project.textClips||[]).length)wrap.append(create('small','독립 자막 없음 — 필요할 때만 추가하세요.'));
  }
+ function updateAudioTrack(){
+  const wrap=get('v2-audio-clips');wrap.replaceChildren();
+  for(const c of project.audioClips||[]){
+   const row=create('div');row.className='v2-audio-row';
+   const file=create('select');for(const f of library.filter(f=>f.group==='music')){const opt=create('option',f.name);opt.value=f.id;file.append(opt)}file.value=c.mediaId;row.append(file);
+   const start=create('input');start.type='number';start.min='0';start.step='.1';start.value=(c.startMs/1000).toFixed(1);start.title='시작 시간(초)';row.append(start);
+   const len=create('input');len.type='number';len.min='.1';len.step='.1';len.value=(c.durationMs/1000).toFixed(1);len.title='재생 시간(초)';row.append(len);
+   const vol=create('input');vol.type='range';vol.min='0';vol.max='200';vol.step='5';vol.value=Math.round(c.volume*100);vol.title='음량(%)';row.append(vol);
+   const del=create('button','삭제');del.className='danger';row.append(del);
+   const commit=()=>{c.mediaId=file.value;c.startMs=Math.max(0,Math.round(Number(start.value)*1000));c.durationMs=Math.max(100,Math.round(Number(len.value)*1000));c.volume=clamp(Number(vol.value)/100,0,2);setDirty();render()};
+   for(const fld of [file,start,len,vol])fld.onchange=commit;
+   del.onclick=()=>applyChange(()=>{project.audioClips=project.audioClips.filter(t=>t.id!==c.id)});
+   wrap.append(row);
+  }
+  if(!(project.audioClips||[]).length)wrap.append(create('small','추가 음악·효과음 없음 — 기본 배경음악은 프로젝트 설정에서 선택하세요.'));
+ }
  function update(){
   if(!project)return;ensureV2();makeUI();
   get('v2-ratio').value=project.ratio||'9:16';
@@ -218,6 +240,7 @@
     applyChange(()=>{const c=project.scenes.splice(dragSource,1)[0];project.scenes.splice(i,0,c);selected=i;playhead=sceneStart(i);});dragSource=-1;};
   });
   updateTextTrack();
+  updateAudioTrack();
   // Existing AI scene/caption/music strips remain, but show meaningful durations.
   get('narration-track').textContent=project.scenes.map(c=>c.narration?'🎙 '+duration(c).toFixed(1)+'s':'— '+duration(c).toFixed(1)+'s').join(' | ');
  }

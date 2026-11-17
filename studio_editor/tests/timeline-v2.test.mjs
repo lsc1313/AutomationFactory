@@ -64,4 +64,23 @@ test('FFmpeg smoke renders mixed photo+video preserving source audio into H.264 
  const x=spawnSync('ffprobe',['-v','error','-show_entries','stream=codec_type','-of','csv=p=0',path.join(outputs,output.filename)],{encoding:'utf8'});
  assert.equal(x.status,0);assert.match(x.stdout,/video/);assert.match(x.stdout,/audio/);
  assert.ok(output.duration>.9&&output.duration<1.3);
+ const musicId='c'.repeat(24);
+ ff(['-f','lavfi','-i','sine=f=880:d=2','-c:a','libmp3lame',path.join(inputs,musicId+'.mp3')]);
+ const withMusic=[...media,{id:musicId,group:'music',ext:'mp3',duration:2,hasAudio:true}];
+ const second=await renderTimeline({schemaVersion:2,ratio:'16:9',scenes,
+  voice:'off',audioClips:[{mediaId:musicId,startMs:200,durationMs:700,volume:.3}],
+  bgmId:musicId,bgmVolume:.1},withMusic,{mediaDir:inputs,outputDir:outputs});
+ assert.ok((await stat(path.join(outputs,second.filename))).size>10000);
+
+});
+
+test('text and audio overlay tracks are normalized, and text events have independent timing',()=>{
+ const music={id:'c'.repeat(24),group:'music',ext:'mp3'};
+ const p=normalizeTimeline({ratio:'9:16',scenes:[{...photo,repeats:1}],
+  textClips:[{text:'별도 자막',startMs:500,endMs:1200,position:'top',size:47}],
+  audioClips:[{mediaId:music.id,startMs:1000,durationMs:1400,volume:.5}]},[...media,music]);
+ assert.equal(p.textClips.length,1);assert.equal(p.audioClips.length,1);
+ const ass=clipAss(p.scenes[0],4,{width:720,height:1280},[{...p.textClips[0],startMs:500,endMs:1200}]);
+ assert.match(ass,/Dialogue: 1,0:00:00.50,0:00:01.20/);
+ assert.match(ass,/별도 자막/);
 });

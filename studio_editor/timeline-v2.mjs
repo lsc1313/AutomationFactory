@@ -50,6 +50,13 @@ export function normalizeTimeline(project,media){
  if(scenes.length>160)throw Error('타임라인 클립은 최대 160개입니다.');
  const normalized={...project,schemaVersion:2,ratio,scenes:scenes.map(c=>sourceClip(c,media))};
  const total=timelineDuration(normalized);
+ normalized.audioClips=(Array.isArray(project.audioClips)?project.audioClips:[]).slice(0,100).map(a=>({
+  id:/^[0-9a-f]{24}$/.test(a.id||'')?a.id:id(),
+  mediaId:a.mediaId,startMs:limit(Math.round(finite(a.startMs,0)),0,total),
+  durationMs:limit(Math.round(finite(a.durationMs,3000)),100,Math.max(100,total)),
+  volume:limit(finite(a.volume,.3),0,2)
+ })).filter(a=>media.some(f=>f.id===a.mediaId&&f.group==='music')&&a.startMs<total)
+ .map(a=>({...a,durationMs:Math.min(a.durationMs,total-a.startMs)}));
  normalized.textClips=(Array.isArray(project.textClips)?project.textClips:[]).slice(0,500).map(t=>({
   id:/^[0-9a-f]{24}$/.test(t.id||'')?t.id:id(),text:String(t.text||'').slice(0,1200),
   startMs:limit(Math.round(finite(t.startMs,0)),0,total),endMs:limit(Math.round(finite(t.endMs,1000)),0,total),
@@ -165,12 +172,29 @@ export async function renderTimeline(project,media,{outputDir,mediaDir,onStep=()
  await writeFile(path.join(folder,'concat.txt'),segments.map(s=>`file '${s}'`).join('\n'));
  onStep('장면 병합');await executor('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i','concat.txt','-c','copy','joined.mp4'],{cwd:folder,timeout:240000});
  let finalFile='joined.mp4';
+ const extraTracks=[];
  if(normalized.bgmId){
-  const bg=byId.get(normalized.bgmId);if(!bg||bg.group!=='music')throw Error('선택한 배경음악을 찾을 수 없습니다.');
-  onStep('배경음악 믹싱');await executor('ffmpeg',['-hide_banner','-loglevel','error','-y','-i','joined.mp4','-stream_loop','-1','-i',path.join(mediaDir,bg.id+'.'+bg.ext),
-   '-filter_complex',`[1:a]volume=${limit(finite(normalized.bgmVolume,0.16),0,1)}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]`,
-   '-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','160k','-t',String(durationMs/1000),'-movflags','+faststart','final.mp4'],{cwd:folder,timeout:240000});finalFile='final.mp4';
+  const bg=byId.get(normalized.bgmId);
+  if(!bg||bg.group!=='music')throw Error('선택한 배경음악을 찾을 수 없습니다.');
+  extraTracks.push({mediaId:bg.id,startMs:0,durationMs,volume:limit(finite(normalized.bgmVolume,.16),0,1)});
  }
+ for(const a of normalized.audioClips||[])extraTracks.push(a);
+ if(extraTracks.length){
+  onStep('음악·독립 오디오 트랙 믹싱');
+  const args=['-hide_banner','-loglevel','error','-y','-i','joined.mp4'];
+  const graph=[],parts=['[0:a]'];
+  for(let i=0;i<extraTracks.length;i++){
+   const a=extraTracks[i],f=byId.get(a.mediaId),inputIndex=i+1;
+   args.push('-stream_loop','-1','-i',path.join(mediaDir,f.id+'.'+f.ext));
+   const seconds=Math.min(a.durationMs,durationMs-a.startMs)/1000,delay=Math.round(a.startMs);
+   graph.push(`[${inputIndex}:a]aresample=44100,atrim=duration=${seconds.toFixed(3)},asetpts=PTS-STARTPTS,volume=${a.volume},adelay=${delay}|${delay}[extra${i}]`);
+   parts.push(`[extra${i}]`);
+  }
+  graph.push(parts.join('')+`amix=inputs=${parts.length}:duration=first:dropout_transition=0[a]`);
+  args.push('-filter_complex',graph.join(';'),'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','160k','-t',String(durationMs/1000),'-movflags','+faststart','final.mp4');
+  await executor('ffmpeg',args,{cwd:folder,timeout:240000});finalFile='final.mp4';
+ }
+
  const destination=path.join(outputDir,job+'.mp4');await copyFile(path.join(folder,finalFile),destination);
  const bytes=(await stat(destination)).size;if(bytes<10000)throw Error('MP4 파일이 비정상적으로 작습니다.');
  return {filename:job+'.mp4',duration:durationMs/1000,bytes};
