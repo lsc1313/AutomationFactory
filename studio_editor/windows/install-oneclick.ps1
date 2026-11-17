@@ -4,7 +4,7 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v0.2.2'
+$version = 'v0.2.3'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
@@ -111,6 +111,16 @@ try {
  $ffprobe = Find-Program 'ffprobe.exe' @("$dest\bin\ffprobe.exe")
  if ($ffmpeg -and $ffprobe) {Note 'FFmpeg and FFprobe found. MP4 export available.'}
  else {Note 'WARNING: FFmpeg/FFprobe not found in PATH. Editor can open, but exporting MP4 requires FFmpeg.'}
+ # Ensure narration engine is present for actual audio export (no silent fallback).
+ $tts = Get-Command edge-tts -ErrorAction SilentlyContinue
+ if (-not $tts) {
+  $python = Find-Program 'python.exe' @("$env:LOCALAPPDATA\\Programs\\Python\\Python313\\python.exe", "$env:LOCALAPPDATA\\Programs\\Python\\Python312\\python.exe")
+  if ($python) {
+   Note 'Installing optional Edge TTS voice engine for automatic narration'
+   try { & $python -m pip install --user --disable-pip-version-check edge-tts 2>&1 | ForEach-Object { Note "TTS: $_" } }
+   catch { Note "TTS installation warning: $($_.Exception.Message)" }
+  } else { Note 'WARNING: Python not found. AI narration needs edge-tts; install when convenient.' }
+ }
  # Private Tailscale Serve setup is best-effort; do not replace 443/8443.
  if (-not $NoPhone) {
   $tailscale = Find-Program 'tailscale.exe' @("$env:ProgramFiles\Tailscale\tailscale.exe")

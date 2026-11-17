@@ -72,3 +72,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create
 선택: ZIP 안의 `windows/Install-StudioEditor.cmd`를 더블클릭하는 방법도 있습니다. 설치·업데이트 모두 같은 실행으로 처리합니다. 설치 위치는 `%LOCALAPPDATA%\StudioEditor`, 실행 주소는 `http://127.0.0.1:8050/app`이고, Tailscale이 활성화되어 있다면 휴대폰용 HTTPS 10000 연결도 시도합니다. 첫 실행에는 PC에서 관리자 비밀번호를 1회 설정하세요. Node.js 20+는 필요하고, FFmpeg/FFprobe가 없으면 영상 출력만 비활성화됩니다. 오류가 날 경우 `%TEMP%\StudioEditor-install.log`를 확인하세요.
 ## 2026-11-17 Gemini 모델 갱신
 AI 초안은 API 키로 `models.list`를 먼저 호출해 실제 `generateContent` 가능한 모델을 확인한 뒤 `gemini-3.5-flash-lite`를 우선 사용합니다. 모델 404/미지원 시 `gemini-3.8-flash` 등 사용 가능한 모델로 넘어갑니다. 구형 `gemini-2.5-flash-lite` 고정값을 제거했습니다. 무료 한도 초과(429)는 다른 유료 모델로 우회하지 않고 명확한 오류를 반환합니다.
+
+## v0.2.3 음성·배경음악 선택
+AI 초안 생성 전 연출 스타일 옆에서 기본 여성 선희 및 다른 한국어 음성을 선택하고, 등록한 배경음악 파일을 선택합니다. 선택한 음성·음악·볼륨은 초안 검토 및 편집기에 그대로 전달됩니다. 새 프로젝트는 기본적으로 여성 선희를 사용합니다. 원클릭 업데이트는 Python이 있으면 Edge TTS 설치를 시도합니다. 서비스·음원 이용 허가는 별도 확인해야 하며, 자체 음악이나 상업적 이용이 허용된 음악만 업로드하세요. 배경음악이 없으면 임의 음원을 사용하지 않습니다.

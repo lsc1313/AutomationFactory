@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-test-'));
 process.env.STUDIO_DATA_DIR=dir;
-const {createStudioServer,makeAss}=await import('../server.mjs');
+const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan}=await import('../server.mjs');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const a=makeAss({caption:'상품 {100%} 구매',captionStyle:'minimal',captionPosition:'top'},4);
 test('ASS subtitles escape syntax, show safe upper positioning',()=>{assert.match(a,/Style: Captions,Malgun Gothic,43/);assert.match(a,/100%/);assert.doesNotMatch(a,/\{100%\}/);assert.match(a,/4\.00/);});
@@ -23,4 +23,11 @@ test('editor UI and localhost-only bootstrap',async t=>{
  response=await fetch(base+'/api/projects',{method:'POST',headers,body:JSON.stringify({...p,title:'안전한 프로젝트'})});assert.equal(response.status,200);
  response=await fetch(base+'/api/library',{headers:{Cookie:cookie}});x=await response.json();assert.equal(x.projects[0].title,'안전한 프로젝트');
  response=await fetch(base+'/api/new',{method:'POST',headers:{Cookie:cookie},body:'{}'});assert.equal(response.status,403);
+});
+test('AI voice defaults to Korean female and audio plan keeps selected music/voice',()=>{
+ assert.equal(DEFAULT_VOICE,'ko-KR-SunHiNeural');
+ assert.ok(VOICES.includes('ko-KR-JiMinNeural'));
+ assert.ok(VOICES.includes('ko-KR-SeoHyeonNeural'));
+ const x=audioPlan({voice:'ko-KR-YuJinNeural',bgmId:'abc',bgmVolume:0.18});
+ assert.deepEqual(x,{voice:'ko-KR-YuJinNeural',bgmId:'abc',bgmVolume:0.18});
 });
