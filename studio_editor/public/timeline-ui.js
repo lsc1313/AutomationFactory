@@ -197,6 +197,8 @@
    base.style.fontSize=(scene.captionSize||56)/2.4+'px';
    base.style.color=scene.captionColor||(scene.captionStyle==='clean'?'#FFE700':'#FFFFFF');base.style.fontFamily=scene.captionFont||'Malgun Gothic';
   }
+  // Keep text and canvas on the same mobile coordinate scale at every playhead update.
+  window.StudioMobile?.syncPreviewFrame?.();
  }
  function reorder(delta){const next=selected+delta;if(next<0||next>=project.scenes.length)return;
   applyChange(()=>{const item=project.scenes.splice(selected,1)[0];project.scenes.splice(next,0,item);selected=next;playhead=sceneStart(selected);});
