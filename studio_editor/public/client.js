@@ -325,17 +325,17 @@ $('guest-link-btn').onclick=async()=>{
    guestShareStatus('지인용 별도 서버와 외부 연결을 시작하고 있습니다. 연결에 문제가 생기면 이 창에 오류가 표시됩니다.');
    const started=await api('/api/guest/start','POST',{});
    if(!started?.started)throw Error('체험 서버가 시작되지 않았습니다.');
-   for(let i=0;i<60;i++){
+   for(let i=0;i<90;i++){
     await new Promise(resolve=>setTimeout(resolve,1500));
     x=await api('/api/guest/link');
     if(x.active)break;
     const state=await api('/api/guest/status').catch(()=>({phase:'idle'}));
     if(state.phase==='failed')throw Error(state.message||'외부 연결에 실패했습니다.');
-    const phaseLabel=state.phase==='tunnel'?'외부 체험 연결 생성 중':state.phase==='starting'?'지인 전용 서버 준비 중':'체험 링크 연결 확인 중';
+    const phaseLabel=state.phase==='download'?'Cloudflare 연결 프로그램 다운로드 중':state.phase==='tunnel'?'외부 체험 연결 생성 중':state.phase==='starting'?'지인 전용 서버 준비 중':'체험 링크 연결 확인 중';
     if(i%3===2)guestShareStatus(phaseLabel+'… ('+Math.round((i+1)*1.5)+'초 경과)');
    }
   }
-  if(!x.active)throw Error('체험 링크 생성이 완료되지 않았습니다. PC의 StudioEditor/private/guest-launch.log 파일을 확인하세요.');
+  if(!x.active)throw Error('체험 링크 생성에 실패했거나 연결 확인 시간이 초과되었습니다. PC의 StudioEditor/private/guest-launch.log 파일을 확인하세요.');
   if(typeof x.url!=='string'||!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/invite\/[a-f0-9]{64}$/.test(x.url))
    throw Error('체험 링크 주소 검증에 실패했습니다.');
   $('guest-share-url').value=x.url;
