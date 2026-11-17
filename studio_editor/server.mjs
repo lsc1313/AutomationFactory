@@ -39,6 +39,22 @@ async function body(req,max=1_000_000){let size=0,parts=[];for await(const chunk
 async function data(req,max){let obj;try{obj=JSON.parse((await body(req,max)).toString());}catch(e){if(e.status)throw e;throw makeError(400,'JSON 형식이 잘못되었습니다.');}return obj;}
 function mime(ext){return({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'})[ext]||'application/octet-stream';}
 function run(exe,args,{cwd,timeout=240000}={}){return new Promise((resolve,reject)=>{let log='';const p=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','pipe','pipe']});let expired=false;const timer=setTimeout(()=>{expired=true;p.kill();},timeout);p.stdout.on('data',d=>{log=(log+d.toString()).slice(-3000)});p.stderr.on('data',d=>{log=(log+d.toString()).slice(-3000)});p.on('error',e=>{clearTimeout(timer);reject(new Error(exe+' 실행 실패: '+e.message));});p.on('close',c=>{clearTimeout(timer);if(expired)reject(new Error(exe+' 실행 시간 초과'));else if(c!==0)reject(new Error(exe+' 실패: '+log.slice(-600)));else resolve(log)});});}
+export async function synthesizeVoice(voice,text,out,cwd,runner=run){
+ if(!VOICES.includes(voice)||voice==='off')throw new Error('음성 설정을 확인하세요.');
+ const args=['--voice',voice,'--text',text,'--write-media',out];
+ try{
+  // Prefer the installed CLI. Windows pip --user scripts may not be in PATH.
+  await runner('edge-tts',args,{cwd,timeout:90000});
+ }catch(first){
+  try{
+   await runner('python',['-m','edge_tts',...args],{cwd,timeout:90000});
+  }catch(second){
+   throw new Error('AI 음성 생성에 실패했습니다. edge-tts 또는 Python edge_tts 모듈 설치와 네트워크 연결을 확인하세요. '+second.message);
+  }
+ }
+ const result=await stat(out).catch(()=>null);
+ if(!result||result.size<500)throw new Error('AI 음성 파일이 생성되지 않았습니다. 무음 영상으로 저장하지 않습니다.');
+}
 async function probe(filename){const result=await run('ffprobe',['-v','error','-show_entries','stream=codec_type,width,height:format=duration','-of','json',filename]);return JSON.parse(result);}
 const mediaTypes={image:['jpg','jpeg','png','webp'],video:['mp4'],music:['mp3','wav','m4a']};
 function detectMedia(name,buffer){const ext=path.extname(name).toLowerCase().slice(1);const group=Object.entries(mediaTypes).find(([_,xs])=>xs.includes(ext))?.[0];if(!group)throw makeError(400,'JPG/PNG/WEBP/MP4/MP3/WAV/M4A만 등록할 수 있습니다.');
@@ -58,7 +74,7 @@ let z,x,y;const progress=`(on/${Math.max(1,frames-1)})`;if(effect==='zoom-out')z
 x=effect==='pan-right'?`(iw-iw/zoom)*${progress}`:effect==='pan-left'?`(iw-iw/zoom)*(1-${progress})`:'iw/2-iw/zoom/2';y='ih/2-ih/zoom/2';return base+`zoompan=z='${z}':x='${x}':y='${y}':d=1:s=720x1280:fps=24,format=yuv420p,ass=caption.ass[v]`;}
 function videoFilter(){return `[0:v]fps=24,split=2[bg0][fg0];[bg0]scale=760:1340:force_original_aspect_ratio=increase,crop=760:1340,boxblur=20:2[bg];[fg0]scale=690:1190:force_original_aspect_ratio=decrease,format=rgba[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,scale=720:1280,format=yuv420p,ass=caption.ass[v]`;}
 async function renderProject(project,files,onStep){const job=hex();const dir=path.join(outputDir,job);await mkdir(dir,{recursive:true});const mediaById=new Map(files.map(f=>[f.id,f]));const segments=[],info=[];
-for(let i=0;i<project.scenes.length;i++){const scene=project.scenes[i],source=mediaById.get(scene.mediaId);onStep(`장면 ${i+1}/${project.scenes.length} 제작`);let voiceFile=null,voiceDur=0;const recorded=scene.voiceMediaId&&mediaById.get(scene.voiceMediaId);if(recorded){voiceFile='recorded.'+recorded.ext;await copyFile(path.join(mediaDir,recorded.id+'.'+recorded.ext),path.join(dir,voiceFile));voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}else if(project.voice!=='off'&&scene.narration){voiceFile='narration.mp3';try{await run('edge-tts',['--voice',project.voice,'--text',scene.narration,'--write-media',path.join(dir,voiceFile)],{cwd:dir,timeout:90000});}catch(e){throw new Error('AI 음성 생성 실패: PC에 edge-tts가 설치되어 있는지 확인하세요. '+e.message)}voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}
+for(let i=0;i<project.scenes.length;i++){const scene=project.scenes[i],source=mediaById.get(scene.mediaId);onStep(`장면 ${i+1}/${project.scenes.length} 제작`);let voiceFile=null,voiceDur=0;const recorded=scene.voiceMediaId&&mediaById.get(scene.voiceMediaId);if(recorded){voiceFile='recorded.'+recorded.ext;await copyFile(path.join(mediaDir,recorded.id+'.'+recorded.ext),path.join(dir,voiceFile));voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}else if(project.voice!=='off'&&scene.narration){voiceFile='narration.mp3';await synthesizeVoice(project.voice,scene.narration,path.join(dir,voiceFile),dir)voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}
 if(project.voice!=='off'&&scene.narration&&!voiceFile)throw new Error('대본 음성이 생성되지 않았습니다.');
 const duration=Math.max(scene.duration,voiceDur+0.25);if(duration>65)throw Error('음성이 너무 깁니다. 장면을 분할하거나 대사를 줄여주세요.');const ass=makeAss(scene,duration);await writeFile(path.join(dir,'caption.ass'),ass);
 const localExt=source.ext,srcName=`source.${localExt}`;await copyFile(path.join(mediaDir,source.id+'.'+localExt),path.join(dir,srcName));const isImg=source.group==='image';const filter=isImg?imageFilter(scene.effect,Math.ceil(duration*24)):videoFilter();const segmentName=`clip-${i}.mp4`;
