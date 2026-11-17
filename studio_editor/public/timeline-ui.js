@@ -65,9 +65,41 @@
     </div>
     <small id="v2-hint">변경한 설정은 즉시 프로젝트에 반영되며 MP4 제작 시 사용됩니다.</small>
    </div>
-   <div class="v2-subtitle-track"><div class="v2-heading"><b>독립 자막 트랙</b><button id="v2-add-text" type="button">+ 현재 위치에 자막 삽입</button></div><div id="v2-text-clips" class="v2-text-clips"></div></div>`;
+   <div class="v2-subtitle-track"><div class="v2-heading"><b>독립 자막 트랙</b><button id="v2-add-text" type="button">+ 현재 위치에 자막 삽입</button></div><div class="v2-stt-bar"><button id="v2-stt" type="button">🎙 선택 영상 음성 → 자동 자막</button><small id="v2-stt-status">무료 CPU 음성 인식 (최초 실행 시 모델 다운로드)</small></div><div id="v2-text-clips" class="v2-text-clips"></div></div>`;
   document.querySelector('.timeline-wrap').before(section);
   get('v2-ratio').onchange=e=>applyChange(()=>project.ratio=e.target.value);
+  get('v2-stt').onclick=async()=>{
+   const scene=selectedScene();if(!scene||scene.sourceType!=='video'){alert('영상 클립을 먼저 선택하세요.');return;}
+   if(!confirm('원본 영상의 말소리를 CPU로 분석하고 시간별 자막을 생성할까요? (ASMR처럼 말이 없는 영상에는 필요하지 않습니다.)'))return;
+   const status=get('v2-stt-status'),btn=get('v2-stt');btn.disabled=true;
+   try{
+    await save();
+    await api('/api/stt','POST',{projectId:project.id,clipId:scene.id});
+    status.textContent='음성 인식 중 · 원본 영상은 변경되지 않습니다.';
+    const job=await new Promise((resolve,reject)=>{
+     let attempts=0;
+     const interval=setInterval(async()=>{
+      try{
+       const state=await api('/api/stt/status');
+       if(state.status==='running'){status.textContent='음성 인식 중: '+(state.step||'처리 중');if(++attempts>600){clearInterval(interval);reject(Error('인식 시간 초과'));}return;}
+       clearInterval(interval);if(state.status==='done')resolve(state);else reject(Error(state.error||'음성 인식 실패'));
+      }catch(err){clearInterval(interval);reject(err);}
+     },2000);
+    });
+    const src=project.scenes.findIndex(s=>s.id===scene.id);
+    if(src<0)throw Error('음성 인식 중 클립이 변경되었습니다.');
+    const offset=sceneStart(src),single=duration({...scene,repeats:1});
+    const generated=[];
+    for(let repeat=0;repeat<(scene.repeats||1);repeat++)for(const seg of job.segments||[]){
+     const start=offset+single*repeat+seg.start/(scene.speed||1),end=offset+single*repeat+seg.end/(scene.speed||1);
+     if(end<=start||!seg.text.trim())continue;
+     generated.push({id:rand(),text:seg.text.trim(),startMs:Math.round(start*1000),endMs:Math.round(Math.min(offset+single*(repeat+1),end)*1000),size:50,position:'bottom'});
+    }
+    applyChange(()=>{project.textClips=[...(project.textClips||[]),...generated]});
+    status.textContent=generated.length?'자동 자막 '+generated.length+'개 생성 완료 · 아래에서 수정할 수 있습니다.':'인식된 대사가 없습니다. 원본 소리는 유지됩니다.';
+   }catch(err){status.textContent='음성 인식 오류: '+err.message;}
+   finally{btn.disabled=false;}
+  };
   get('v2-add-text').onclick=()=>{const start=clamp(playhead,0,Math.max(0,total()-0.2));applyChange(()=>{project.textClips=project.textClips||[];project.textClips.push({id:rand(),text:'새 자막',startMs:Math.round(start*1000),endMs:Math.round(Math.min(total(),start+3)*1000),size:50,position:'bottom'});});};
   get('v2-playhead').oninput=e=>{
    playhead=total()*Number(e.target.value)/1000;
@@ -154,6 +186,7 @@
   if(!project)return;ensureV2();makeUI();
   get('v2-ratio').value=project.ratio||'9:16';
   get('v2-clip-settings').hidden=!selectedScene();
+  get('v2-stt').hidden=selectedScene()?.sourceType!=='video';
   playhead=clamp(playhead,0,total());updatePlayheadLabel();
   const s=selectedScene(),file=fileOf(s);
   if(s){

@@ -22,3 +22,6 @@
 .v2-text-row textarea,.v2-text-row input,.v2-text-row select{min-width:0;max-width:100%;padding:7px;background:#fff;color:#2d4032;border:1px solid #d1dacc;border-radius:7px}
 .v2-text-row button{padding:7px}
 @media(max-width:650px){.v2-text-row{grid-template-columns:repeat(4,minmax(0,1fr))}.v2-text-row textarea{grid-column:1/-1}.v2-text-row select{grid-column:span 2}.v2-text-row button{grid-column:span 2}}
+.v2-stt-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}
+.v2-stt-bar small{color:#718175;font-size:11px;line-height:1.45}
+.v2-stt-bar button{background:#eef5ed;color:#3e6d52;border:1px solid #c7dac9}
