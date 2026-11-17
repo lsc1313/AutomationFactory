@@ -132,9 +132,10 @@ function positionEditorTools(){
  if(mobile){
   if(mediaPanel.parentElement!==layout)layout.prepend(mediaPanel);
   const details=document.getElementById('mobile-clip-details');
-  const anchor=main.querySelector('.worktop');
-  if(details&&details.previousElementSibling!==anchor)anchor.after(details);
-  if((details||anchor).nextElementSibling!==props)(details||anchor).after(props);
+  const worktop=main.querySelector('.worktop');
+  if(details&&details.previousElementSibling!==worktop)worktop.after(details);
+  const anchor=details||worktop;
+  if(anchor.nextElementSibling!==props)anchor.after(props);
   const timeline=main.querySelector('.timeline-wrap');
   if(timeline.nextElementSibling!==settings)timeline.after(settings);
  }else{
