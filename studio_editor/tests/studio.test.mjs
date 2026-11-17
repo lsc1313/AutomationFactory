@@ -145,3 +145,15 @@ test('separate phone UI retains desktop AI editing and mobile controls',async()=
  assert.match(css,/data-mobile-view="ai"/);
  assert.match(mobile,/positionEditorTools/);
 });
+
+
+test('guest invite is fully selectable and clipboard errors cannot fake success',async()=>{
+ const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+ const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
+ for(const id of ['guest-share-dialog','guest-share-url','guest-copy-btn','guest-share-status'])assert.ok(page.includes('id="'+id+'"'),id);
+ assert.match(client,/navigator\.clipboard\?\.writeText/);
+ assert.match(client,/field\.select\(\)/);
+ assert.match(client,/document\.execCommand\?\.\('copy'\)/);
+ assert.match(client,/dialog\.showModal\(\)/);
+ assert.doesNotMatch(client,/prompt\('아래 링크를 복사해서 지인에게 보내세요/);
+});
