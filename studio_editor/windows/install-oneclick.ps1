@@ -4,15 +4,15 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v0.4.1'
+$version = 'v1.0.0'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
 $private = Join-Path $dest 'private'
 $log = Join-Path $env:TEMP 'StudioEditor-install.log'
 $files = @(
- 'server.mjs', 'ai-draft.mjs', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css',
- 'tests/studio.test.mjs', 'windows/start-hidden.ps1',
+ 'server.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css',
+ 'tests/studio.test.mjs', 'tests/timeline-v2.test.mjs', 'windows/start-hidden.ps1',
  'windows/start-hidden.vbs', 'windows/stop-hidden.ps1',
  'windows/enable-phone.ps1', 'README.md', 'windows/install-oneclick.ps1'
 )

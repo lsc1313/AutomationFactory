@@ -27,6 +27,8 @@ jobs:
       - name: Syntax
         run: |
           node --check studio_editor/server.mjs
+          node --check studio_editor/timeline-v2.mjs
+          node --check studio_editor/public/timeline-ui.js
           node --check studio_editor/ai-draft.mjs
           node --check studio_editor/public/client.js
       - name: Editor API and security tests

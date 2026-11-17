@@ -4,7 +4,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir, readFile, writeFile, readdir, copyFile, stat, rename } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, copyFile, stat, rename, open, rm } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
@@ -33,6 +33,31 @@ const cfgPath=path.join(STATE,'auth.json');
 const projectsPath=path.join(STATE,'projects.json');
 const mediaDir=path.join(STATE,'media');
 const outputDir=path.join(STATE,'exports');
+async function streamUpload(req,maxBytes=1_073_741_824){
+ const dir=path.join(STATE,'incoming');await mkdir(dir,{recursive:true});
+ const temp=path.join(dir,hex()+'.upload'),fd=await open(temp,'wx');let total=0,head=Buffer.alloc(0);
+ try{
+  for await(const chunk of req){
+   total+=chunk.length;
+   if(total>maxBytes)throw makeError(413,'파일이 1GB를 초과했습니다. 더 작은 파일로 나누어 올려주세요.');
+   if(head.length<16)head=Buffer.concat([head,chunk.subarray(0,16-head.length)]);
+   await fd.write(chunk);
+  }
+  await fd.close();return {temp,total,head};
+ }catch(e){await fd.close().catch(()=>{});await rm(temp,{force:true}).catch(()=>{});throw e;}
+}
+async function enrichMedia(media){
+ let changed=false;
+ const updated=await Promise.all(media.map(async f=>{
+  if(f.group!=='video'||(f.duration&&typeof f.hasAudio==='boolean'))return f;
+  try{
+   const info=await probe(path.join(mediaDir,f.id+'.'+f.ext));
+   changed=true;return {...f,duration:Number(info.format?.duration)||null,hasAudio:info.streams?.some(s=>s.codec_type==='audio')||false};
+  }catch{return f;}
+ }));
+ if(changed)await saveJson(path.join(STATE,'media.json'),updated);
+ return updated;
+}
 const sessions=new Map();
 const loginFailures=new Map();
 let exportJob={status:'idle',error:null,filename:null,projectId:null,step:null};
@@ -160,7 +185,7 @@ return {filename:job+'.mp4',duration:Number(metadata.format?.duration)||info.red
 function auth(req){const t=String(req.headers.cookie||'').match(/(?:^|;\s*)studio_session=([a-z0-9]+)/)?.[1];return t&&sessions.get(t)||null;}
 export function createStudioServer({state=STATE}={}){const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');const hostRaw=String(req.headers.host||'');let host;try{host=new URL('http://'+hostRaw).hostname.toLowerCase()}catch{throw makeError(403,'호스트 오류')}const local=isLocalHost(host);if(!local){if(!HOST||host!==HOST||!TRUST||req.headers['x-forwarded-proto']!=='https'||!addrLocal(req))throw makeError(403,'승인되지 않은 호스트입니다.');}
 if(!['GET','POST'].includes(req.method))throw makeError(405,'지원하지 않는 요청');if(req.method==='POST'){const origin=req.headers.origin;if(origin&&new URL(origin).host.toLowerCase()!==hostRaw.toLowerCase())throw makeError(403,'외부 출처 차단');}
-if(req.method==='GET'&&['/','/app','/client.js','/styles.css'].includes(url.pathname)){const asset=url.pathname==='/client.js'?'client.js':url.pathname==='/styles.css'?'styles.css':'index.html';const p=path.join(ROOT,'public',asset);res.writeHead(200,{...APP_HEADER,'Content-Type':mime(path.extname(p))});res.end(await readFile(p));return;}
+if(req.method==='GET'&&['/','/app','/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css'].includes(url.pathname)){const asset=['/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css'].includes(url.pathname)?url.pathname.slice(1):'index.html';const p=path.join(ROOT,'public',asset);res.writeHead(200,{...APP_HEADER,'Content-Type':mime(path.extname(p))});res.end(await readFile(p));return;}
 if(req.method==='GET'&&url.pathname==='/api/setup-state'){const config=await loadJson(cfgPath,null);return json(res,200,{setupNeeded:!config&&local&&addrLocal(req)});}
 if(req.method==='POST'&&url.pathname==='/api/setup'){const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
 if(req.method==='POST'&&url.pathname==='/api/login'){const ip=req.socket.remoteAddress||'unknown',now=Date.now();const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');const b=await data(req),cfg=await loadJson(cfgPath,null);if(!cfg)throw makeError(403,'PC에서 먼저 초기 설정을 완료하세요.');const hash=scryptSync(String(b.password||''),Buffer.from(cfg.salt,'hex'),64);if(!timingSafeEqual(hash,Buffer.from(cfg.hash,'hex'))){attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'비밀번호가 틀렸습니다.');}loginFailures.delete(ip);const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');sessions.set(token,{csrf,expires:Date.now()+7*86400000});return json(res,200,{csrf},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});}
@@ -202,10 +227,28 @@ if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  }).catch(e=>{draftJob={status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
  return json(res,202,{status:'running'});
 }
-if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);return json(res,200,{projects,media,export:exportJob});}
+if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectsPath,[]),media=await enrichMedia(await loadJson(path.join(STATE,'media.json'),[]));return json(res,200,{projects,media,export:exportJob});}
 if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}else projects[idx]=value;await saveJson(projectsPath,projects);return json(res,200,{project:value});}
 if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',schemaVersion:2,ratio:'9:16',scenes:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
-if(req.method==='POST'&&url.pathname==='/api/upload'){const name=url.searchParams.get('name')||'file',buffer=await body(req,35_000_000);if(buffer.length<1500)throw makeError(400,'파일 크기가 너무 작습니다.');const {ext,group}=detectMedia(name,buffer);const id=hex();await mkdir(mediaDir,{recursive:true});const filepath=path.join(mediaDir,id+'.'+ext);await writeFile(filepath,buffer,{mode:0o600});let technical;try{technical=await probe(filepath)}catch(e){throw makeError(400,'미디어 파일을 읽을 수 없습니다. '+e.message)}if(group==='image'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'이미지 파일이 아닙니다.');if(group==='video'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'영상 파일이 아닙니다.');if(group==='music'&&!technical.streams?.some(s=>s.codec_type==='audio'))throw makeError(400,'음악 파일이 아닙니다.');const files=await loadJson(path.join(STATE,'media.json'),[]);const item={id,name:safeText(name,120),group,ext,bytes:buffer.length,duration:Number(technical.format?.duration)||null,hasAudio:technical.streams?.some(s=>s.codec_type==='audio')||false};files.push(item);await saveJson(path.join(STATE,'media.json'),files);return json(res,201,{media:item});}
+if(req.method==='POST'&&url.pathname==='/api/upload'){
+ const name=url.searchParams.get('name')||'file',upload=await streamUpload(req);
+ let item;
+ try{
+  if(upload.total<1500)throw makeError(400,'파일 크기가 너무 작습니다.');
+  const {ext,group}=detectMedia(name,upload.head);
+  const id=hex();await mkdir(mediaDir,{recursive:true});
+  const filepath=path.join(mediaDir,id+'.'+ext);
+  const technical=await probe(upload.temp).catch(e=>{throw makeError(400,'미디어 파일을 읽을 수 없습니다. '+e.message)});
+  if(group==='image'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'이미지 파일이 아닙니다.');
+  if(group==='video'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'영상 파일이 아닙니다.');
+  if(group==='music'&&!technical.streams?.some(s=>s.codec_type==='audio'))throw makeError(400,'음악 파일이 아닙니다.');
+  await rename(upload.temp,filepath);
+  item={id,name:safeText(name,120),group,ext,bytes:upload.total,duration:Number(technical.format?.duration)||null,hasAudio:technical.streams?.some(s=>s.codec_type==='audio')||false};
+  const files=await loadJson(path.join(STATE,'media.json'),[]);files.push(item);
+  try{await saveJson(path.join(STATE,'media.json'),files)}catch(error){await rm(filepath,{force:true});throw error;}
+ }finally{await rm(upload.temp,{force:true}).catch(()=>{});}
+ return json(res,201,{media:item});
+}
 // Remove only a media asset owned by this editor. Keep a private trash copy and
 // explicitly remove references from the current project; never silently alter others.
 if(req.method==='POST'&&url.pathname==='/api/media/remove'){
@@ -237,7 +280,26 @@ if(req.method==='POST'&&url.pathname==='/api/media/remove'){
  }
  return json(res,200,{removed:true,removedScenes,removedAudioReferences:wasAudio,project:updated.find(p=>p.id===current.id)});
 }
-const mediaMatch=url.pathname.match(/^\/api\/media\/([0-9a-f]{24})$/);if(req.method==='GET'&&mediaMatch){const files=await loadJson(path.join(STATE,'media.json'),[]),item=files.find(f=>f.id===mediaMatch[1]);if(!item)throw makeError(404,'파일 없음');res.writeHead(200,{...APP_HEADER,'Content-Type':mime('.'+item.ext),'Content-Disposition':'inline'});res.end(await readFile(path.join(mediaDir,item.id+'.'+item.ext)));return;}
+const mediaMatch=url.pathname.match(/^[/]api[/]media[/]([0-9a-f]{24})$/);
+if(req.method==='GET'&&mediaMatch){
+ const files=await loadJson(path.join(STATE,'media.json'),[]),item=files.find(f=>f.id===mediaMatch[1]);
+ if(!item)throw makeError(404,'파일 없음');
+ const filepath=path.join(mediaDir,item.id+'.'+item.ext),size=(await stat(filepath)).size;
+ const headers={...APP_HEADER,'Content-Type':mime('.'+item.ext),'Accept-Ranges':'bytes','Content-Disposition':'inline'};
+ const range=String(req.headers.range||''),match=range.match(/^bytes=(\d*)-(\d*)$/);
+ let start=0,end=size-1;
+ if(range){
+  if(!match)throw makeError(416,'지원하지 않는 범위입니다.');
+  start=match[1]?Number(match[1]):Math.max(0,size-Number(match[2]||0));
+  end=match[1]&&match[2]?Number(match[2]):end;
+  if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||start>=size||end<start){
+   res.writeHead(416,{...headers,'Content-Range':`bytes */${size}`});res.end();return;
+  }
+  end=Math.min(end,size-1);headers['Content-Range']=`bytes ${start}-${end}/${size}`;
+ }
+ headers['Content-Length']=end-start+1;res.writeHead(range?206:200,headers);
+ createReadStream(filepath,{start,end}).on('error',()=>res.destroy()).pipe(res);return;
+}
 if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
 if(req.method==='POST'&&url.pathname==='/api/export'){if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{outputDir,mediaDir,onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
 const download=url.pathname.match(/^[/]api[/]export[/]([0-9a-f]{24}[.]mp4)$/);
