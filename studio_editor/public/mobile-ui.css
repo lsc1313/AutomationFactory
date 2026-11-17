@@ -319,8 +319,8 @@ body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-sto
 /* v1.3.5: one natural document scroll, rather than small nested tool panes.
    The preview alone remains sticky at the top while editing. */
 @media(max-width:900px){
- html{height:auto!important;min-height:100%;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important}
- body{height:auto!important;min-height:100dvh!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;padding-bottom:0!important}
+ html{height:auto!important;min-height:100%;overflow-x:clip!important;overflow-y:auto!important;overscroll-behavior-y:auto!important}
+ body{height:auto!important;min-height:100dvh!important;overflow-x:clip!important;overflow-y:visible!important;overscroll-behavior-y:auto!important;padding-bottom:0!important}
  #studio:not([hidden]){height:auto!important;min-height:100dvh!important;max-height:none!important;overflow:visible!important;display:flex;flex-direction:column;isolation:auto}
  #studio>.top{position:relative!important;max-height:none!important;overflow:visible!important;flex:none!important}
  body[data-mobile-view="project"] #studio>.top{max-height:none!important;overflow:visible!important}
