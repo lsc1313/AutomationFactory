@@ -50,10 +50,20 @@ try {
  New-Item -ItemType Directory -Path $stage -Force | Out-Null
  try {
   Note "Downloading editor files (existing projects will be preserved)"
+  # ZIP installs use the bundled source rather than silently fetching newer code.
+  $bundledRoot = Split-Path -Parent $PSScriptRoot
+  $bundled = Test-Path -LiteralPath (Join-Path $bundledRoot 'server.mjs')
+  if ($bundled) { Note 'Installing the exact files bundled with this ZIP' }
   foreach ($relative in $files) {
    $output = Join-Path $stage ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))
    New-Item -ItemType Directory -Path (Split-Path -Parent $output) -Force | Out-Null
-   Download "$repoBase/$relative`?v=$version" $output
+   if ($bundled) {
+    $source = Join-Path $bundledRoot ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))
+    if (-not (Test-Path -LiteralPath $source)) { throw "Missing bundled file: $relative" }
+    Copy-Item -LiteralPath $source -Destination $output -Force
+   } else {
+    Download "$repoBase/$relative`?v=$version" $output
+   }
   }
   & $node --check (Join-Path $stage 'timeline-v2.mjs')
   if ($LASTEXITCODE -ne 0) {throw 'Timeline engine syntax check failed; existing version unchanged.'}
