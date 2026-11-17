@@ -67,7 +67,13 @@ try{
  res=await fetch(base+'/api/export/'+exportState.filename,{headers:{Cookie:cookie,Range:'bytes=0-1023'}});
  assert.equal(res.status,206,'MP4 player supports partial content');assert.equal((await res.arrayBuffer()).byteLength,1024);
  assert.deepEqual(await evaluate('window.__studioErrors'),[]);
- console.log('PASS Chrome: media selection, AI controls, trim/split/repeat/delete, caption track, ratio, full MP4 playback+range streaming.');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
+ await send('Page.reload',{ignoreCache:true});
+ await waitUntil(async()=>await evaluate('Boolean(document.getElementById("v2-editor")&&document.getElementById("studio")?.hidden===false)'));
+ const layout=await evaluate('(()=>{let keys=[".media-panel","#ai-workflow",".preview-wrap",".properties",".timeline-wrap","#project-settings"];return keys.map(x=>document.querySelector(x).getBoundingClientRect().top+window.scrollY)})()');
+ assert.ok(layout.every((y,i)=>i===0||y>layout[i-1]),'mobile work steps must appear in logical order: '+layout.join(' > '));
+ assert.equal(await evaluate('window.__studioErrors.length'),0);
+ console.log('PASS Chrome: editing, full MP4+Range streaming, 390px mobile task order.');
 }finally{
  try{ws?.close()}catch{}
  chrome.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));
