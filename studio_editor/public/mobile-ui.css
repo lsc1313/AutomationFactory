@@ -302,3 +302,16 @@ body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-sto
  #studio>.layout>.editor-main .v2-grid{grid-template-columns:1fr 1fr!important}
  #studio>.layout{padding-left:8px!important;padding-right:8px!important}
 }
+
+/* Sound owns its real audio inputs, not a second copy of Project settings. */
+.mobile-sound-settings{display:none!important}
+@media(max-width:900px){
+ body[data-mobile-view="sound"] #studio>.layout .mobile-sound-settings{
+  display:block!important;box-sizing:border-box;width:100%;max-width:100%;min-width:0;
+  overflow:visible;margin:10px 0 18px;padding:14px;
+ }
+ #mobile-sound-settings>h3{margin:0 0 12px;font-size:16px;color:#33493c}
+ #mobile-sound-settings>label{display:block;width:100%;max-width:100%;font-size:13px;font-weight:650;margin:12px 0}
+ #mobile-sound-settings>label :is(input,select){display:block;box-sizing:border-box;width:100%;max-width:100%;margin-top:6px}
+ #mobile-sound-settings>button{width:100%;min-height:44px;margin:5px 0 8px}
+}
