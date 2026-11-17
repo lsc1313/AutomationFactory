@@ -220,3 +220,13 @@ body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-sto
  body[data-preview-ratio="landscape"] #studio>.mobile-preview-dock .phone-preview{width:min(94vw,calc(28dvh * 16 / 9))!important}
  body[data-preview-ratio="square"] #studio>.mobile-preview-dock .phone-preview{width:min(65vw,28dvh)!important}
 }
+
+@media(max-width:900px){
+ /* Leave the tools visible above the OS/browser bottom bar without scroll masking. */
+ #studio:not([hidden]){height:calc(100dvh - 72px - env(safe-area-inset-bottom,0px))}
+ body[data-mobile-view="project"] #studio>.ai-workflow{display:none!important}
+ body[data-mobile-view="media"] #studio>.layout{display:flex!important}
+ body[data-mobile-view="project"] #studio>.layout>.editor-main{order:1}
+ body[data-mobile-view="media"] #studio>.layout>.media-panel{order:1;display:block!important;width:100%;margin:0}
+ body[data-mobile-view="media"] #studio>.layout>.properties{display:none!important}
+}
