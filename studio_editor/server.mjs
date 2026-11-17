@@ -155,7 +155,7 @@ async function makeVoicePreview(voice,text){
  voicePreviewBusy=true;
  try{
   await mkdir(voiceSampleDir(),{recursive:true});
-  await synthesizeVoice(voice,normalized,filename,voiceSampleDir);
+  await synthesizeVoice(voice,normalized,filename,voiceSampleDir());
  }finally{voicePreviewBusy=false;}
  return id;
 }
