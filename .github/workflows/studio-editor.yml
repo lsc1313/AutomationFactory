@@ -1,0 +1,32 @@
+name: Standalone Studio Editor checks
+
+on:
+  push:
+    branches:
+      - feature/standalone-studio-editor-v0-1
+    paths:
+      - 'studio_editor/**'
+      - '.github/workflows/studio-editor.yml'
+  pull_request:
+    paths:
+      - 'studio_editor/**'
+      - '.github/workflows/studio-editor.yml'
+
+jobs:
+  editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify FFmpeg
+        run: |
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+      - name: Syntax
+        run: |
+          node --check studio_editor/server.mjs
+          node --check studio_editor/public/client.js
+      - name: Editor API and security tests
+        run: node --test studio_editor/tests/*.test.mjs
