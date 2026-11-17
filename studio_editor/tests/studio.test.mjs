@@ -189,3 +189,14 @@ test('account UI replaces temporary share controls and installer verifies the bu
  assert.match(server,/requestScope\.enterWith/);
  assert.match(installer,/Verified running editor release/);
 });
+
+test('bundled Windows ZIP installs its matching account-enabled release',async()=>{
+ const installer=await readFile(new URL('../windows/install-oneclick.ps1',import.meta.url),'utf8');
+ const command=await readFile(new URL('../windows/Install-StudioEditor.cmd',import.meta.url),'utf8');
+ assert.match(command,/install-oneclick[.]ps1/);
+ assert.doesNotMatch(command,/Invoke-WebRequest/);
+ assert.match(installer,/Installing the exact files bundled with this ZIP/);
+ assert.match(installer,/Copy-Item -LiteralPath \$source -Destination \$output/);
+ assert.doesNotMatch(installer,/guest-share-dialog/);
+ assert.doesNotMatch(installer,/start-guest-preview[.]ps1'.*README/);
+});
