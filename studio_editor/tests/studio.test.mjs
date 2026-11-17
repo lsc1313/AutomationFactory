@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-test-'));
 process.env.STUDIO_DATA_DIR=dir;
-const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan,imageFilter,videoFilter,synthesizeVoice,windowsPythonPaths}=await import('../server.mjs');
+const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,UNVERIFIED_VOICES,availableVoice,audioPlan,imageFilter,videoFilter,synthesizeVoice,windowsPythonPaths}=await import('../server.mjs');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const a=makeAss({caption:'상품 {100%} 구매',captionStyle:'minimal',captionPosition:'top'},4);
 test('ASS subtitles escape syntax, show safe upper positioning',()=>{assert.match(a,/Style: Captions,Malgun Gothic,43/);assert.match(a,/100%/);assert.doesNotMatch(a,/\{100%\}/);assert.match(a,/4\.00/);});
@@ -75,4 +75,13 @@ test('all exported subtitle variants use transparent backgrounds with readable o
   assert.match(ass,/Style: Captions,Malgun Gothic/);
   assert.doesNotMatch(ass,/&H64000000,/);
  }
+});
+
+test('voices that fail to synthesize are not advertised; old selections are safely migrated',()=>{
+ for(const voice of ['ko-KR-JiMinNeural','ko-KR-SeoHyeonNeural','ko-KR-YuJinNeural']){
+  assert.ok(UNVERIFIED_VOICES.includes(voice));
+  assert.ok(!VOICES.includes(voice));
+  assert.equal(availableVoice(voice),DEFAULT_VOICE);
+ }
+ assert.equal(availableVoice('ko-KR-InJoonNeural'),'ko-KR-InJoonNeural');
 });

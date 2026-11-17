@@ -69,7 +69,12 @@ window.addEventListener('resize',positionEditorTools);
 
 function safeDuration(){return project.scenes.reduce((sum,s)=>sum+(Number(s.duration)||0),0)}
 function fmt(t){return Math.floor(t/60).toString().padStart(2,'0')+':'+Math.floor(t%60).toString().padStart(2,'0')}
-function render(){const picker=$('project-picker');picker.replaceChildren();for(const p of projects){const o=node('option',p.title);o.value=p.id;picker.append(o)}picker.value=project.id;$('project-title').value=project.title;$('voice').value=project.voice||'ko-KR-SunHiNeural';$('ai-voice').value=project.voice||'ko-KR-SunHiNeural';$('bgm-volume').value=String(Math.round((project.bgmVolume??0.16)*100));$('volume-label').textContent=$('bgm-volume').value+'%';
+function render(){if(project&&!['off','ko-KR-SunHiNeural','ko-KR-InJoonNeural','ko-KR-HyunsuNeural'].includes(project.voice)){
+ project.voice='ko-KR-SunHiNeural';
+ $('voice-availability-note').textContent='이전에 선택한 목소리는 현재 지원되지 않아 선희를 임시 선택했어요. 미리듣기로 확인 후 저장하세요.';
+ dirty=true;
+}
+ const picker=$('project-picker');picker.replaceChildren();for(const p of projects){const o=node('option',p.title);o.value=p.id;picker.append(o)}picker.value=project.id;$('project-title').value=project.title;$('voice').value=project.voice||'ko-KR-SunHiNeural';$('ai-voice').value=project.voice||'ko-KR-SunHiNeural';$('bgm-volume').value=String(Math.round((project.bgmVolume??0.16)*100));$('volume-label').textContent=$('bgm-volume').value+'%';
 const bgm=$('bgm');bgm.replaceChildren(new Option('사용 안 함',''));for(const m of library.filter(isAudio)){bgm.append(new Option(m.name,m.id))}bgm.value=project.bgmId||'';const aiBgm=$('ai-bgm');aiBgm.replaceChildren(new Option('배경음악 없음',''));for(const m of library.filter(isAudio)){aiBgm.append(new Option(m.name,m.id))}aiBgm.value=project.bgmId||'';
 const media=$('media-list');media.replaceChildren();for(const f of library){const b=node('button',undefined,'media-item '+(isAudio(f)?'audio':''));b.title=f.name;if(!isAudio(f))previewMedia(f,b);else b.append(node('div','♫  '+f.name,'audio-icon'));b.append(node('strong',f.name));b.onclick=()=>{if(isAudio(f)){project.bgmId=f.id;$('bgm').value=f.id;setDirty();return;}project.scenes.push({id:rand(),mediaId:f.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});selected=project.scenes.length-1;setDirty();render();};media.append(b)}
 const tl=$('timeline');tl.replaceChildren();project.scenes.forEach((s,i)=>{const file=library.find(f=>f.id===s.mediaId),b=node('button',undefined,'scene-card'+(i===selected?' active':''));if(file)previewMedia(file,b);b.append(node('span',fmt(s.duration),'time-label'),node('span',s.caption||`장면 ${i+1}`,'name'));b.onclick=()=>{selected=i;render();};tl.append(b)});

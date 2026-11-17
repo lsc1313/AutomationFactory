@@ -16,8 +16,12 @@ const TRUST=process.env.STUDIO_TRUST_PROXY==='1';
 const APP_HEADER={'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"};
 const hex=()=>randomBytes(12).toString('hex');
 export const DEFAULT_VOICE='ko-KR-SunHiNeural';
-export const VOICES=Object.freeze(['off','ko-KR-SunHiNeural','ko-KR-JiMinNeural','ko-KR-SeoHyeonNeural','ko-KR-YuJinNeural','ko-KR-InJoonNeural','ko-KR-HyunsuNeural']);
-export function audioPlan(project){return {voice:VOICES.includes(project.voice)?project.voice:DEFAULT_VOICE,bgmId:project.bgmId||null,bgmVolume:Number(project.bgmVolume??0.16)};}
+// Only expose voices observed as usable through our Edge TTS route. Official Azure
+// voice listings do not guarantee the anonymous edge-tts endpoint can synthesize them.
+export const VOICES=Object.freeze(['off','ko-KR-SunHiNeural','ko-KR-InJoonNeural','ko-KR-HyunsuNeural']);
+export const UNVERIFIED_VOICES=Object.freeze(['ko-KR-JiMinNeural','ko-KR-SeoHyeonNeural','ko-KR-YuJinNeural']);
+export function availableVoice(voice){return VOICES.includes(voice)?voice:DEFAULT_VOICE;}
+export function audioPlan(project){return {voice:availableVoice(project.voice),bgmId:project.bgmId||null,bgmVolume:Number(project.bgmVolume??0.16)};}
 const validId=id=>/^[0-9a-f]{24}$/.test(String(id||''));
 const json=(res,status,obj,headers={})=>{res.writeHead(status,{...APP_HEADER,'Content-Type':'application/json; charset=utf-8',...headers});res.end(JSON.stringify(obj));};
 const makeError=(status,message)=>Object.assign(new Error(message),{status});
@@ -105,7 +109,7 @@ function validateProject(input,files){if(!input||typeof input!=='object'||!valid
 const scenes=Array.isArray(input.scenes)?input.scenes:[];if(scenes.length>80)throw makeError(400,'장면은 최대 80개입니다.');let total=0;
 const cleaned=scenes.map((s,i)=>{if(!files.some(f=>f.id===s.mediaId&&['image','video'].includes(f.group)))throw makeError(400,`장면 ${i+1}: 원본 이미지/동영상이 없습니다.`);const duration=Number(s.duration);if(!Number.isFinite(duration)||duration<1||duration>60)throw makeError(400,'장면 길이는 1~60초입니다.');total+=duration;return {id:validId(s.id)?s.id:hex(),mediaId:s.mediaId,voiceMediaId:s.voiceMediaId&&files.some(f=>f.id===s.voiceMediaId&&f.group==='music')?s.voiceMediaId:null,duration,caption:safeText(s.caption,130),narration:safeText(s.narration,350),effect:['zoom-in','zoom-out','pan-left','pan-right','none'].includes(s.effect)?s.effect:'zoom-in',captionPosition:['top','middle','bottom'].includes(s.captionPosition)?s.captionPosition:'bottom',captionStyle:['impact','minimal','boxed','clean'].includes(s.captionStyle)?s.captionStyle:'impact'};});
 if(total>600)throw makeError(400,'편집 영상은 최대 10분입니다.');if(input.bgmId&&!files.some(f=>f.id===input.bgmId&&f.group==='music'))throw makeError(400,'배경음악을 찾을 수 없습니다.');
-return {id:input.id,title:safeText(input.title,100)||'새 프로젝트',scenes:cleaned,bgmId:input.bgmId||null,bgmVolume:Math.min(1,Math.max(0,Number(input.bgmVolume??0.16)||0)),voice:VOICES.includes(input.voice)?input.voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};}
+return {id:input.id,title:safeText(input.title,100)||'새 프로젝트',scenes:cleaned,bgmId:input.bgmId||null,bgmVolume:Math.min(1,Math.max(0,Number(input.bgmVolume??0.16)||0)),voice:availableVoice(input.voice),updatedAt:new Date().toISOString()};}
 const escapeAss=t=>String(t||'').replace(/\\/g,'').replace(/\{/g,'(').replace(/\}/g,')').replace(/\r?\n/g,'\\N');
 function assTime(seconds){const cs=Math.round(seconds*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;}
 export function makeAss(scene,duration){const styles={impact:{size:56,color:'&H00FFFFFF',outline:4,bold:1},minimal:{size:43,color:'&H00FFFFFF',outline:2,bold:0},boxed:{size:50,color:'&H00FFFFFF',outline:3,bold:1},clean:{size:48,color:'&H0000E7FF',outline:3,bold:1}};const style=styles[scene.captionStyle]||styles.impact;const alignment=scene.captionPosition==='top'?8:scene.captionPosition==='middle'?5:2;return `[Script Info]\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Captions,Malgun Gothic,${style.size},${style.color},&H000000FF,&H00000000,&HFF000000,${style.bold?'-1':'0'},0,0,0,100,100,0,0,1,${style.outline},1,${alignment},58,58,145,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,${assTime(0)},${assTime(duration)},Captions,,0,0,0,,${escapeAss(scene.caption)}\n`;}
@@ -168,7 +172,7 @@ if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  const media=mediaIds.map(id=>files.find(f=>f.id===id&&['image','video'].includes(f.group)));
  if(media.some(x=>!x))throw makeError(400,'업로드한 사진/영상에서만 선택하세요.');
  const key=await aiKey();if(!key)throw makeError(400,'Gemini API 키를 먼저 등록하세요. 무료 사용량이 있다면 해당 범위에서 이용할 수 있습니다.');
- const voice=VOICES.includes(b.voice)?b.voice:DEFAULT_VOICE;
+ const voice=availableVoice(b.voice);
  const bgmId=b.bgmId||null;
  if(bgmId&&!files.some(f=>f.id===bgmId&&f.group==='music'))throw makeError(400,'등록된 배경음악만 선택할 수 있습니다.');
  const bgmVolume=Math.max(0,Math.min(1,Number(b.bgmVolume??0.16)||0));
