@@ -91,12 +91,11 @@
    currentTab(value);
    positionPreview();
    syncPreviewFrame();
-   // Scroll only the tool pane. Scrolling the whole document used to push
-   // the player behind the header and left mobile overlays above controls.
-   requestAnimationFrame(()=>{
-     const pane=value==='ai'?document.getElementById('ai-workflow'):document.querySelector('#studio>.layout');
-     if(pane)pane.scrollTop=0;
-   });
+   // The document is the only scrolling surface; the video is sticky.
+   // Reset the document rather than a nested panel when switching tabs.
+   document.documentElement.scrollTop=0;
+   document.body.scrollTop=0;
+   requestAnimationFrame(()=>window.scrollTo(0,0));
  }
  for(const button of buttons)button.addEventListener('click',()=>select(button.dataset.mobileTab));
  details.addEventListener('click',()=>{
