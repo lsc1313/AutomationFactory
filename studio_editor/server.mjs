@@ -251,8 +251,17 @@ if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  return json(res,202,{status:'running'});
 }
 if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectsPath,[]),media=await enrichMedia(await loadJson(path.join(STATE,'media.json'),[]));return json(res,200,{projects,media,export:exportJob});}
-if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}else projects[idx]=value;await saveJson(projectsPath,projects);return json(res,200,{project:value});}
-if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',schemaVersion:2,ratio:'9:16',scenes:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
+if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}
+else{
+ if(projects[idx].schemaVersion!==2&&value.schemaVersion===2){
+  const backups=path.join(STATE,'backups');await mkdir(backups,{recursive:true});
+  const backup=path.join(backups,'projects-before-v2-migration.json');
+  try{await stat(backup)}catch{await saveJson(backup,projects);}
+ }
+ projects[idx]=value;
+}
+await saveJson(projectsPath,projects);return json(res,200,{project:value});}
+if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',schemaVersion:2,ratio:'9:16',scenes:[],textClips:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
 if(req.method==='POST'&&url.pathname==='/api/upload'){
  const name=url.searchParams.get('name')||'file',upload=await streamUpload(req);
  let item;
