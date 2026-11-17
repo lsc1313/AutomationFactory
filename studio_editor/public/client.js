@@ -126,7 +126,10 @@ function positionEditorTools(){
  if(mobile){
   if(ai.previousElementSibling!==mediaPanel)ai.before(mediaPanel);
   const preview=main.querySelector('.preview-wrap');
-  if(preview.nextElementSibling!==props)preview.after(props);
+  const details=document.getElementById('mobile-clip-details');
+  if(details&&preview.nextElementSibling!==details)preview.after(details);
+  const anchor=details||preview;
+  if(anchor.nextElementSibling!==props)anchor.after(props);
   const timeline=main.querySelector('.timeline-wrap');
   if(timeline.nextElementSibling!==settings)timeline.after(settings);
  }else{

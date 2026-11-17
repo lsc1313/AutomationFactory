@@ -56,6 +56,8 @@
  }
  query.addEventListener?.('change',mediaChanged);
  mediaChanged();
+ // Existing render is unchanged; place the mobile-details toggle beside the player.
+ if(typeof positionEditorTools==='function')positionEditorTools();
  // Exposed for browser regression checks, without storing project or user data.
  window.StudioMobile={select,getTab:()=>active};
 })();

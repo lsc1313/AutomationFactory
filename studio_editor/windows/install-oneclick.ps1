@@ -4,14 +4,14 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.1.0'
+$version = 'v1.2.0'
 $branch = if ($env:STUDIO_SOURCE_REF -and $env:STUDIO_SOURCE_REF -match '^[0-9a-f]{40}$') { $env:STUDIO_SOURCE_REF } else { 'feature/standalone-studio-editor-v0-1' }
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
 $private = Join-Path $dest 'private'
 $log = Join-Path $env:TEMP 'StudioEditor-install.log'
 $files = @(
- 'server.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'stt-server.mjs', 'stt-local.py', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css',
+ 'server.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'stt-server.mjs', 'stt-local.py', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css', 'public/mobile-ui.js', 'public/mobile-ui.css',
  'tests/studio.test.mjs', 'tests/timeline-v2.test.mjs', 'windows/start-hidden.ps1',
  'windows/start-hidden.vbs', 'windows/stop-hidden.ps1',
  'windows/enable-phone.ps1', 'README.md', 'windows/install-oneclick.ps1'
