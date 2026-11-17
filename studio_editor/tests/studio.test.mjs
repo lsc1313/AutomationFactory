@@ -167,3 +167,15 @@ test('one-click update identifies release and verifies the live service before c
  assert.match(page,/id="guest-share-dialog"/);
  assert.match(page,/id="studio-build-label"/);
 });
+
+test('guest connection checks distinguish real tunnel errors from polling',async()=>{
+ const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+ const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
+ const launcher=await readFile(new URL('../windows/start-guest-preview.ps1',import.meta.url),'utf8');
+ assert.match(server,/\/api\/guest\/status/);
+ assert.match(server,/phase:'idle'/);
+ assert.match(client,/state\.phase==='failed'/);
+ assert.match(launcher,/Set-GuestProgress 'failed'/);
+ assert.match(launcher,/Set-GuestProgress 'ready'/);
+ assert.match(launcher,/Cloudflare 외부 연결/);
+});
