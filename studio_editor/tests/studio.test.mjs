@@ -157,3 +157,13 @@ test('guest invite is fully selectable and clipboard errors cannot fake success'
  assert.match(client,/dialog\.showModal\(\)/);
  assert.doesNotMatch(client,/prompt\('아래 링크를 복사해서 지인에게 보내세요/);
 });
+
+test('one-click update identifies release and verifies the live service before claiming success',async()=>{
+ const installer=await readFile(new URL('../windows/install-oneclick.ps1',import.meta.url),'utf8');
+ const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+ assert.match(installer,/\$version = 'v1\.3\.8'/);
+ assert.match(installer,/Verified running editor release/);
+ assert.match(installer,/Wrong editor release downloaded/);
+ assert.match(page,/id="guest-share-dialog"/);
+ assert.match(page,/id="studio-build-label"/);
+});
