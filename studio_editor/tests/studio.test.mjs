@@ -87,3 +87,13 @@ test('voices that fail to synthesize are not advertised; old selections are safe
  }
  assert.equal(availableVoice('ko-KR-InJoonNeural'),'ko-KR-InJoonNeural');
 });
+
+test('mobile editing steps and complete video playback controls are present',async()=>{
+ const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+ const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
+ for(const label of ['1. 사진·영상 업로드','2. AI 영상 초안 만들기','3. 영상 확인·편집','4. 프로젝트 설정'])assert.ok(page.includes(label),label);
+ for(const id of ['preview-full','full-video','full-review','full-download'])assert.ok(page.includes('id="'+id+'"'),id);
+ assert.match(client,/startExport\(true\)/);
+ assert.match(client,/preview\.after\(props\)/);
+ assert.match(client,/ai\.before\(mediaPanel\)|ai\.previousElementSibling!==mediaPanel/);
+});
