@@ -177,7 +177,19 @@ $('remove-scene').onclick=()=>{if(!project.scenes[selected]||!confirm('이 장�
 $('play-scene').onclick=async()=>{
  const scene=project?.scenes?.[selected];if(!scene)return;
  stopPreview();animateCurrentScene();
- const v=$('preview-video');if(!v.hidden){v.currentTime=0;v.play().catch(()=>{});}
+ const mode=scene.audioMode||(scene.sourceType==='video'?'original':'narration');
+ const v=$('preview-video');
+ if(!v.hidden){
+  v.muted=!(mode==='original'||mode==='mix');
+  const seek=Number(scene.sourceIn||0);
+  if(v.readyState>=1)v.currentTime=seek;
+  else v.addEventListener('loadedmetadata',()=>{v.currentTime=seek},{once:true});
+  v.play().catch(e=>$('voice-preview-status').textContent='영상 재생 실패: '+e.message);
+  const length=(scene.sourceType==='video'?(Number(scene.sourceOut||scene.duration||4)-seek)/(Number(scene.speed||1)):Number(scene.duration||4))*1000;
+  const clipId=scene.id;
+  setTimeout(()=>{if(project?.scenes?.[selected]?.id===clipId)v.pause()},Math.max(250,length));
+ }
+ if(mode==='original'||mode==='mute'){$('voice-preview-status').textContent=mode==='original'?'원본 영상 소리 사용':'음성 없음';return;}
  if(scene.voiceMediaId){
   const audio=scenePreviewAudio();audio.src='/api/media/'+scene.voiceMediaId;audio.hidden=false;
   audio.play().catch(e=>$('voice-preview-status').textContent='음성 재생 실패: '+e.message);return;
@@ -258,5 +270,5 @@ function aiMedia(){const all=library.filter(f=>f.group==='image'||f.group==='vid
 async function pollAi(){try{const x=await api('/api/ai/draft/status');$('ai-status').textContent=x.status==='running'?'AI 작업 중: '+(x.step||'준비 중'):x.status==='failed'?'AI 실패: '+x.error:x.status==='done'?'AI 초안을 생성했습니다. 내용을 확인하고 편집기로 가져오세요.':'대기';if(x.status==='running')return;clearInterval(aiPoll);aiPoll=null;$('ai-generate').disabled=false;if(x.status==='done'&&x.projectId===project.id){aiDraft=x.draft;showAiDraft()}}catch(e){clearInterval(aiPoll);aiPoll=null;$('ai-generate').disabled=false;$('ai-status').textContent=e.message}}
 $('ai-generate').onclick=async()=>{try{const mediaIds=aiMedia();if(!mediaIds.length)throw Error('먼저 사진 또는 영상을 업로드하세요.');if(dirty)await save();const requirements=$('ai-requirements').value.trim();if(requirements.length<5)throw Error('원하는 영상을 5자 이상 설명해 주세요.');$('ai-generate').disabled=true;await api('/api/ai/draft','POST',{projectId:project.id,mediaIds,requirements,productFacts:$('ai-facts').value,style:$('ai-style').value,voice:$('ai-voice').value,bgmId:$('ai-bgm').value||null,bgmVolume:project.bgmVolume});$('ai-status').textContent='이미지 분석 및 영상 대사 생성 중…';if(aiPoll)clearInterval(aiPoll);aiPoll=setInterval(pollAi,1500);await pollAi()}catch(e){$('ai-generate').disabled=false;$('ai-status').textContent='초안 생성 실패: '+e.message}};
 function showAiDraft(){const root=$('ai-review-scenes');root.replaceChildren();$('ai-review-note').textContent=(aiDraft.notes||'AI가 생성한 장면입니다. 실제 사진과 대사의 일치 여부를 확인하세요.')+' | 음성: '+(aiDraft.voice==='off'?'없음':aiDraft.voice||'여성 기본')+' | 음악: '+(library.find(x=>x.id===aiDraft.bgmId)?.name||'없음');aiDraft.scenes.forEach((scene,i)=>{const media=library.find(f=>f.id===scene.mediaId);const div=node('div',undefined,'ai-review-scene');div.append(node('small',`장면 ${i+1} · ${media?.name||'미디어'} · ${scene.duration}초`),node('b','대사: '+scene.narration),node('p','자막: '+scene.caption));root.append(div)});$('ai-draft-review').hidden=false;$('ai-draft-review').scrollIntoView({behavior:'smooth',block:'start'})}
-$('ai-apply').onclick=async()=>{if(!aiDraft)return;const replace=project.scenes.length?confirm('현재 프로젝트의 장면을 AI 초안으로 교체할까요? 이전 장면은 별도 프로젝트에 저장해 두는 것을 권장합니다.'):true;if(!replace)return;project.scenes=aiDraft.scenes.map(s=>({...s,id:rand(),voiceMediaId:null}));project.title=aiDraft.title||project.title;project.voice=aiDraft.voice||'ko-KR-SunHiNeural';project.bgmId=aiDraft.bgmId||null;project.bgmVolume=Number(aiDraft.bgmVolume??0.16);selected=0;aiDraft=null;$('ai-draft-review').hidden=true;setDirty();await save();$('ai-status').textContent='초안을 편집기에 적용했습니다. 장면별 대사·자막·스타일·위치를 수정한 뒤 MP4를 제작하세요.';};
+$('ai-apply').onclick=async()=>{if(!aiDraft)return;const replace=project.scenes.length?confirm('현재 프로젝트의 장면을 AI 초안으로 교체할까요? 이전 장면은 별도 프로젝트에 저장해 두는 것을 권장합니다.'):true;if(!replace)return;project.scenes=aiDraft.scenes.map(s=>({...s,id:rand(),voiceMediaId:null}));project.textClips=[];project.title=aiDraft.title||project.title;project.voice=aiDraft.voice||'ko-KR-SunHiNeural';project.bgmId=aiDraft.bgmId||null;project.bgmVolume=Number(aiDraft.bgmVolume??0.16);selected=0;aiDraft=null;$('ai-draft-review').hidden=true;setDirty();await save();$('ai-status').textContent='초안을 편집기에 적용했습니다. 장면별 대사·자막·스타일·위치를 수정한 뒤 MP4를 제작하세요.';};
 $('ai-cancel').onclick=()=>{$('ai-draft-review').hidden=true;aiDraft=null;};
