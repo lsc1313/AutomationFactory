@@ -130,7 +130,7 @@ function positionEditorTools(){
  const ai=$('ai-workflow'),settings=$('project-settings');
  const mobile=window.matchMedia('(max-width: 900px)').matches;
  if(mobile){
-  if(ai.previousElementSibling!==mediaPanel)ai.before(mediaPanel);
+  if(mediaPanel.parentElement!==layout)layout.prepend(mediaPanel);
   const details=document.getElementById('mobile-clip-details');
   const anchor=main.querySelector('.worktop');
   if(details&&details.previousElementSibling!==anchor)anchor.after(details);
