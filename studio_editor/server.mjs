@@ -231,8 +231,10 @@ const session=auth(req);if(!session||session.expires<Date.now())throw makeError(
 if(req.method==='GET'&&url.pathname==='/api/guest/status'){
  if(GUEST)throw makeError(403,'관리자 전용입니다.');
  const p=await loadJson(path.join(STATE,'guest-progress.json'),null);
- if(!p||!['download','starting','tunnel','ready','failed'].includes(p.phase)||!Number.isFinite(p.at)||Math.abs(Date.now()-p.at)>10*60*1000)return json(res,200,{phase:'idle',message:'연결 상태를 확인 중입니다.'});
+ if(!p||!['download','launching','starting','tunnel','ready','failed'].includes(p.phase)||!Number.isFinite(p.at)||Math.abs(Date.now()-p.at)>10*60*1000)return json(res,200,{phase:'idle',message:'PC에서 연결 상태 기록을 받지 못했습니다. 체험 서버 실행을 확인하세요.'});
+ if(p.phase==='launching'&&Date.now()-p.at>15000)return json(res,200,{phase:'failed',message:'Windows 체험 서버 실행 명령이 응답하지 않습니다. PC의 StudioEditor/private/guest-launch.log를 확인하세요.'});
  const messages={
+  launching:'PC에서 체험 서버 실행 명령을 시작했습니다.',
   download:'Cloudflare 연결 프로그램을 다운로드하고 있습니다.',
   starting:'지인 전용 서버를 준비하고 있습니다.',
   tunnel:'Cloudflare 외부 연결을 생성하고 있습니다.',
@@ -252,10 +254,10 @@ if(req.method==='POST'&&url.pathname==='/api/guest/start'){
  const file=path.join(ROOT,'windows','start-guest-preview.ps1');
  if(!existsSync(file))throw makeError(503,'체험 링크 생성 스크립트를 찾을 수 없습니다. 편집기를 업데이트하세요.');
  await mkdir(STATE,{recursive:true});
- await rm(path.join(STATE,'guest-progress.json'),{force:true}).catch(()=>{});
+ await saveJson(path.join(STATE,'guest-progress.json'),{phase:'launching',message:'PC에서 체험 서버 실행 명령을 시작했습니다.',at:Date.now()});
  const log=openSync(path.join(STATE,'guest-launch.log'),'a');
  try{
-  const child=spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',file],
+  const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',file],
    {cwd:ROOT,windowsHide:true,detached:true,stdio:['ignore',log,log]});
   child.once('error',async()=>{
    guestLaunchAt=0;
