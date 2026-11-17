@@ -158,6 +158,7 @@ function validateProject(input,files){if(!input||typeof input!=='object'||!valid
 if(input.schemaVersion===2){
  try{
   const normalized=normalizeTimeline(input,files);
+  if(GUEST&&(normalized.scenes.length>20||timelineDuration(normalized)>90000))throw Error('지인 체험은 최대 20개 클립·90초 영상만 제작할 수 있습니다.');
   if(normalized.bgmId&&!files.some(f=>f.id===normalized.bgmId&&f.group==='music'))throw Error('배경음악을 찾을 수 없습니다.');
   for(const clip of normalized.scenes){
    if(clip.voiceMediaId&&!files.some(f=>f.id===clip.voiceMediaId&&f.group==='music'))clip.voiceMediaId=null;
@@ -167,7 +168,7 @@ if(input.schemaVersion===2){
 }
 const scenes=Array.isArray(input.scenes)?input.scenes:[];if(scenes.length>80)throw makeError(400,'장면은 최대 80개입니다.');let total=0;
 const cleaned=scenes.map((s,i)=>{if(!files.some(f=>f.id===s.mediaId&&['image','video'].includes(f.group)))throw makeError(400,`장면 ${i+1}: 원본 이미지/동영상이 없습니다.`);const duration=Number(s.duration);if(!Number.isFinite(duration)||duration<1||duration>60)throw makeError(400,'장면 길이는 1~60초입니다.');total+=duration;return {id:validId(s.id)?s.id:hex(),mediaId:s.mediaId,voiceMediaId:s.voiceMediaId&&files.some(f=>f.id===s.voiceMediaId&&f.group==='music')?s.voiceMediaId:null,duration,caption:safeText(s.caption,130),narration:safeText(s.narration,350),effect:['zoom-in','zoom-out','pan-left','pan-right','none'].includes(s.effect)?s.effect:'zoom-in',captionPosition:['top','middle','bottom'].includes(s.captionPosition)?s.captionPosition:'bottom',captionStyle:['impact','minimal','boxed','clean'].includes(s.captionStyle)?s.captionStyle:'impact'};});
-if(total>600)throw makeError(400,'편집 영상은 최대 10분입니다.');if(input.bgmId&&!files.some(f=>f.id===input.bgmId&&f.group==='music'))throw makeError(400,'배경음악을 찾을 수 없습니다.');
+if(GUEST&&(scenes.length>20||total>90))throw makeError(400,'지인 체험은 최대 20개 클립·90초 영상만 제작할 수 있습니다.');if(total>600)throw makeError(400,'편집 영상은 최대 10분입니다.');if(input.bgmId&&!files.some(f=>f.id===input.bgmId&&f.group==='music'))throw makeError(400,'배경음악을 찾을 수 없습니다.');
 return {id:input.id,title:safeText(input.title,100)||'새 프로젝트',scenes:cleaned,bgmId:input.bgmId||null,bgmVolume:Math.min(1,Math.max(0,Number(input.bgmVolume??0.16)||0)),voice:availableVoice(input.voice),updatedAt:new Date().toISOString()};}
 const escapeAss=t=>String(t||'').replace(/\\/g,'').replace(/\{/g,'(').replace(/\}/g,')').replace(/\r?\n/g,'\\N');
 function assTime(seconds){const cs=Math.round(seconds*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;}
