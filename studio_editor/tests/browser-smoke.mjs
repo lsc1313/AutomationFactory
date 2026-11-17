@@ -71,15 +71,8 @@ try{
  await send('Page.reload',{ignoreCache:true});
  await waitUntil(async()=>await evaluate('Boolean(document.getElementById("v2-editor")&&document.getElementById("studio")?.hidden===false)'));
  assert.equal(await evaluate('document.body.dataset.mobileView'),'project');
- // Guest invite opens a visible progress dialog immediately even when the backend
- // cannot start a tunnel (this CI runner is Linux, not a Windows guest host).
- await evaluate('document.getElementById("guest-link-btn").click()');
- await waitUntil(async()=>await evaluate('document.getElementById("guest-share-dialog").open'));
- assert.match(await evaluate('document.getElementById("guest-share-status").textContent'),/체험 링크|연결|실패/);
- await waitUntil(async()=>await evaluate('document.getElementById("guest-share-status").textContent.includes("생성 실패")'));
- assert.equal(await evaluate('document.getElementById("guest-copy-btn").disabled'),true);
- await evaluate('document.getElementById("guest-close-btn").click()');
-
+ assert.equal(await evaluate('document.getElementById("guest-link-btn")===null'),true,'temporary invite button removed');
+ assert.equal(await evaluate('document.getElementById("studio-user-email").textContent.length>0'),true);
  assert.equal(await evaluate('getComputedStyle(document.getElementById("mobile-navigation")).display!=="none"'),true);
  assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display!=="none"'),true);
  assert.equal(await evaluate('document.getElementById("project-settings").parentElement.classList.contains("layout")'),true,'project settings are not nested inside timeline');
