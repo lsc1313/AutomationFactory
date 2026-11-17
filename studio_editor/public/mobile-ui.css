@@ -387,3 +387,25 @@ body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-sto
  html{height:100%!important;min-height:0!important;overflow-x:clip!important;overflow-y:auto!important}
  body{height:auto!important;min-height:100dvh!important;overflow-x:clip!important;overflow-y:visible!important}
 }
+
+/* v1.3.6 final: show the single real Apply/Cancel toolbar BEFORE the long AI
+   scene list, immediately after the review note. Never bury it below the nav. */
+@media(max-width:900px){
+ body[data-mobile-view="ai"] #ai-draft-review:not([hidden]){
+   display:flex!important;
+   flex-direction:column;
+   gap:8px;
+ }
+ body[data-mobile-view="ai"] #ai-draft-review>strong{order:0}
+ body[data-mobile-view="ai"] #ai-review-note{order:1;margin:0 0 4px}
+ body[data-mobile-view="ai"] #ai-draft-review>.ai-controls{
+   order:2;position:sticky;top:0;z-index:45;
+   background:#f7f8f4;
+   border:1px solid #d7e2d7;
+   border-radius:10px;
+   padding:9px!important;
+   box-shadow:0 3px 12px #1f38291c;
+   margin:0!important;
+ }
+ body[data-mobile-view="ai"] #ai-review-scenes{order:3}
+}
