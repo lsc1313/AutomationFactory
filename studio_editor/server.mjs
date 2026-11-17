@@ -2,6 +2,7 @@
  * No external dependencies; FFmpeg renders exports on the owner's computer.
  */
 import http from 'node:http';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile, readdir, copyFile, stat, rename, open, rm } from 'node:fs/promises';
@@ -46,11 +47,21 @@ const makeError=(status,message)=>Object.assign(new Error(message),{status});
 const addrLocal=req=>['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 const isLocalHost=h=>['127.0.0.1','localhost','[::1]'].includes(h.toLowerCase());
 const cfgPath=path.join(STATE,'auth.json');
-const projectsPath=path.join(STATE,'projects.json');
-const mediaDir=path.join(STATE,'media');
-const outputDir=path.join(STATE,'exports');
+const accountsPath=path.join(STATE,'accounts.json');
+const requestScope=new AsyncLocalStorage();
+const currentUser=()=>requestScope.getStore()?.userId||'owner';
+// Legacy projects stay in private/. Every newly registered account receives a
+// separate directory; no paths are selected from user-provided values.
+const userRoot=()=>currentUser()==='owner'?STATE:path.join(STATE,'users',currentUser());
+const projectFile=()=>path.join(userRoot(),'projects.json');
+const mediaListFile=()=>path.join(userRoot(),'media.json');
+const userMediaDir=()=>path.join(userRoot(),'media');
+const userOutputDir=()=>path.join(userRoot(),'exports');
+const userKeyFile=()=>path.join(userRoot(),'ai-config.json');
+const ownedJob=job=>job.ownerId&&job.ownerId!==currentUser()?{status:'idle',step:null,error:null}:job;
+
 async function streamUpload(req,maxBytes=1_073_741_824){
- const dir=path.join(STATE,'incoming');await mkdir(dir,{recursive:true});
+ const dir=path.join(userRoot(),'incoming');await mkdir(dir,{recursive:true});
  const temp=path.join(dir,hex()+'.upload'),fd=await open(temp,'wx');let total=0,head=Buffer.alloc(0);
  try{
   for await(const chunk of req){
@@ -67,11 +78,11 @@ async function enrichMedia(media){
  const updated=await Promise.all(media.map(async f=>{
   if(f.group!=='video'||(f.duration&&typeof f.hasAudio==='boolean'))return f;
   try{
-   const info=await probe(path.join(mediaDir,f.id+'.'+f.ext));
+   const info=await probe(path.join(userMediaDir(),f.id+'.'+f.ext));
    changed=true;return {...f,duration:Number(info.format?.duration)||null,hasAudio:info.streams?.some(s=>s.codec_type==='audio')||false};
   }catch{return f;}
  }));
- if(changed)await saveJson(path.join(STATE,'media.json'),updated);
+ if(changed)await saveJson(mediaListFile(),updated);
  return updated;
 }
 const sessions=new Map();
@@ -79,9 +90,9 @@ const loginFailures=new Map();
 let exportJob={status:'idle',error:null,filename:null,projectId:null,step:null};
 let draftJob={status:'idle',error:null,step:null,projectId:null,draft:null};
 let sttJob={status:'idle',error:null,step:null,projectId:null,clipId:null,segments:null};
-const keyPath=path.join(STATE,'ai-config.json');
+const keyPath=userKeyFile;
 async function aiKey(){
- const cfg=await loadJson(keyPath,{});
+ const cfg=await loadJson(keyPath(),{});
  const guestConfig=GUEST&&process.env.STUDIO_GUEST_AI_CONFIG_PATH?
   await loadJson(process.env.STUDIO_GUEST_AI_CONFIG_PATH,{}):{};
  return cfg.geminiKey||guestConfig.geminiKey||await findExistingGeminiKey();
@@ -132,7 +143,7 @@ export async function synthesizeVoice(voice,text,out,cwd,runner=run,options={}){
 }
 const voiceSamples=new Map();
 let voicePreviewBusy=false;
-const voiceSampleDir=path.join(STATE,'voice-previews');
+const voiceSampleDir=path.join(userRoot(),'voice-previews');
 async function makeVoicePreview(voice,text){
  const normalized=safeText(text,160);
  if(!VOICES.includes(voice)||voice==='off')throw makeError(400,'미리듣기 음성을 선택하세요.');
@@ -189,24 +200,24 @@ export function imageFilter(effect,frames){
  return base+`zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=720x1280:fps=24,format=yuv420p,ass=caption.ass[v]`;
 }
 export function videoFilter(effect,frames){return imageFilter(effect,frames).replace('[0:v]split=2[bg0][fg0]','[0:v]fps=24,split=2[bg0][fg0]');}
-async function renderProject(project,files,onStep){const job=hex();const dir=path.join(outputDir,job);await mkdir(dir,{recursive:true});const mediaById=new Map(files.map(f=>[f.id,f]));const segments=[],info=[];
-for(let i=0;i<project.scenes.length;i++){const scene=project.scenes[i],source=mediaById.get(scene.mediaId);onStep(`장면 ${i+1}/${project.scenes.length} 제작`);let voiceFile=null,voiceDur=0;const recorded=scene.voiceMediaId&&mediaById.get(scene.voiceMediaId);if(recorded){voiceFile='recorded.'+recorded.ext;await copyFile(path.join(mediaDir,recorded.id+'.'+recorded.ext),path.join(dir,voiceFile));voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}else if(project.voice!=='off'&&scene.narration){voiceFile='narration.mp3';await synthesizeVoice(project.voice,scene.narration,path.join(dir,voiceFile),dir);voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}
+async function renderProject(project,files,onStep){const job=hex();const dir=path.join(userOutputDir(),job);await mkdir(dir,{recursive:true});const mediaById=new Map(files.map(f=>[f.id,f]));const segments=[],info=[];
+for(let i=0;i<project.scenes.length;i++){const scene=project.scenes[i],source=mediaById.get(scene.mediaId);onStep(`장면 ${i+1}/${project.scenes.length} 제작`);let voiceFile=null,voiceDur=0;const recorded=scene.voiceMediaId&&mediaById.get(scene.voiceMediaId);if(recorded){voiceFile='recorded.'+recorded.ext;await copyFile(path.join(userMediaDir(),recorded.id+'.'+recorded.ext),path.join(dir,voiceFile));voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}else if(project.voice!=='off'&&scene.narration){voiceFile='narration.mp3';await synthesizeVoice(project.voice,scene.narration,path.join(dir,voiceFile),dir);voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}
 if(project.voice!=='off'&&scene.narration&&!voiceFile)throw new Error('대본 음성이 생성되지 않았습니다.');
 const duration=Math.max(scene.duration,voiceDur+0.25);if(duration>65)throw Error('음성이 너무 깁니다. 장면을 분할하거나 대사를 줄여주세요.');const ass=makeAss(scene,duration);await writeFile(path.join(dir,'caption.ass'),ass);
-const localExt=source.ext,srcName=`source.${localExt}`;await copyFile(path.join(mediaDir,source.id+'.'+localExt),path.join(dir,srcName));const isImg=source.group==='image';const frames=Math.ceil(duration*24);const filter=isImg?imageFilter(scene.effect,frames):videoFilter(scene.effect,frames);const segmentName=`clip-${i}.mp4`;
+const localExt=source.ext,srcName=`source.${localExt}`;await copyFile(path.join(userMediaDir(),source.id+'.'+localExt),path.join(dir,srcName));const isImg=source.group==='image';const frames=Math.ceil(duration*24);const filter=isImg?imageFilter(scene.effect,frames):videoFilter(scene.effect,frames);const segmentName=`clip-${i}.mp4`;
 const args=['-hide_banner','-loglevel','error','-y',...(isImg?['-loop','1','-framerate','24']:['-stream_loop','-1']),'-i',srcName];const hasVoice=Boolean(voiceFile);args.push(...(hasVoice?['-i',voiceFile]:['-f','lavfi','-i','anullsrc=r=44100:cl=stereo']));args.push('-filter_complex',filter,'-map','[v]','-map','1:a:0','-t',String(duration),'-r','24','-c:v','libx264','-preset','veryfast','-crf','26','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-af','apad','-movflags','+faststart',segmentName);
 await run('ffmpeg',args,{cwd:dir,timeout:240000});segments.push(segmentName);info.push({index:i,duration});}
-onStep('장면 병합');await writeFile(path.join(dir,'concat.txt'),segments.map(n=>`file '${n}'`).join('\n'));await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i','concat.txt','-c','copy','merged.mp4'],{cwd:dir,timeout:180000});let final='merged.mp4';if(project.bgmId){onStep('배경음악 믹싱');const music=mediaById.get(project.bgmId),name='music.'+music.ext;await copyFile(path.join(mediaDir,music.id+'.'+music.ext),path.join(dir,name));await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-i','merged.mp4','-stream_loop','-1','-i',name,'-filter_complex',`[1:a]volume=${project.bgmVolume}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[a]`,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','160k','-movflags','+faststart','final.mp4'],{cwd:dir,timeout:180000});final='final.mp4';}
+onStep('장면 병합');await writeFile(path.join(dir,'concat.txt'),segments.map(n=>`file '${n}'`).join('\n'));await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i','concat.txt','-c','copy','merged.mp4'],{cwd:dir,timeout:180000});let final='merged.mp4';if(project.bgmId){onStep('배경음악 믹싱');const music=mediaById.get(project.bgmId),name='music.'+music.ext;await copyFile(path.join(userMediaDir(),music.id+'.'+music.ext),path.join(dir,name));await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-i','merged.mp4','-stream_loop','-1','-i',name,'-filter_complex',`[1:a]volume=${project.bgmVolume}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[a]`,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','160k','-movflags','+faststart','final.mp4'],{cwd:dir,timeout:180000});final='final.mp4';}
 const rendered=path.join(dir,final);
 const metadata=await probe(rendered);
 if(!metadata.streams?.some(s=>s.codec_type==='video')||!metadata.streams?.some(s=>s.codec_type==='audio'))
  throw new Error('MP4 검증 실패: 영상 또는 음성 트랙이 없습니다.');
 const bytes=(await stat(rendered)).size;
 if(bytes<10000)throw new Error('MP4 검증 실패: 파일이 비정상적으로 작습니다.');
-await copyFile(rendered,path.join(outputDir,job+'.mp4'));
+await copyFile(rendered,path.join(userOutputDir(),job+'.mp4'));
 return {filename:job+'.mp4',duration:Number(metadata.format?.duration)||info.reduce((a,b)=>a+b.duration,0),bytes};}
 function auth(req){const t=String(req.headers.cookie||'').match(/(?:^|;\s*)studio_session=([a-z0-9]+)/)?.[1];return t&&sessions.get(t)||null;}
-export function createStudioServer({state=STATE}={}){const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');const hostRaw=String(req.headers.host||'');let host;try{host=new URL('http://'+hostRaw).hostname.toLowerCase()}catch{throw makeError(403,'호스트 오류')}const local=isLocalHost(host);
+export function createStudioServer({state=STATE}={}){const server=http.createServer(async(req,res)=>requestScope.run({userId:'owner'},async()=>{try{const url=new URL(req.url,'http://localhost');const hostRaw=String(req.headers.host||'');let host;try{host=new URL('http://'+hostRaw).hostname.toLowerCase()}catch{throw makeError(403,'호스트 오류')}const local=isLocalHost(host);
 if(GUEST&&!guestActive())throw makeError(403,'체험 링크가 만료되었거나 중지되었습니다.');
 if(!local){
  const trustedGuest=GUEST&&host.endsWith('.trycloudflare.com')&&host.length<120;
@@ -308,7 +319,7 @@ if(req.method==='GET'&&url.pathname==='/api/stt/status')return json(res,200,sttJ
 if(req.method==='POST'&&url.pathname==='/api/stt'){
  guestQuota('transcriptions');
  if(sttJob.status==='running')throw makeError(409,'다른 음성 인식 작업이 진행 중입니다.');
- const b=await data(req),projects=await loadJson(projectsPath,[]),files=await enrichMedia(await loadJson(path.join(STATE,'media.json'),[]));
+ const b=await data(req),projects=await loadJson(projectFile(),[]),files=await enrichMedia(await loadJson(mediaListFile(),[]));
  const project=projects.find(p=>p.id===b.projectId);
  const clip=project?.scenes?.find(c=>c.id===b.clipId);
  if(!project||!clip)throw makeError(404,'클립을 찾을 수 없습니다.');
@@ -319,7 +330,7 @@ if(req.method==='POST'&&url.pathname==='/api/stt'){
  const duration=Math.max(0,end-begin);
  if(GUEST&&duration>90)throw makeError(400,'체험 음성 인식은 최대 90초입니다.');if(duration<.2||duration>1200)throw makeError(400,'한 번에 0.2초~20분 구간의 음성을 인식할 수 있습니다.');
  sttJob={status:'running',error:null,step:'CPU 음성 인식 준비',projectId:project.id,clipId:clip.id,segments:null};
- void transcribeLocal({file:path.join(mediaDir,media.id+'.'+media.ext),start:begin,duration,workDir:path.join(STATE,'stt'),
+ void transcribeLocal({file:path.join(userMediaDir(),media.id+'.'+media.ext),start:begin,duration,workDir:path.join(userRoot(),'stt'),
   onStep:step=>{sttJob.step=step}
  }).then(result=>{
   sttJob={status:'done',error:null,step:'음성 인식 완료',projectId:project.id,clipId:clip.id,segments:result.segments,language:result.language};
@@ -327,12 +338,12 @@ if(req.method==='POST'&&url.pathname==='/api/stt'){
  return json(res,202,{status:'running'});
 }
 if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
-if(req.method==='POST'&&url.pathname==='/api/ai/config'){if(GUEST)throw makeError(403,'체험 사용자는 AI 키를 변경할 수 없습니다.');const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}
+if(req.method==='POST'&&url.pathname==='/api/ai/config'){if(GUEST)throw makeError(403,'체험 사용자는 AI 키를 변경할 수 없습니다.');const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath(),{geminiKey:b.key});return json(res,200,{configured:true});}
 if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,draftJob);return json(res,200,{status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId});}
 if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  guestQuota('drafts');
  if(draftJob.status==='running')throw makeError(409,'AI가 다른 영상 초안을 작성하고 있습니다.');
- const b=await data(req),projects=await loadJson(projectsPath,[]),files=await loadJson(path.join(STATE,'media.json'),[]);
+ const b=await data(req),projects=await loadJson(projectFile(),[]),files=await loadJson(mediaListFile(),[]);
  const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트를 찾을 수 없습니다.');
  const mediaIds=Array.isArray(b.mediaIds)?[...new Set(b.mediaIds)]:[];
  if(mediaIds.length<1||mediaIds.length>10)throw makeError(400,'사진 또는 영상 1~10개를 선택하세요.');
@@ -345,23 +356,23 @@ if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  const bgmVolume=Math.max(0,Math.min(1,Number(b.bgmVolume??0.16)||0));
  draftJob={status:'running',step:'사진 확인 준비',error:null,projectId:project.id,draft:null};
  void generateAiDraft({key,media,requirements:b.requirements,productFacts:b.productFacts,style:[b.style,'선택 음성 '+voice,'선택 음악 '+(files.find(f=>f.id===bgmId)?.name||'없음')].join(' / '),
-  mediaPath:f=>path.join(mediaDir,f.id+'.'+f.ext),onStep:step=>{draftJob.step=step}}).then(draft=>{
+  mediaPath:f=>path.join(userMediaDir(),f.id+'.'+f.ext),onStep:step=>{draftJob.step=step}}).then(draft=>{
   draftJob={status:'done',step:'수정 가능한 영상 초안 생성 완료',error:null,projectId:project.id,draft:{...draft,voice,bgmId,bgmVolume}};
  }).catch(e=>{draftJob={status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
  return json(res,202,{status:'running'});
 }
-if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectsPath,[]),media=await enrichMedia(await loadJson(path.join(STATE,'media.json'),[]));return json(res,200,{projects,media,export:exportJob});}
-if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}
+if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectFile(),[]),media=await enrichMedia(await loadJson(mediaListFile(),[]));return json(res,200,{projects,media,export:exportJob});}
+if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectFile(),[]),media=await loadJson(mediaListFile(),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}
 else{
  if(projects[idx].schemaVersion!==2&&value.schemaVersion===2){
-  const backups=path.join(STATE,'backups');await mkdir(backups,{recursive:true});
+  const backups=path.join(userRoot(),'backups');await mkdir(backups,{recursive:true});
   const backup=path.join(backups,'projects-before-v2-migration.json');
   try{await stat(backup)}catch{await saveJson(backup,projects);}
  }
  projects[idx]=value;
 }
-await saveJson(projectsPath,projects);return json(res,200,{project:value});}
-if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',schemaVersion:2,ratio:'9:16',scenes:[],textClips:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
+await saveJson(projectFile(),projects);return json(res,200,{project:value});}
+if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectFile(),[]);const item={id:hex(),title:'새 프로젝트',schemaVersion:2,ratio:'9:16',scenes:[],textClips:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectFile(),projects);return json(res,201,{project:item});}
 if(req.method==='POST'&&url.pathname==='/api/upload'){
  const name=url.searchParams.get('name')||'file';
  if(GUEST)guestQuota('uploads');
@@ -373,16 +384,16 @@ if(req.method==='POST'&&url.pathname==='/api/upload'){
  try{
   if(upload.total<1500)throw makeError(400,'파일 크기가 너무 작습니다.');
   const {ext,group}=detectMedia(name,upload.head);
-  const id=hex();await mkdir(mediaDir,{recursive:true});
-  const filepath=path.join(mediaDir,id+'.'+ext);
+  const id=hex();await mkdir(userMediaDir(),{recursive:true});
+  const filepath=path.join(userMediaDir(),id+'.'+ext);
   const technical=await probe(upload.temp).catch(e=>{throw makeError(400,'미디어 파일을 읽을 수 없습니다. '+e.message)});
   if(group==='image'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'이미지 파일이 아닙니다.');
   if(group==='video'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'영상 파일이 아닙니다.');
   if(group==='music'&&!technical.streams?.some(s=>s.codec_type==='audio'))throw makeError(400,'음악 파일이 아닙니다.');
   await rename(upload.temp,filepath);
   item={id,name:safeText(name,120),group,ext,bytes:upload.total,duration:Number(technical.format?.duration)||null,hasAudio:technical.streams?.some(s=>s.codec_type==='audio')||false};
-  const files=await loadJson(path.join(STATE,'media.json'),[]);files.push(item);
-  try{await saveJson(path.join(STATE,'media.json'),files)}catch(error){await rm(filepath,{force:true});throw error;}
+  const files=await loadJson(mediaListFile(),[]);files.push(item);
+  try{await saveJson(mediaListFile(),files)}catch(error){await rm(filepath,{force:true});throw error;}
  }finally{await rm(upload.temp,{force:true}).catch(()=>{});}
  return json(res,201,{media:item});
 }
@@ -392,7 +403,7 @@ if(req.method==='POST'&&url.pathname==='/api/media/remove'){
  if(exportJob.status==='running'||draftJob.status==='running')throw makeError(409,'영상 또는 AI 작업이 끝난 뒤 사진을 삭제하세요.');
  const b=await data(req);
  if(!validId(b.mediaId)||!validId(b.projectId)||b.confirm!==true)throw makeError(400,'삭제 확인이 필요합니다.');
- const projects=await loadJson(projectsPath,[]),files=await loadJson(path.join(STATE,'media.json'),[]);
+ const projects=await loadJson(projectFile(),[]),files=await loadJson(mediaListFile(),[]);
  const current=projects.find(p=>p.id===b.projectId),item=files.find(f=>f.id===b.mediaId);
  if(!current||!item)throw makeError(404,'프로젝트 또는 사진을 찾을 수 없습니다.');
  const usedBy=p=>(p.scenes||[]).some(scene=>scene.mediaId===item.id||scene.voiceMediaId===item.id)||p.bgmId===item.id;
@@ -404,13 +415,13 @@ if(req.method==='POST'&&url.pathname==='/api/media/remove'){
   ...p,scenes:(p.scenes||[]).filter(scene=>scene.mediaId!==item.id).map(scene=>({...scene,voiceMediaId:scene.voiceMediaId===item.id?null:scene.voiceMediaId})),
   bgmId:p.bgmId===item.id?null:p.bgmId,updatedAt:new Date().toISOString()
  }:p);
- const trash=path.join(STATE,'trash');await mkdir(trash,{recursive:true});
- const original=path.join(mediaDir,item.id+'.'+item.ext),archived=path.join(trash,item.id+'.'+item.ext);
+ const trash=path.join(userRoot(),'trash');await mkdir(trash,{recursive:true});
+ const original=path.join(userMediaDir(),item.id+'.'+item.ext),archived=path.join(trash,item.id+'.'+item.ext);
  // Rename before updating metadata to avoid losing the only source copy.
  await rename(original,archived);
  try{
-  await saveJson(projectsPath,updated);
-  await saveJson(path.join(STATE,'media.json'),files.filter(f=>f.id!==item.id));
+  await saveJson(projectFile(),updated);
+  await saveJson(mediaListFile(),files.filter(f=>f.id!==item.id));
  }catch(error){
   await rename(archived,original).catch(()=>{});
   throw error;
@@ -419,9 +430,9 @@ if(req.method==='POST'&&url.pathname==='/api/media/remove'){
 }
 const mediaMatch=url.pathname.match(/^[/]api[/]media[/]([0-9a-f]{24})$/);
 if(req.method==='GET'&&mediaMatch){
- const files=await loadJson(path.join(STATE,'media.json'),[]),item=files.find(f=>f.id===mediaMatch[1]);
+ const files=await loadJson(mediaListFile(),[]),item=files.find(f=>f.id===mediaMatch[1]);
  if(!item)throw makeError(404,'파일 없음');
- const filepath=path.join(mediaDir,item.id+'.'+item.ext),size=(await stat(filepath)).size;
+ const filepath=path.join(userMediaDir(),item.id+'.'+item.ext),size=(await stat(filepath)).size;
  const headers={...APP_HEADER,'Content-Type':mime('.'+item.ext),'Accept-Ranges':'bytes','Content-Disposition':'inline'};
  const range=String(req.headers.range||''),match=range.match(/^bytes=(\d*)-(\d*)$/);
  let start=0,end=size-1;
@@ -438,11 +449,11 @@ if(req.method==='GET'&&mediaMatch){
  createReadStream(filepath,{start,end}).on('error',()=>res.destroy()).pipe(res);return;
 }
 if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
-if(req.method==='POST'&&url.pathname==='/api/export'){guestQuota('exports');if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{outputDir,mediaDir,onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
+if(req.method==='POST'&&url.pathname==='/api/export'){guestQuota('exports');if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectFile(),[]),media=await loadJson(mediaListFile(),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{userOutputDir(),userMediaDir(),onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
 const download=url.pathname.match(/^[/]api[/]export[/]([0-9a-f]{24}[.]mp4)$/);
 if(req.method==='GET'&&download){
  if(exportJob.status!=='done'||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');
- const filepath=path.join(outputDir,download[1]),file=await stat(filepath);
+ const filepath=path.join(userOutputDir(),download[1]),file=await stat(filepath);
  const range=String(req.headers.range||''),match=range.match(/^bytes=(\d*)-(\d*)$/);
  const headers={...APP_HEADER,'Content-Type':'video/mp4','Accept-Ranges':'bytes','Content-Disposition':url.searchParams.has('download')?`attachment; filename="studio-${download[1]}"`:'inline'};
  let start=0,end=file.size-1;
@@ -462,6 +473,6 @@ if(req.method==='GET'&&download){
  return;
 }
 throw makeError(404,'주소 없음');
-}catch(e){json(res,e.status||500,{error:e.message});}});return server;}
+}catch(e){json(res,e.status||500,{error:e.message});}}));return server;}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
 await mkdir(STATE,{recursive:true});const server=createStudioServer();server.listen(PORT,'127.0.0.1',()=>console.log(`Studio Editor: http://127.0.0.1:${PORT}/app`));}
