@@ -220,7 +220,7 @@ if(GUEST&&req.method==='GET'&&url.pathname.startsWith('/invite/')){
  const sid=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');
  const maxAge=Math.min(7200,Math.max(1,Math.floor((GUEST_EXPIRES-Date.now())/1000)));
  sessions.set(sid,{csrf,expires:Math.min(GUEST_EXPIRES,Date.now()+maxAge*1000)});
- res.writeHead(303,{...APP_HEADER,'Location':'/app','Set-Cookie':`studio_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${local?'':'; Secure'}`});res.end();return;
+ res.writeHead(303,{...APP_HEADER,'Location':'/app','Set-Cookie':`studio_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}; Secure`});res.end();return;
 }
 if(req.method==='GET'&&url.pathname==='/api/setup-state'){if(GUEST)return json(res,200,{setupNeeded:false});const config=await loadJson(cfgPath,null);return json(res,200,{setupNeeded:!config&&local&&addrLocal(req)});}
 if(req.method==='POST'&&url.pathname==='/api/setup'){if(GUEST)throw makeError(403,'체험에서는 계정 설정을 변경할 수 없습니다.');const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
