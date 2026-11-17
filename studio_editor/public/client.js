@@ -270,6 +270,33 @@ async function startExport(showFull=false){
 }
 $('export-btn').onclick=()=>startExport(false);
 $('preview-full').onclick=()=>startExport(true);
+// Clipboard APIs may be blocked on an HTTP Tailscale address (non-secure context).
+// Never report success unless the clipboard operation succeeds. Always expose the
+// complete validated link in a selectable field as a reliable manual fallback.
+async function copyGuestLink(){
+ const field=$('guest-share-url');
+ const value=field.value;
+ if(!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/invite\/[a-f0-9]{64}$/.test(value)){
+  $('guest-share-status').textContent='유효한 체험 링크가 없습니다. 다시 생성해 주세요.';
+  return;
+ }
+ let copied=false;
+ if(navigator.clipboard?.writeText){
+  try{await navigator.clipboard.writeText(value);copied=true;}catch{}
+ }
+ if(!copied){
+  field.focus();field.select();field.setSelectionRange(0,field.value.length);
+  try{copied=Boolean(document.execCommand?.('copy'));}catch{}
+ }
+ if(copied){
+  $('guest-share-status').textContent='전체 링크 복사 완료. 카카오톡에 붙여넣으세요.';
+ }else{
+  field.focus();field.select();field.setSelectionRange(0,field.value.length);
+  $('guest-share-status').textContent='자동 복사가 차단됐어요. 선택된 주소를 길게 눌러 “복사”를 선택하세요.';
+ }
+}
+$('guest-copy-btn').onclick=copyGuestLink;
+$('guest-close-btn').onclick=()=>$('guest-share-dialog').close();
 $('guest-link-btn').onclick=async()=>{
  const button=$('guest-link-btn'),original=button.textContent;
  button.disabled=true;
@@ -286,14 +313,15 @@ $('guest-link-btn').onclick=async()=>{
    }
   }
   if(!x.active)throw Error('PC에서 외부 접속 링크를 만들지 못했습니다. PC의 StudioEditor/private/guest-launch.log 로그를 확인해 주세요.');
+  if(typeof x.url!=='string'||!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/invite\/[a-f0-9]{64}$/.test(x.url))
+   throw Error('체험 링크 주소가 올바르지 않습니다. 잠시 후 다시 생성하세요.');
   $('guest-stop-btn').hidden=false;
   button.textContent='🔗 체험 링크';
-  try{
-   await navigator.clipboard.writeText(x.url);
-   alert('지인 휴대폰 체험 링크를 복사했어요. 카카오톡에 붙여넣으면 됩니다.\\n만료: '+new Date(x.expires).toLocaleString());
-  }catch{
-   prompt('아래 링크를 복사해서 지인에게 보내세요.',x.url);
-  }
+  const dialog=$('guest-share-dialog');
+  const field=$('guest-share-url');
+  field.value=x.url;
+  $('guest-share-status').textContent='주소 전체를 확인하고 복사 버튼을 누르세요.';
+  if(!dialog.open)dialog.showModal();
  }catch(e){alert('체험 링크 생성 실패: '+e.message);}
  finally{button.disabled=false;button.textContent=original;}
 };
