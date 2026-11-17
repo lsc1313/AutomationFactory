@@ -1,5 +1,5 @@
 'use strict';
-let csrf='',library=[],projects=[],project=null,selected=0,dirty=false,poll=null,aiPoll=null,aiDraft=null;
+let csrf='',library=[],projects=[],project=null,selected=0,dirty=false,poll=null,aiPoll=null,aiDraft=null,previewAnimation=null;
 const $=id=>document.getElementById(id);
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 const rand=()=>[...crypto.getRandomValues(new Uint8Array(12))].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -11,6 +11,61 @@ async function reload(){const result=await api('/api/library');library=result.me
 function isAudio(m){return m.group==='music'}
 function previewMedia(media,target){const src='/api/media/'+media.id;const e=node(media.group==='video'?'video':'img');e.src=src;if(media.group==='video'){e.muted=true;e.playsInline=true;e.loop=true;e.preload='metadata'}target.append(e);return e;}
 function setDirty(){dirty=true;$('save-state').textContent='저장되지 않은 변경';}
+const scenePreviewAudio=()=> $('voice-audio');
+let previewRun=0;
+function stopPreview(){
+ previewRun++;
+ scenePreviewAudio().pause();scenePreviewAudio().removeAttribute('src');
+ if(previewAnimation){previewAnimation.cancel();previewAnimation=null}
+ const vid=$('preview-video');vid.pause();
+}
+async function previewVoice(text= '안녕하세요. 자연스럽고 또렷하게 영상의 내용을 소개하겠습니다.',voice=project?.voice){
+ const current=++previewRun;
+ const status=$('voice-preview-status');
+ if(voice==='off'){status.textContent='음성 없음이 선택되었습니다.';return;}
+ if(!text.trim()){status.textContent='먼저 장면 대사를 입력하세요.';return;}
+ status.textContent='선택한 목소리 생성 중…';
+ try{
+  const r=await api('/api/voice/preview','POST',{voice,text:text.slice(0,160)});
+  if(current!==previewRun)return;
+  const audio=scenePreviewAudio();
+  audio.pause();audio.src=r.url;
+  await audio.play();status.textContent='음성 재생 중';
+  audio.onended=()=>{if(current===previewRun)status.textContent='재생 완료'};
+ }catch(e){if(current===previewRun)status.textContent='미리듣기 실패: '+e.message;}
+}
+function animateCurrentScene(){
+ const scene=project?.scenes?.[selected];if(!scene)return;
+ if(previewAnimation){previewAnimation.cancel();previewAnimation=null;}
+ const media=$('preview-video').hidden?$('preview-image'):$('preview-video');
+ if(media.hidden)return;
+ const from={
+  'zoom-in':'scale(1.02) translateX(0%)',
+  'zoom-out':'scale(1.22) translateX(0%)',
+  'pan-left':'scale(1.22) translateX(8%)',
+  'pan-right':'scale(1.22) translateX(-8%)',
+  'none':'scale(1) translateX(0%)'
+ };
+ const to={
+  'zoom-in':'scale(1.22) translateX(0%)',
+  'zoom-out':'scale(1.02) translateX(0%)',
+  'pan-left':'scale(1.22) translateX(-8%)',
+  'pan-right':'scale(1.22) translateX(8%)',
+  'none':'scale(1) translateX(0%)'
+ };
+ previewAnimation=media.animate([{transform:from[scene.effect]||from.none},{transform:to[scene.effect]||to.none}],
+  {duration:Math.max(700,scene.duration*1000/1.2),fill:'forwards',easing:'linear'});
+}
+// Mobile editor: keep scene controls immediately beneath the preview, not pages below it.
+function positionEditorTools(){
+ const props=document.querySelector('.properties');
+ const main=document.querySelector('.editor-main');
+ const mobile=window.matchMedia('(max-width: 900px)').matches;
+ if(mobile){const preview=main.querySelector('.preview-wrap');if(preview.nextElementSibling!==props)preview.after(props);}
+ else {document.querySelector('.layout').append(props);}
+}
+window.addEventListener('resize',positionEditorTools);
+
 function safeDuration(){return project.scenes.reduce((sum,s)=>sum+(Number(s.duration)||0),0)}
 function fmt(t){return Math.floor(t/60).toString().padStart(2,'0')+':'+Math.floor(t%60).toString().padStart(2,'0')}
 function render(){const picker=$('project-picker');picker.replaceChildren();for(const p of projects){const o=node('option',p.title);o.value=p.id;picker.append(o)}picker.value=project.id;$('project-title').value=project.title;$('voice').value=project.voice||'ko-KR-SunHiNeural';$('ai-voice').value=project.voice||'ko-KR-SunHiNeural';$('bgm-volume').value=String(Math.round((project.bgmVolume??0.16)*100));$('volume-label').textContent=$('bgm-volume').value+'%';
@@ -18,13 +73,13 @@ const bgm=$('bgm');bgm.replaceChildren(new Option('사용 안 함',''));for(cons
 const media=$('media-list');media.replaceChildren();for(const f of library){const b=node('button',undefined,'media-item '+(isAudio(f)?'audio':''));b.title=f.name;if(!isAudio(f))previewMedia(f,b);else b.append(node('div','♫  '+f.name,'audio-icon'));b.append(node('strong',f.name));b.onclick=()=>{if(isAudio(f)){project.bgmId=f.id;$('bgm').value=f.id;setDirty();return;}project.scenes.push({id:rand(),mediaId:f.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});selected=project.scenes.length-1;setDirty();render();};media.append(b)}
 const tl=$('timeline');tl.replaceChildren();project.scenes.forEach((s,i)=>{const file=library.find(f=>f.id===s.mediaId),b=node('button',undefined,'scene-card'+(i===selected?' active':''));if(file)previewMedia(file,b);b.append(node('span',fmt(s.duration),'time-label'),node('span',s.caption||`장면 ${i+1}`,'name'));b.onclick=()=>{selected=i;render();};tl.append(b)});
 $('total-time').textContent=fmt(safeDuration());$('bgm-track').textContent=library.find(f=>f.id===project.bgmId)?.name||'배경음악 없음';$('narration-track').textContent=project.scenes.map(s=>s.narration?'●':'○').join('  ')||'음성 대사 없음';
-const scene=project.scenes[selected],file=scene&&library.find(f=>f.id===scene.mediaId);$('empty-props').hidden=!!scene;$('scene-props').hidden=!scene;$('scene-indicator').textContent=scene?`장면 ${selected+1} / ${project.scenes.length}`:'장면 없음';$('preview-time').textContent=scene?fmt(scene.duration):'00:00';
+stopPreview();const scene=project.scenes[selected],file=scene&&library.find(f=>f.id===scene.mediaId);$('empty-props').hidden=!!scene;$('scene-props').hidden=!scene;$('scene-indicator').textContent=scene?`장면 ${selected+1} / ${project.scenes.length}`:'장면 없음';$('preview-time').textContent=scene?fmt(scene.duration):'00:00';
 $('preview-placeholder').hidden=!!file;$('preview-image').hidden=true;$('preview-video').hidden=true;const v=$('preview-video');v.pause();if(file){const el=$(file.group==='video'?'preview-video':'preview-image');el.src='/api/media/'+file.id;el.hidden=false;}
 $('preview-caption').textContent=scene?.caption||'';$('preview-caption').className='caption '+(scene?.captionStyle||'impact')+' '+(scene?.captionPosition||'bottom');
-if(scene){const voicePicker=$('scene-voice-media');voicePicker.replaceChildren(new Option('AI 음성 설정 또는 무음 사용',''));for(const audio of library.filter(isAudio))voicePicker.append(new Option(audio.name,audio.id));voicePicker.value=scene.voiceMediaId||'';for(const [name,key] of [['scene-duration','duration'],['scene-narration','narration'],['scene-caption','caption'],['caption-style','captionStyle'],['caption-position','captionPosition'],['scene-effect','effect']]){$(name).value=scene[key]??''}}}
+positionEditorTools();if(scene){const voicePicker=$('scene-voice-media');voicePicker.replaceChildren(new Option('AI 음성 설정 또는 무음 사용',''));for(const audio of library.filter(isAudio))voicePicker.append(new Option(audio.name,audio.id));voicePicker.value=scene.voiceMediaId||'';for(const [name,key] of [['scene-duration','duration'],['scene-narration','narration'],['scene-caption','caption'],['caption-style','captionStyle'],['caption-position','captionPosition'],['scene-effect','effect']]){$(name).value=scene[key]??''}}}
 for(const [name,key] of [['scene-duration','duration'],['scene-narration','narration'],['scene-caption','caption'],['caption-style','captionStyle'],['caption-position','captionPosition'],['scene-effect','effect']]){$(name).addEventListener('input',e=>{const scene=project.scenes[selected];if(!scene)return;scene[key]=key==='duration'?Number(e.target.value):e.target.value;setDirty();if(key!=='narration')renderPreview();});}
 $('scene-voice-media').onchange=e=>{if(!project.scenes[selected])return;project.scenes[selected].voiceMediaId=e.target.value||null;setDirty();};
-function renderPreview(){$('preview-caption').textContent=project.scenes[selected]?.caption||'';$('preview-caption').className='caption '+(project.scenes[selected]?.captionStyle||'impact')+' '+(project.scenes[selected]?.captionPosition||'bottom');$('total-time').textContent=fmt(safeDuration());}
+function renderPreview(){stopPreview();$('preview-caption').textContent=project.scenes[selected]?.caption||'';$('preview-caption').className='caption '+(project.scenes[selected]?.captionStyle||'impact')+' '+(project.scenes[selected]?.captionPosition||'bottom');$('total-time').textContent=fmt(safeDuration());}
 $('project-title').oninput=e=>{project.title=e.target.value;setDirty()};$('voice').onchange=e=>{project.voice=e.target.value;$('ai-voice').value=e.target.value;setDirty()};$('ai-voice').onchange=e=>{project.voice=e.target.value;$('voice').value=e.target.value;setDirty()};$('ai-bgm').onchange=e=>{project.bgmId=e.target.value||null;$('bgm').value=project.bgmId||'';setDirty();render()};$('bgm').onchange=e=>{project.bgmId=e.target.value||null;setDirty();render()};$('bgm-volume').oninput=e=>{project.bgmVolume=Number(e.target.value)/100;$('volume-label').textContent=e.target.value+'%';setDirty()};
 $('project-picker').onchange=e=>{if(dirty&&!confirm('저장되지 않은 변경이 있습니다. 다른 프로젝트로 이동할까요?')){e.target.value=project.id;return;}project=projects.find(p=>p.id===e.target.value);selected=0;dirty=false;render()};
 $('create-project').onclick=async()=>{if(dirty)await save();const r=await api('/api/new','POST',{});projects.push(r.project);project=r.project;selected=0;dirty=false;render();};
@@ -34,7 +89,22 @@ function reorder(step){const i=selected,to=i+step;if(to<0||to>=project.scenes.le
 $('move-left').onclick=()=>reorder(-1);$('move-right').onclick=()=>reorder(1);
 $('duplicate-scene').onclick=()=>{const s=project.scenes[selected];if(!s)return;project.scenes.splice(selected+1,0,{...s,id:rand()});selected++;setDirty();render()};
 $('remove-scene').onclick=()=>{if(!project.scenes[selected]||!confirm('이 장면을 삭제할까요?'))return;project.scenes.splice(selected,1);selected=Math.min(selected,Math.max(0,project.scenes.length-1));setDirty();render()};
-$('play-scene').onclick=()=>{const v=$('preview-video');if(!v.hidden){v.currentTime=0;v.play().catch(()=>{});return;}const img=$('preview-image');if(img.hidden)return;img.animate([{transform:'scale(1)'},{transform:project.scenes[selected].effect==='zoom-out'?'scale(1)':'scale(1.12)'}],{duration:Math.max(1,project.scenes[selected].duration)*1000,iterations:1});};
+$('play-scene').onclick=async()=>{
+ const scene=project?.scenes?.[selected];if(!scene)return;
+ stopPreview();animateCurrentScene();
+ const v=$('preview-video');if(!v.hidden){v.currentTime=0;v.play().catch(()=>{});}
+ if(scene.voiceMediaId){
+  const audio=scenePreviewAudio();audio.src='/api/media/'+scene.voiceMediaId;
+  audio.play().catch(e=>$('voice-preview-status').textContent='음성 재생 실패: '+e.message);return;
+ }
+ if(scene.narration&&project.voice!=='off')await previewVoice(scene.narration,project.voice);
+ else $('voice-preview-status').textContent=project.voice==='off'?'음성 없음 설정입니다.':'이 장면에 대사가 없습니다.';
+};
+$('preview-voice-choice').onclick=()=>{stopPreview();return previewVoice(undefined,$('ai-voice').value)};
+$('preview-voice-project').onclick=()=>{stopPreview();return previewVoice(undefined,$('voice').value)};
+$('ai-voice').addEventListener('change',()=>{stopPreview();void previewVoice(undefined,$('ai-voice').value)});
+$('voice').addEventListener('change',()=>{stopPreview();void previewVoice(undefined,$('voice').value)});
+
 $('upload-files').onchange=async e=>{const files=[...e.target.files],label=$('save-state');for(const file of files){try{label.textContent='업로드 중: '+file.name;const res=await fetch('/api/upload?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/octet-stream'},body:file});const result=await res.json();if(!res.ok)throw Error(result.error);library.push(result.media);if(result.media.group!=='music'){project.scenes.push({id:rand(),mediaId:result.media.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});selected=project.scenes.length-1;setDirty()}}catch(err){alert(file.name+': '+err.message)}}render();e.target.value='';};
 async function checkExport(){try{const state=await api('/api/export/status');$('export-status').textContent=state.status==='running'?'제작 중: '+state.step:state.status==='done'?'제작 완료':state.status==='failed'?'제작 실패: '+state.error:'내보내기 대기';$('download-result').hidden=state.status!=='done';if(state.status==='done'){$('download-result').href='/api/export/'+state.filename;$('download-result').download='StudioEditor.mp4'}if(state.status!=='running'&&poll){clearInterval(poll);poll=null}}catch{}}
 $('export-btn').onclick=async()=>{try{await save();const r=await api('/api/export','POST',{projectId:project.id});$('export-status').textContent='제작 대기열에 등록';$('download-result').hidden=true;if(poll)clearInterval(poll);poll=setInterval(checkExport,2000);await checkExport()}catch(e){alert('제작 요청 실패: '+e.message)}};
