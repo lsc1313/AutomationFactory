@@ -27,6 +27,7 @@ jobs:
       - name: Syntax
         run: |
           node --check studio_editor/server.mjs
+          node --check studio_editor/ai-draft.mjs
           node --check studio_editor/public/client.js
       - name: Editor API and security tests
         run: node --test studio_editor/tests/*.test.mjs
