@@ -85,7 +85,15 @@ try {
  Write-Host 'Do not close this window before guest testing is finished.'
  Write-Host 'To stop/revoke immediately: press ENTER, then close this window.'
  Write-Host ''
- [void](Read-Host 'Press ENTER to stop guest preview and revoke link')
+ while([DateTimeOffset]::UtcNow -lt $end -and -not (Test-Path -LiteralPath $revokedFile)){
+  try {
+   if([Console]::KeyAvailable){
+    $pressed=[Console]::ReadKey($true)
+    if($pressed.Key -eq 'Enter'){break}
+   }
+  }catch{}
+  Start-Sleep -Milliseconds 800
+ }
 }finally{
  foreach ($key in $vars.Keys) { [Environment]::SetEnvironmentVariable($key,$old[$key],'Process') }
  if($tunnelProcess -and -not $tunnelProcess.HasExited){Stop-Process -Id $tunnelProcess.Id -Force -ErrorAction SilentlyContinue}
