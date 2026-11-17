@@ -40,6 +40,13 @@ test('external guest is isolated, invite-authenticated, restricted and immediate
   req.once('error',reject);req.end();
  });
  assert.equal(evilStatus,403,'unknown public hosts are denied');
+ const validPublicStatus=await new Promise((resolve,reject)=>{
+  const req=http.request({hostname:'127.0.0.1',port:server.address().port,path:'/invite/'+token,method:'GET',
+   headers:{Host:'guest-studio.trycloudflare.com','X-Forwarded-Proto':'https'}},
+   res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});
+  req.once('error',reject);req.end();
+ });
+ assert.equal(validPublicStatus,303,'approved temporary public host opens invite on loopback-forwarded tunnel');
  response=await request('/invite/'+token);
  assert.equal(response.status,303);
  assert.equal(response.headers.get('location'),'/app');
