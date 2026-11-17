@@ -4,7 +4,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir, readFile, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, copyFile, stat, rename } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
@@ -195,6 +195,37 @@ if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJ
 if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}else projects[idx]=value;await saveJson(projectsPath,projects);return json(res,200,{project:value});}
 if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',scenes:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
 if(req.method==='POST'&&url.pathname==='/api/upload'){const name=url.searchParams.get('name')||'file',buffer=await body(req,35_000_000);if(buffer.length<1500)throw makeError(400,'파일 크기가 너무 작습니다.');const {ext,group}=detectMedia(name,buffer);const id=hex();await mkdir(mediaDir,{recursive:true});const filepath=path.join(mediaDir,id+'.'+ext);await writeFile(filepath,buffer,{mode:0o600});let technical;try{technical=await probe(filepath)}catch(e){throw makeError(400,'미디어 파일을 읽을 수 없습니다. '+e.message)}if(group==='image'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'이미지 파일이 아닙니다.');if(group==='video'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'영상 파일이 아닙니다.');if(group==='music'&&!technical.streams?.some(s=>s.codec_type==='audio'))throw makeError(400,'음악 파일이 아닙니다.');const files=await loadJson(path.join(STATE,'media.json'),[]);const item={id,name:safeText(name,120),group,ext,bytes:buffer.length};files.push(item);await saveJson(path.join(STATE,'media.json'),files);return json(res,201,{media:item});}
+// Remove only a media asset owned by this editor. Keep a private trash copy and
+// explicitly remove references from the current project; never silently alter others.
+if(req.method==='POST'&&url.pathname==='/api/media/remove'){
+ if(exportJob.status==='running'||draftJob.status==='running')throw makeError(409,'영상 또는 AI 작업이 끝난 뒤 사진을 삭제하세요.');
+ const b=await data(req);
+ if(!validId(b.mediaId)||!validId(b.projectId)||b.confirm!==true)throw makeError(400,'삭제 확인이 필요합니다.');
+ const projects=await loadJson(projectsPath,[]),files=await loadJson(path.join(STATE,'media.json'),[]);
+ const current=projects.find(p=>p.id===b.projectId),item=files.find(f=>f.id===b.mediaId);
+ if(!current||!item)throw makeError(404,'프로젝트 또는 사진을 찾을 수 없습니다.');
+ const usedBy=p=>(p.scenes||[]).some(scene=>scene.mediaId===item.id||scene.voiceMediaId===item.id)||p.bgmId===item.id;
+ const foreign=projects.filter(p=>p.id!==current.id&&usedBy(p));
+ if(foreign.length)throw makeError(409,'다른 프로젝트에서 사용 중입니다: '+foreign.slice(0,3).map(p=>p.title).join(', ')+'. 해당 프로젝트의 장면에서 먼저 제거하세요.');
+ const removedScenes=(current.scenes||[]).filter(scene=>scene.mediaId===item.id).length;
+ const wasAudio=Boolean(current.bgmId===item.id||(current.scenes||[]).some(scene=>scene.voiceMediaId===item.id));
+ const updated=projects.map(p=>p.id===current.id?{
+  ...p,scenes:(p.scenes||[]).filter(scene=>scene.mediaId!==item.id).map(scene=>({...scene,voiceMediaId:scene.voiceMediaId===item.id?null:scene.voiceMediaId})),
+  bgmId:p.bgmId===item.id?null:p.bgmId,updatedAt:new Date().toISOString()
+ }:p);
+ const trash=path.join(STATE,'trash');await mkdir(trash,{recursive:true});
+ const original=path.join(mediaDir,item.id+'.'+item.ext),archived=path.join(trash,item.id+'.'+item.ext);
+ // Rename before updating metadata to avoid losing the only source copy.
+ await rename(original,archived);
+ try{
+  await saveJson(projectsPath,updated);
+  await saveJson(path.join(STATE,'media.json'),files.filter(f=>f.id!==item.id));
+ }catch(error){
+  await rename(archived,original).catch(()=>{});
+  throw error;
+ }
+ return json(res,200,{removed:true,removedScenes,removedAudioReferences:wasAudio,project:updated.find(p=>p.id===current.id)});
+}
 const mediaMatch=url.pathname.match(/^\/api\/media\/([0-9a-f]{24})$/);if(req.method==='GET'&&mediaMatch){const files=await loadJson(path.join(STATE,'media.json'),[]),item=files.find(f=>f.id===mediaMatch[1]);if(!item)throw makeError(404,'파일 없음');res.writeHead(200,{...APP_HEADER,'Content-Type':mime('.'+item.ext),'Content-Disposition':'inline'});res.end(await readFile(path.join(mediaDir,item.id+'.'+item.ext)));return;}
 if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
 if(req.method==='POST'&&url.pathname==='/api/export'){if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void renderProject(p,media,step=>{exportJob.step=step}).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
