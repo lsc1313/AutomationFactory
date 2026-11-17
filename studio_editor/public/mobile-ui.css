@@ -409,3 +409,16 @@ body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-sto
  }
  body[data-mobile-view="ai"] #ai-review-scenes{order:3}
 }
+
+/* Guest links: show complete URL even when HTTP context blocks clipboard APIs. */
+.guest-share-dialog{width:min(94vw,560px);max-width:94vw;padding:0;border:1px solid #d2dfd3;border-radius:15px;background:#fffdfa;color:#27382e;box-shadow:0 15px 60px #0004}
+.guest-share-dialog::backdrop{background:#10201790}
+.guest-share-inner{padding:18px;display:grid;gap:10px}
+.guest-share-inner h3{margin:0;font-size:19px}
+.guest-share-inner p{margin:0;font-size:13px;color:#556c5a}
+.guest-share-inner label{font-weight:700;font-size:13px}
+#guest-share-url{display:block;box-sizing:border-box;width:100%;min-height:96px;resize:none;overflow-wrap:anywhere;word-break:break-all;font-size:13px;background:#fff;user-select:text;-webkit-user-select:text}
+#guest-share-status{font-weight:650;color:#3b6850}
+.guest-share-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.guest-share-actions button{min-width:0;min-height:44px}
+@media(max-width:900px){.guest-share-dialog{position:fixed;max-height:85dvh;overflow-y:auto}}
