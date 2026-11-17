@@ -168,44 +168,4 @@ const download=url.pathname.match(/^\/api\/export\/([0-9a-f]{24}\.mp4)$/);if(req
 throw makeError(404,'주소 없음');
 }catch(e){json(res,e.status||500,{error:e.message});}});return server;}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-await mkdir(STATE,{recursive:true});const server=createStudioServer();server.listen(PORT,'127.0.0.1',()=>console.log(`Studio Editor: http://127.0.0.1:${PORT}/app`));}));
-if(req.method==='GET'&&sampleUrl){
- const filepath=path.join(voiceSampleDir,sampleUrl[1]+'.mp3');
- let bytes;try{bytes=await readFile(filepath)}catch{throw makeError(404,'음성 미리듣기가 아직 준비되지 않았습니다.')}
- res.writeHead(200,{...APP_HEADER,'Content-Type':'audio/mpeg'});res.end(bytes);return;
-}
-if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
-if(req.method==='POST'&&url.pathname==='/api/ai/config'){const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}
-if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,draftJob);return json(res,200,{status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId});}
-if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
- if(draftJob.status==='running')throw makeError(409,'AI가 다른 영상 초안을 작성하고 있습니다.');
- const b=await data(req),projects=await loadJson(projectsPath,[]),files=await loadJson(path.join(STATE,'media.json'),[]);
- const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트를 찾을 수 없습니다.');
- const mediaIds=Array.isArray(b.mediaIds)?[...new Set(b.mediaIds)]:[];
- if(mediaIds.length<1||mediaIds.length>10)throw makeError(400,'사진 또는 영상 1~10개를 선택하세요.');
- const media=mediaIds.map(id=>files.find(f=>f.id===id&&['image','video'].includes(f.group)));
- if(media.some(x=>!x))throw makeError(400,'업로드한 사진/영상에서만 선택하세요.');
- const key=await aiKey();if(!key)throw makeError(400,'Gemini API 키를 먼저 등록하세요. 무료 사용량이 있다면 해당 범위에서 이용할 수 있습니다.');
- const voice=VOICES.includes(b.voice)?b.voice:DEFAULT_VOICE;
- const bgmId=b.bgmId||null;
- if(bgmId&&!files.some(f=>f.id===bgmId&&f.group==='music'))throw makeError(400,'등록된 배경음악만 선택할 수 있습니다.');
- const bgmVolume=Math.max(0,Math.min(1,Number(b.bgmVolume??0.16)||0));
- draftJob={status:'running',step:'사진 확인 준비',error:null,projectId:project.id,draft:null};
- void generateAiDraft({key,media,requirements:b.requirements,productFacts:b.productFacts,style:[b.style,'선택 음성 '+voice,'선택 음악 '+(files.find(f=>f.id===bgmId)?.name||'없음')].join(' / '),
-  mediaPath:f=>path.join(mediaDir,f.id+'.'+f.ext),onStep:step=>{draftJob.step=step}}).then(draft=>{
-  draftJob={status:'done',step:'수정 가능한 영상 초안 생성 완료',error:null,projectId:project.id,draft:{...draft,voice,bgmId,bgmVolume}};
- }).catch(e=>{draftJob={status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
- return json(res,202,{status:'running'});
-}
-if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);return json(res,200,{projects,media,export:exportJob});}
-if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}else projects[idx]=value;await saveJson(projectsPath,projects);return json(res,200,{project:value});}
-if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',scenes:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
-if(req.method==='POST'&&url.pathname==='/api/upload'){const name=url.searchParams.get('name')||'file',buffer=await body(req,35_000_000);if(buffer.length<1500)throw makeError(400,'파일 크기가 너무 작습니다.');const {ext,group}=detectMedia(name,buffer);const id=hex();await mkdir(mediaDir,{recursive:true});const filepath=path.join(mediaDir,id+'.'+ext);await writeFile(filepath,buffer,{mode:0o600});let technical;try{technical=await probe(filepath)}catch(e){throw makeError(400,'미디어 파일을 읽을 수 없습니다. '+e.message)}if(group==='image'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'이미지 파일이 아닙니다.');if(group==='video'&&!technical.streams?.some(s=>s.codec_type==='video'))throw makeError(400,'영상 파일이 아닙니다.');if(group==='music'&&!technical.streams?.some(s=>s.codec_type==='audio'))throw makeError(400,'음악 파일이 아닙니다.');const files=await loadJson(path.join(STATE,'media.json'),[]);const item={id,name:safeText(name,120),group,ext,bytes:buffer.length};files.push(item);await saveJson(path.join(STATE,'media.json'),files);return json(res,201,{media:item});}
-const mediaMatch=url.pathname.match(/^\/api\/media\/([0-9a-f]{24})$/);if(req.method==='GET'&&mediaMatch){const files=await loadJson(path.join(STATE,'media.json'),[]),item=files.find(f=>f.id===mediaMatch[1]);if(!item)throw makeError(404,'파일 없음');res.writeHead(200,{...APP_HEADER,'Content-Type':mime('.'+item.ext),'Content-Disposition':'inline'});res.end(await readFile(path.join(mediaDir,item.id+'.'+item.ext)));return;}
-if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
-if(req.method==='POST'&&url.pathname==='/api/export'){if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void renderProject(p,media,step=>{exportJob.step=step}).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
-const download=url.pathname.match(/^\/api\/export\/([0-9a-f]{24}\.mp4)$/);if(req.method==='GET'&&download){if(exportJob.status!=='done'||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');res.writeHead(200,{...APP_HEADER,'Content-Type':'video/mp4','Content-Disposition':`attachment; filename="studio-${download[1]}"`});res.end(await readFile(path.join(outputDir,download[1])));return;}
-throw makeError(404,'주소 없음');
-}catch(e){json(res,e.status||500,{error:e.message});}});return server;}
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
 await mkdir(STATE,{recursive:true});const server=createStudioServer();server.listen(PORT,'127.0.0.1',()=>console.log(`Studio Editor: http://127.0.0.1:${PORT}/app`));}
