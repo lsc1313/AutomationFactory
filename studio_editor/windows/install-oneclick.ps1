@@ -88,6 +88,8 @@ try {
    New-Item -ItemType Directory -Path (Split-Path -Parent $to) -Force | Out-Null
    Copy-Item -LiteralPath $from -Destination $to -Force
   }
+  # The retired guest-link launcher is not part of the account-based editor.
+  Remove-Item -LiteralPath (Join-Path $dest 'windows\start-guest-preview.ps1') -Force -ErrorAction SilentlyContinue
   Set-Content -LiteralPath (Join-Path $dest 'installed-version.txt') -Value $version -Encoding ascii
   Note 'Editor installed. Previous projects and uploaded media are preserved.'
   Note "Installed release $version into $dest; verify version marker on Project tab."
