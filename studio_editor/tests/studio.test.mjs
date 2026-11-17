@@ -161,7 +161,7 @@ test('guest invite is fully selectable and clipboard errors cannot fake success'
 test('one-click update identifies release and verifies the live service before claiming success',async()=>{
  const installer=await readFile(new URL('../windows/install-oneclick.ps1',import.meta.url),'utf8');
  const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
- assert.match(installer,/\$version = 'v1\.3\.11'/);
+ assert.match(installer,/\$version = 'v1\.3\.12'/);
  assert.match(installer,/Verified running editor release/);
  assert.match(installer,/\$live\.Content\.Contains\(\$version\)/);
  assert.doesNotMatch(installer,/v1\[\.\]3\[\.\]8/);
@@ -180,4 +180,16 @@ test('guest connection checks distinguish real tunnel errors from polling',async
  assert.match(launcher,/Set-GuestProgress 'failed'/);
  assert.match(launcher,/Set-GuestProgress 'ready'/);
  assert.match(launcher,/Cloudflare 외부 연결/);
+});
+
+test('guest downloader reports its progress before network access and both tunnel log streams are parsed',async()=>{
+ const launcher=await readFile(new URL('../windows/start-guest-preview.ps1',import.meta.url),'utf8');
+ const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+ const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
+ assert.ok(launcher.indexOf("Set-GuestProgress 'download'")<launcher.indexOf("Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/cloudflare"),'download progress must precede remote network request');
+ assert.match(launcher,/Set-GuestProgress 'failed'/);
+ assert.match(launcher,/Guest editor HTTP health check failed/);
+ assert.match(launcher,/@\(\$tunnelLog,\$tunnelOut\)/);
+ assert.match(server,/download:'Cloudflare/);
+ assert.match(client,/state\.phase==='download'/);
 });
