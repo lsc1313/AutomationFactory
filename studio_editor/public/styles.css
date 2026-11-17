@@ -91,3 +91,32 @@ footer{background:#fffdfa;color:#717a71}
 
 /* Transparent subtitles for every style (including info/boxed). Text outline remains. */
 #preview-caption.caption,.caption,.caption.boxed{background:none!important;background-color:transparent!important;box-shadow:none!important;border:0!important;padding:0!important;backdrop-filter:none!important}
+
+/* v0.4 task-first order and complete MP4 playback */
+.full-review{margin:14px auto 6px;width:min(100%,550px);background:#fff;border:1px solid #dee5dd;padding:14px;border-radius:16px;text-align:center}
+.full-review h3{margin:0 0 7px}
+.full-review video{display:block;width:min(100%,330px);aspect-ratio:9/16;background:#111;margin:10px auto;border-radius:13px}
+.download-button{display:inline-block;background:#557467;color:#fff;text-decoration:none;border-radius:10px;padding:12px 18px;font-weight:700;margin:8px auto}
+#preview-full{font-size:13px;line-height:1.25;min-height:42px}
+@media(max-width:900px){
+ #studio>.media-panel{margin:12px 12px 0;max-height:360px;overflow:visible}
+ #studio>.media-panel .media-list{max-height:220px;overflow-y:auto}
+ #studio>.ai-workflow{margin:12px 12px 0}
+ #project-settings{margin-top:12px}
+ .topactions{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .topactions #project-picker{grid-column:1/-1}
+ .topactions #export-btn{grid-column:auto}
+ .topactions #logout{grid-column:1/-1}
+ .preview-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ .preview-tools>div{grid-column:1/-1}
+ .preview-tools #voice-audio,.preview-tools #voice-preview-status{grid-column:1/-1;max-width:100%}
+ .preview-tools button{min-height:44px;white-space:normal;overflow-wrap:anywhere}
+ .full-review{max-width:100%}
+ .media-panel .section-title,.section-title{flex-wrap:wrap}
+}
+@media(max-width:500px){
+ #studio>.media-panel{margin:8px 8px 0}
+ #studio>.ai-workflow{margin:8px 8px 0}
+ .topactions{display:grid;grid-template-columns:1fr 1fr}
+ .topactions>*{min-width:0}
+}
