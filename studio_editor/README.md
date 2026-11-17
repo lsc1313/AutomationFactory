@@ -9,7 +9,7 @@ ShortsAI, Revenue Factory, Theme Factory와 별개로 실행하는 **구독료 �
 - 장면 추가, 복제, 순서 변경, 삭제, 길이 설정
 - 장면별 대본·자막 직접 수정, 4가지 자막 스타일, 상·중·하 배치
 - 사진 줌/팬 및 원본 사진 기반 블러 배경, 영상 클립 조합
-- 음성 없음 또는 한국어 여성/남성 TTS 선택(별도 edge-tts 설치 시), 혹은 업로드한 MP3/WAV/M4A를 장면별 음성으로 사용
+- 음성 없음 또는 한국어 여성/남성 TTS 선택(별도 edge-tts 설치 시)
 - 배경음악 파일 선택·음량 조절, 720×1280 세로 MP4 내보내기
 - 프로젝트 자동 저장이 아닌 **저장 버튼** 방식 (출력 시 저장), 여러 프로젝트 보관
 - 로컬에서 처음 실행 시 12자 이상 관리 비밀번호 생성, 쿠키 및 CSRF로 API 보호
@@ -49,3 +49,13 @@ PC가 켜져 있어야 서버에서 렌더링을 진행합니다. 현재 모바�
 `node --test tests/*.test.mjs`
 
 `node server.mjs`로 포그라운드 실행하면 서버와 오류 확인이 쉽습니다.
+
+## 휴대폰 원격 조작을 위한 한 번 설치/업데이트 (v0.1.1)
+
+가능하면 ZIP 파일을 풀고 여러 스크립트를 실행하는 대신 **한 번만** 아래 PowerShell 명령어를 실행하세요. 설치 파일을 자동 다운로드하고, 기존 저장된 프로젝트/업로드 파일은 보존하며, PC 바탕화면에 `Studio Editor` 바로가기를 생성합니다. 다음부터는 바로가기만 클릭하세요. 기존 Shorts Studio(443), Revenue Factory(8443)는 건드리지 않습니다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/lsc1313/AutomationFactory/feature/standalone-studio-editor-v0-1/studio_editor/windows/install-oneclick.ps1').Content))"
+```
+
+선택: ZIP 안의 `windows/Install-StudioEditor.cmd`를 더블클릭하는 방법도 있습니다. 설치·업데이트 모두 같은 실행으로 처리합니다. 설치 위치는 `%LOCALAPPDATA%\StudioEditor`, 실행 주소는 `http://127.0.0.1:8050/app`이고, Tailscale이 활성화되어 있다면 휴대폰용 HTTPS 10000 연결도 시도합니다. 첫 실행에는 PC에서 관리자 비밀번호를 1회 설정하세요. Node.js 20+는 필요하고, FFmpeg/FFprobe가 없으면 영상 출력만 비활성화됩니다. 오류가 날 경우 `%TEMP%\StudioEditor-install.log`를 확인하세요.
