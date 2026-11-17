@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile, readdir, copyFile, stat, rename, open, rm } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, openSync, closeSync } from 'node:fs';
 import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 import {normalizeTimeline,renderTimeline,clipMs,timelineDuration,CANVASES} from './timeline-v2.mjs';
 import {transcribeLocal} from './stt-server.mjs';
@@ -22,6 +22,7 @@ const GUEST_EXPIRES=Number(process.env.STUDIO_GUEST_EXPIRES_AT||0);
 const GUEST_STOP_FILE=process.env.STUDIO_GUEST_STOP_FILE||'';
 const GUEST_LIMITS={drafts:3,previews:8,exports:5,uploads:15,bytes:160_000_000};
 const guestUsage={drafts:0,previews:0,exports:0,uploads:0,bytes:0};
+let guestLaunchAt=0;
 function guestQuota(key,amount=1){
  if(!GUEST)return;
  if(guestUsage[key]+amount>GUEST_LIMITS[key])throw makeError(429,'지인 체험의 '+({drafts:'AI 초안',previews:'음성 미리듣기',exports:'MP4 제작',uploads:'업로드 개수',bytes:'총 업로드 용량'}[key]||'')+' 제한에 도달했습니다.');
@@ -226,6 +227,27 @@ if(req.method==='GET'&&url.pathname==='/api/setup-state'){if(GUEST)return json(r
 if(req.method==='POST'&&url.pathname==='/api/setup'){if(GUEST)throw makeError(403,'체험에서는 계정 설정을 변경할 수 없습니다.');const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
 if(req.method==='POST'&&url.pathname==='/api/login'){if(GUEST)throw makeError(403,'초대 링크로 접속하세요.');const ip=req.socket.remoteAddress||'unknown',now=Date.now();const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');const b=await data(req),cfg=await loadJson(cfgPath,null);if(!cfg)throw makeError(403,'PC에서 먼저 초기 설정을 완료하세요.');const hash=scryptSync(String(b.password||''),Buffer.from(cfg.salt,'hex'),64);if(!timingSafeEqual(hash,Buffer.from(cfg.hash,'hex'))){attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'비밀번호가 틀렸습니다.');}loginFailures.delete(ip);const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');sessions.set(token,{csrf,expires:Date.now()+7*86400000});return json(res,200,{csrf},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});}
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
+if(req.method==='POST'&&url.pathname==='/api/guest/start'){
+ if(GUEST)throw makeError(403,'관리자 전용입니다.');
+ if(process.platform!=='win32')throw makeError(501,'지인 체험 링크 자동 시작은 Windows PC에서 지원합니다.');
+ const current=await loadJson(path.join(STATE,'guest-preview.json'),null);
+ const active=current&&Number.isInteger(current.expires)&&current.expires>Date.now()&&/^[a-f0-9]{32}$/.test(current.guestId)&&
+  !existsSync(path.join(process.env.LOCALAPPDATA||'', 'StudioEditor-GuestSessions', current.guestId,'revoked'));
+ if(active)return json(res,200,{started:true,alreadyRunning:true});
+ if(Date.now()-guestLaunchAt<90000)return json(res,202,{started:true,launching:true});
+ const file=path.join(ROOT,'windows','start-guest-preview.ps1');
+ if(!existsSync(file))throw makeError(503,'체험 링크 생성 스크립트를 찾을 수 없습니다. 편집기를 업데이트하세요.');
+ await mkdir(STATE,{recursive:true});
+ const log=openSync(path.join(STATE,'guest-launch.log'),'a');
+ try{
+  const child=spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',file],
+   {cwd:ROOT,windowsHide:true,detached:true,stdio:['ignore',log,log]});
+  child.once('error',()=>{guestLaunchAt=0;});
+  child.unref();
+  guestLaunchAt=Date.now();
+ }finally{closeSync(log);}
+ return json(res,202,{started:true,launching:true});
+}
 if(req.method==='GET'&&url.pathname==='/api/guest/link'){
  if(GUEST)throw makeError(403,'관리자 전용입니다.');
  const current=await loadJson(path.join(STATE,'guest-preview.json'),null);
