@@ -115,7 +115,13 @@ test('mobile editing steps and complete video playback controls are present',asy
  for(const id of ['preview-full','full-video','full-review','full-download'])assert.ok(page.includes('id="'+id+'"'),id);
  assert.match(client,/startExport\(true\)/);
  assert.match(client,/anchor[.]after[(]props[)]/);
- assert.match(client,/ai\.before\(mediaPanel\)|ai\.previousElementSibling!==mediaPanel/);
+ assert.match(client,/mediaPanel\.parentElement!==layout/);
+ const mobile=await readFile(new URL('../public/mobile-ui.js',import.meta.url),'utf8');
+ const order=['project','media','ai','edit','captions','sound'];
+ const locations=order.map(tab=>page.indexOf('data-mobile-tab="'+tab+'"'));
+ assert.ok(locations.every((at,i)=>at>0&&(i===0||at>locations[i-1])),'mobile workflow tab order');
+ assert.match(mobile,/dock\.append\(preview\)/);
+ assert.match(mobile,/syncPreviewFrame/);
 });
 
 test('uploaded thumbnail selection is side-effect-free; explicit buttons are present',async()=>{
