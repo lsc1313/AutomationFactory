@@ -136,8 +136,9 @@ function positionEditorTools(){
   if(details&&details.previousElementSibling!==worktop)worktop.after(details);
   const anchor=details||worktop;
   if(anchor.nextElementSibling!==props)anchor.after(props);
-  const timeline=main.querySelector('.timeline-wrap');
-  if(timeline.nextElementSibling!==settings)timeline.after(settings);
+  // The project settings are a full-width page in the Project tab,
+  // not a nested narrow panel inside the timeline or Sound tab.
+  if(settings.parentElement!==layout)layout.prepend(settings);
  }else{
   if(mediaPanel.parentElement!==layout)layout.prepend(mediaPanel);
   if(settings.parentElement!==mediaPanel)mediaPanel.append(settings);
