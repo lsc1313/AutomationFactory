@@ -34,3 +34,6 @@ jobs:
           node --check studio_editor/public/client.js
       - name: Editor API and security tests
         run: node --test studio_editor/tests/*.test.mjs
+      - name: Browser interactive editing smoke test
+        run: node studio_editor/tests/browser-smoke.mjs
+

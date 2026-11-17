@@ -1,0 +1,58 @@
+/** Browser E2E smoke: AI storyboard UI remains present and v2 precision editor is usable. */
+import assert from 'node:assert/strict';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import {spawn,spawnSync} from 'node:child_process';
+const browser=['google-chrome','google-chrome-stable','chromium','chromium-browser'].find(cmd=>spawnSync('which',[cmd],{stdio:'ignore'}).status===0);
+if(!browser){console.log('SKIP: Chromium/Chrome not available');process.exit(0)}
+const temp=await mkdtemp(path.join(os.tmpdir(),'studio-browser-'));
+process.env.STUDIO_DATA_DIR=temp;
+const {createStudioServer}=await import('../server.mjs');
+const server=createStudioServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const base='http://127.0.0.1:'+server.address().port;
+const chrome=spawn(browser,['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--remote-allow-origins=*','--remote-debugging-port=9229','--user-data-dir='+path.join(temp,'chrome'),'about:blank'],{stdio:'ignore'});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let ws;const pending=new Map();let next=1;
+async function waitUntil(fn,attempts=100){for(let i=0;i<attempts;i++){try{const v=await fn();if(v)return v}catch{}await sleep(200)}throw Error('browser timeout')}
+function send(method,params={}){const id=next++;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout '+method))},15000);pending.set(id,{resolve,reject,timer});ws.send(JSON.stringify({id,method,params}))})}
+async function evaluate(expression){const result=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(result.error)throw Error(JSON.stringify(result.error));if(result.result?.exceptionDetails)throw Error(result.result.exceptionDetails.text);return result.result?.result?.value}
+try{
+ const pwd='studio_browser_test_password';
+ let res=await fetch(base+'/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});assert.equal(res.status,201);
+ res=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});assert.equal(res.status,200);
+ const cookie=res.headers.get('set-cookie').split(';')[0],token=cookie.split('=')[1],csrf=(await res.json()).csrf;
+ const image=path.join(temp,'test.jpg');
+ const generated=spawnSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','testsrc2=s=640x360:d=1','-frames:v','1',image],{encoding:'utf8',timeout:20000});assert.equal(generated.status,0,generated.stderr);
+ res=await fetch(base+'/api/upload?name=test.jpg',{method:'POST',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/octet-stream',Cookie:cookie},body:await readFile(image)});assert.equal(res.status,201,await res.text());
+ let page;
+ await waitUntil(async()=>{const r=await fetch('http://127.0.0.1:9229/json/new?'+encodeURIComponent(base+'/app'),{method:'PUT'});if(!r.ok)return false;page=await r.json();return page.webSocketDebuggerUrl});
+ ws=new WebSocket(page.webSocketDebuggerUrl);
+ await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true})});
+ ws.addEventListener('message',event=>{const response=JSON.parse(event.data);if(!response.id||!pending.has(response.id))return;const entry=pending.get(response.id);clearTimeout(entry.timer);pending.delete(response.id);entry.resolve(response)});
+ await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
+ await send('Network.setCookie',{name:'studio_session',value:token,url:base+'/app',sameSite:'Strict'});
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:'window.__studioErrors=[];window.addEventListener("error",e=>window.__studioErrors.push(e.message));'});
+ await send('Page.navigate',{url:base+'/app'});
+ await waitUntil(async()=>await evaluate('Boolean(document.getElementById("v2-editor")&&document.querySelector("#media-list .media-item")&&window.__studioErrors?.length===0&&document.getElementById("studio").hidden===false)'));
+ assert.equal(await evaluate('document.querySelectorAll("#media-list .media-item").length'),1);
+ assert.equal(await evaluate('project.scenes.length'),0);
+ await evaluate('document.querySelector("#media-list .media-item").click()');
+ assert.equal(await evaluate('project.scenes.length'),0,'thumbnail click must not add a scene');
+ assert.equal(await evaluate('document.getElementById("selected-media-panel").hidden'),false);
+ await evaluate('document.getElementById("add-selected-scene").click()');
+ assert.equal(await evaluate('project.scenes.length'),1);
+ assert.equal(await evaluate('project.schemaVersion'),2);
+ await evaluate('document.getElementById("v2-add-text").click()');
+ assert.equal(await evaluate('project.textClips.length'),1);
+ await evaluate('document.getElementById("v2-ratio").value="16:9";document.getElementById("v2-ratio").dispatchEvent(new Event("change"))');
+ assert.equal(await evaluate('project.ratio'),'16:9');
+ assert.equal(await evaluate('document.getElementById("preview-full")!==null'),true);
+ assert.equal(await evaluate('document.getElementById("ai-generate")!==null'),true);
+ assert.deepEqual(await evaluate('window.__studioErrors'),[]);
+ console.log('PASS Chrome: media select without duplicate, add scene, text overlay, ratio switch, AI preserved.');
+}finally{
+ try{ws?.close()}catch{}
+ chrome.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));
+ await rm(temp,{recursive:true,force:true}).catch(()=>{});
+}
