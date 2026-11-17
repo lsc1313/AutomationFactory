@@ -55,6 +55,24 @@ export async function synthesizeVoice(voice,text,out,cwd,runner=run){
  const result=await stat(out).catch(()=>null);
  if(!result||result.size<500)throw new Error('AI 음성 파일이 생성되지 않았습니다. 무음 영상으로 저장하지 않습니다.');
 }
+const voiceSamples=new Map();
+let voicePreviewBusy=false;
+const voiceSampleDir=path.join(STATE,'voice-previews');
+async function makeVoicePreview(voice,text){
+ const normalized=safeText(text,160);
+ if(!VOICES.includes(voice)||voice==='off')throw makeError(400,'미리듣기 음성을 선택하세요.');
+ if(!normalized)throw makeError(400,'대사가 비어 있습니다.');
+ const id=createHash('sha256').update(voice+'|'+normalized).digest('hex').slice(0,32);
+ const filename=path.join(voiceSampleDir,id+'.mp3');
+ try{if((await stat(filename)).size>500)return id;}catch{}
+ if(voicePreviewBusy)throw makeError(409,'다른 음성 미리듣기를 생성 중입니다.');
+ voicePreviewBusy=true;
+ try{
+  await mkdir(voiceSampleDir,{recursive:true});
+  await synthesizeVoice(voice,normalized,filename,voiceSampleDir);
+ }finally{voicePreviewBusy=false;}
+ return id;
+}
 async function probe(filename){const result=await run('ffprobe',['-v','error','-show_entries','stream=codec_type,width,height:format=duration','-of','json',filename]);return JSON.parse(result);}
 const mediaTypes={image:['jpg','jpeg','png','webp'],video:['mp4'],music:['mp3','wav','m4a']};
 function detectMedia(name,buffer){const ext=path.extname(name).toLowerCase().slice(1);const group=Object.entries(mediaTypes).find(([_,xs])=>xs.includes(ext))?.[0];if(!group)throw makeError(400,'JPG/PNG/WEBP/MP4/MP3/WAV/M4A만 등록할 수 있습니다.');
@@ -69,9 +87,21 @@ return {id:input.id,title:safeText(input.title,100)||'새 프로젝트',scenes:c
 const escapeAss=t=>String(t||'').replace(/\\/g,'').replace(/\{/g,'(').replace(/\}/g,')').replace(/\r?\n/g,'\\N');
 function assTime(seconds){const cs=Math.round(seconds*100);return `${Math.floor(cs/360000)}:${String(Math.floor(cs/6000)%60).padStart(2,'0')}:${String(Math.floor(cs/100)%60).padStart(2,'0')}.${String(cs%100).padStart(2,'0')}`;}
 export function makeAss(scene,duration){const styles={impact:{size:56,color:'&H00FFFFFF',outline:4,bold:1},minimal:{size:43,color:'&H00FFFFFF',outline:2,bold:0},boxed:{size:50,color:'&H00FFFFFF',outline:3,bold:1},clean:{size:48,color:'&H0000E7FF',outline:3,bold:1}};const style=styles[scene.captionStyle]||styles.impact;const alignment=scene.captionPosition==='top'?8:scene.captionPosition==='middle'?5:2;return `[Script Info]\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Captions,Malgun Gothic,${style.size},${style.color},&H000000FF,&H00000000,&H64000000,${style.bold?'-1':'0'},0,0,0,100,100,0,0,1,${style.outline},1,${alignment},58,58,145,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,${assTime(0)},${assTime(duration)},Captions,,0,0,0,,${escapeAss(scene.caption)}\n`;}
-function imageFilter(effect,frames){const base='[0:v]split=2[bg0][fg0];[bg0]scale=760:1340:force_original_aspect_ratio=increase,crop=760:1340,boxblur=20:2,eq=brightness=-0.12[bg];[fg0]scale=690:1190:force_original_aspect_ratio=decrease,format=rgba[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p,';
-let z,x,y;const progress=`(on/${Math.max(1,frames-1)})`;if(effect==='zoom-out')z=`1.18-${progress}*0.17`;else if(effect==='none')z='1.04';else z=`1.02+${progress}*0.17`;
-x=effect==='pan-right'?`(iw-iw/zoom)*${progress}`:effect==='pan-left'?`(iw-iw/zoom)*(1-${progress})`:'iw/2-iw/zoom/2';y='ih/2-ih/zoom/2';return base+`zoompan=z='${z}':x='${x}':y='${y}':d=1:s=720x1280:fps=24,format=yuv420p,ass=caption.ass[v]`;}
+/** Shared FFmpeg image motion. 1.2x perceptual speed with safe crop bounds.
+ * Zoom and pan both transform the rendered photo composition (not a static foreground).
+ */
+export function imageFilter(effect,frames){
+ const base='[0:v]split=2[bg0][fg0];[bg0]scale=760:1340:force_original_aspect_ratio=increase,crop=760:1340,boxblur=20:2,eq=brightness=-0.12[bg];[fg0]scale=690:1190:force_original_aspect_ratio=decrease,format=rgba[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,scale=720:1280,format=yuv420p,';
+ const progress=`min(1,on/${Math.max(1,Math.round(frames/1.2)-1)})`;
+ let zoom='1.04',x='iw/2-iw/zoom/2';
+ if(effect==='zoom-in')zoom=`1.02+0.20*${progress}`;
+ if(effect==='zoom-out')zoom=`1.22-0.20*${progress}`;
+ if(effect==='pan-left'||effect==='pan-right'){
+  zoom='1.20';
+  x=effect==='pan-left'?`(iw-iw/zoom)*(1-${progress})`:`(iw-iw/zoom)*${progress}`;
+ }
+ return base+`zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=720x1280:fps=24,format=yuv420p,ass=caption.ass[v]`;
+}
 function videoFilter(){return `[0:v]fps=24,split=2[bg0][fg0];[bg0]scale=760:1340:force_original_aspect_ratio=increase,crop=760:1340,boxblur=20:2[bg];[fg0]scale=690:1190:force_original_aspect_ratio=decrease,format=rgba[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,scale=720:1280,format=yuv420p,ass=caption.ass[v]`;}
 async function renderProject(project,files,onStep){const job=hex();const dir=path.join(outputDir,job);await mkdir(dir,{recursive:true});const mediaById=new Map(files.map(f=>[f.id,f]));const segments=[],info=[];
 for(let i=0;i<project.scenes.length;i++){const scene=project.scenes[i],source=mediaById.get(scene.mediaId);onStep(`장면 ${i+1}/${project.scenes.length} 제작`);let voiceFile=null,voiceDur=0;const recorded=scene.voiceMediaId&&mediaById.get(scene.voiceMediaId);if(recorded){voiceFile='recorded.'+recorded.ext;await copyFile(path.join(mediaDir,recorded.id+'.'+recorded.ext),path.join(dir,voiceFile));voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}else if(project.voice!=='off'&&scene.narration){voiceFile='narration.mp3';await synthesizeVoice(project.voice,scene.narration,path.join(dir,voiceFile),dir);voiceDur=Number((await probe(path.join(dir,voiceFile))).format.duration)||0;}
@@ -92,6 +122,18 @@ if(req.method==='POST'&&url.pathname==='/api/login'){const ip=req.socket.remoteA
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
+if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
+ const b=await data(req,4000);
+ if(typeof b.text!=='string'||b.text.length>160)throw makeError(400,'미리듣기 대사는 160자 이내입니다.');
+ const id=await makeVoicePreview(b.voice,b.text);
+ return json(res,200,{url:'/api/voice/sample/'+id+'.mp3'});
+}
+const sampleUrl=url.pathname.match(/^\\/api\\/voice\\/sample\\/([0-9a-f]{32})\\.mp3$/);
+if(req.method==='GET'&&sampleUrl){
+ const filepath=path.join(voiceSampleDir,sampleUrl[1]+'.mp3');
+ let bytes;try{bytes=await readFile(filepath)}catch{throw makeError(404,'음성 미리듣기가 아직 준비되지 않았습니다.')}
+ res.writeHead(200,{...APP_HEADER,'Content-Type':'audio/mpeg'});res.end(bytes);return;
+}
 if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
 if(req.method==='POST'&&url.pathname==='/api/ai/config'){const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}
 if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,draftJob);return json(res,200,{status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId});}
