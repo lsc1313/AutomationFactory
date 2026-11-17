@@ -70,10 +70,28 @@ try{
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:2,mobile:true});
  await send('Page.reload',{ignoreCache:true});
  await waitUntil(async()=>await evaluate('Boolean(document.getElementById("v2-editor")&&document.getElementById("studio")?.hidden===false)'));
- const layout=await evaluate('(()=>{let keys=[".media-panel","#ai-workflow",".preview-wrap",".properties",".timeline-wrap","#project-settings"];return keys.map(x=>document.querySelector(x).getBoundingClientRect().top+window.scrollY)})()');
- assert.ok(layout.every((y,i)=>i===0||y>layout[i-1]),'mobile work steps must appear in logical order: '+layout.join(' > '));
+ assert.equal(await evaluate('document.body.dataset.mobileView'),'edit');
+ assert.equal(await evaluate('getComputedStyle(document.getElementById("mobile-navigation")).display!=="none"'),true);
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".media-panel")).display'),"none");
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".editor-main")).display!=="none"'),true);
+ await evaluate('document.querySelector("[data-mobile-tab=media]").click()');
+ assert.equal(await evaluate('document.body.dataset.mobileView'),'media');
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".media-panel")).display!=="none"'),true);
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".editor-main")).display'),"none");
+ await evaluate('document.querySelector("[data-mobile-tab=ai]").click()');
+ assert.equal(await evaluate('getComputedStyle(document.getElementById("ai-workflow")).display!=="none"'),true);
+ assert.equal(await evaluate('document.querySelector("#ai-generate")!==null'),true,'original AI stays available');
+ await evaluate('document.querySelector("[data-mobile-tab=captions]").click()');
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-subtitle-track")).display!=="none"'),true);
+ await evaluate('document.querySelector("[data-mobile-tab=sound]").click()');
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-audio-track")).display!=="none"'),true);
+ assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display!=="none"'),true);
+ await evaluate('document.querySelector("[data-mobile-tab=edit]").click()');
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".properties")).display'),"none");
+ await evaluate('document.getElementById("mobile-clip-details").click()');
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".properties")).display!=="none"'),true);
  assert.equal(await evaluate('window.__studioErrors.length'),0);
- console.log('PASS Chrome: editing, full MP4+Range streaming, 390px mobile task order.');
+ console.log('PASS Chrome: desktop AI and editor; full MP4; five phone tabs, detailed controls and 390px layout.');
 }finally{
  try{ws?.close()}catch{}
  chrome.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));

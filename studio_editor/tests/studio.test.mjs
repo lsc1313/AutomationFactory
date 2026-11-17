@@ -114,7 +114,7 @@ test('mobile editing steps and complete video playback controls are present',asy
  for(const label of ['1. 사진·영상 업로드','2. AI 영상 초안 만들기','3. 영상 확인·편집','4. 프로젝트 설정'])assert.ok(page.includes(label),label);
  for(const id of ['preview-full','full-video','full-review','full-download'])assert.ok(page.includes('id="'+id+'"'),id);
  assert.match(client,/startExport\(true\)/);
- assert.match(client,/preview\.after\(props\)/);
+ assert.match(client,/anchor[.]after[(]props[)]/);
  assert.match(client,/ai\.before\(mediaPanel\)|ai\.previousElementSibling!==mediaPanel/);
 });
 
@@ -125,4 +125,15 @@ test('uploaded thumbnail selection is side-effect-free; explicit buttons are pre
  assert.match(html,/id="delete-selected-media"/);
  assert.match(html,/id="add-selected-scene"/);
  assert.match(html,/id="selected-media-preview"/);
+});
+
+test('separate phone UI retains desktop AI editing and mobile controls',async()=>{
+ const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+ const mobile=await readFile(new URL('../public/mobile-ui.js',import.meta.url),'utf8');
+ const css=await readFile(new URL('../public/mobile-ui.css',import.meta.url),'utf8');
+ for(const id of ['mobile-navigation','mobile-clip-details','ai-workflow','v2-ratio'])assert.ok(html.includes(id)||mobile.includes(id),id);
+ for(const tab of ['edit','media','ai','captions','sound'])assert.ok(html.includes('data-mobile-tab="'+tab+'"'),tab);
+ assert.match(css,/@media[(]max-width:900px[)]/);
+ assert.match(css,/data-mobile-view="ai"/);
+ assert.match(mobile,/positionEditorTools/);
 });
