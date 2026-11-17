@@ -49,8 +49,25 @@ try{
  assert.equal(await evaluate('project.ratio'),'16:9');
  assert.equal(await evaluate('document.getElementById("preview-full")!==null'),true);
  assert.equal(await evaluate('document.getElementById("ai-generate")!==null'),true);
+ await evaluate('document.getElementById("v2-duration").value="1.5";document.getElementById("v2-duration").dispatchEvent(new Event("change"))');
+ await evaluate('document.getElementById("v2-playhead").value="500";document.getElementById("v2-playhead").dispatchEvent(new Event("input"))');
+ await evaluate('document.getElementById("v2-split").click()');
+ assert.equal(await evaluate('project.scenes.length'),2,'split makes two editable clips');
+ await evaluate('document.getElementById("v2-repeat").click()');
+ assert.equal(await evaluate('project.scenes.length'),3,'duplicate makes another clip');
+ await evaluate('window.confirm=()=>true;document.getElementById("v2-remove").click()');
+ assert.equal(await evaluate('project.scenes.length'),2,'delete removes only selected clip');
+ await evaluate('document.getElementById("voice").value="off";document.getElementById("voice").dispatchEvent(new Event("change"))');
+ await evaluate('document.getElementById("preview-full").click()');
+ await waitUntil(async()=>await evaluate('document.getElementById("export-status").textContent.includes("제작 완료")'),180);
+ assert.equal(await evaluate('document.getElementById("full-review").hidden'),false);
+ assert.equal(await evaluate('Boolean(document.getElementById("full-video").src)'),true);
+ res=await fetch(base+'/api/export/status',{headers:{Cookie:cookie}});
+ const exportState=await res.json();assert.equal(exportState.status,'done');
+ res=await fetch(base+'/api/export/'+exportState.filename,{headers:{Cookie:cookie,Range:'bytes=0-1023'}});
+ assert.equal(res.status,206,'MP4 player supports partial content');assert.equal((await res.arrayBuffer()).byteLength,1024);
  assert.deepEqual(await evaluate('window.__studioErrors'),[]);
- console.log('PASS Chrome: media select without duplicate, add scene, text overlay, ratio switch, AI preserved.');
+ console.log('PASS Chrome: media selection, AI controls, trim/split/repeat/delete, caption track, ratio, full MP4 playback+range streaming.');
 }finally{
  try{ws?.close()}catch{}
  chrome.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));
