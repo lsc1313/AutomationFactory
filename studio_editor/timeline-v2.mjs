@@ -36,7 +36,8 @@ export function sourceClip(raw,media){
   captionStart:Math.max(0,finite(raw.captionStart,0)),captionEnd:Math.max(0,finite(raw.captionEnd,0)),
   captionStyle:['impact','minimal','boxed','clean'].includes(raw.captionStyle)?raw.captionStyle:'impact',
   captionPosition:['top','middle','bottom'].includes(raw.captionPosition)?raw.captionPosition:'bottom',
-  captionSize:limit(finite(raw.captionSize,56),20,108),voiceMediaId:raw.voiceMediaId||null
+  captionSize:limit(finite(raw.captionSize,56),20,108),voiceMediaId:raw.voiceMediaId||null,
+  fit:raw.fit==='fit'?'fit':'fill',transition:raw.transition==='fade'?'fade':'cut'
  };
  const seg=clipMs({...clip,repeats:1})/1000;
  clip.captionStart=limit(clip.captionStart,0,seg);
@@ -100,7 +101,8 @@ export function visualFilter(c,canvas,totalFrames){
  if(c.effect==='pan-left'||c.effect==='pan-right'){
   zoom='1.18';x=c.effect==='pan-left'?`(iw-iw/zoom)*(1-${elapsed})`:`(iw-iw/zoom)*${elapsed}`;
  }
- return `[0:v]fps=24,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=${w}x${h}:fps=24,format=yuv420p,ass=caption.ass[v]`;
+ const fit=c.fit==='fit'?`scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black`:`scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+ return `[0:v]fps=24,${fit},setsar=1,zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=${w}x${h}:fps=24,format=yuv420p,ass=caption.ass${c.transition==='fade'?`,fade=t=in:st=0:d=0.2,fade=t=out:st=${Math.max(0,totalFrames/24-.2).toFixed(3)}:d=0.2`:''}[v]`;
 }
 export function run(exe,args,{cwd,timeout=300000}={}){
  return new Promise((resolve,reject)=>{const p=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','pipe','pipe']});let output='',done=false;
@@ -122,7 +124,7 @@ export async function renderTimeline(project,media,{outputDir,mediaDir,onStep=()
   const args=['-hide_banner','-loglevel','error','-y'];
   if(clip.sourceType==='image')args.push('-loop','1','-framerate','24');else args.push('-ss',String(clip.sourceIn));
   args.push('-i',source);
-  const needsVoice=clip.audioMode==='narration'||clip.audioMode==='mix';
+  const needsVoice=(clip.audioMode==='narration'||clip.audioMode==='mix')&&project.voice!=='off';
   const haveSourceAudio=clip.sourceType==='video'&&asset.hasAudio===true&&['original','mix'].includes(clip.audioMode);
   let voicePath=null,voiceInput=-1;
   if(needsVoice&&clip.voiceMediaId&&byId.has(clip.voiceMediaId)){
