@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile, readdir, copyFile, stat, rename, open, rm } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 import {normalizeTimeline,renderTimeline,clipMs,timelineDuration,CANVASES} from './timeline-v2.mjs';
 import {transcribeLocal} from './stt-server.mjs';
@@ -19,6 +19,7 @@ const TRUST=process.env.STUDIO_TRUST_PROXY==='1';
 const GUEST=process.env.STUDIO_GUEST_MODE==='1';
 const GUEST_HASH=String(process.env.STUDIO_GUEST_TOKEN_HASH||'');
 const GUEST_EXPIRES=Number(process.env.STUDIO_GUEST_EXPIRES_AT||0);
+const GUEST_STOP_FILE=process.env.STUDIO_GUEST_STOP_FILE||'';
 const GUEST_LIMITS={drafts:3,previews:8,exports:5,uploads:15,bytes:160_000_000};
 const guestUsage={drafts:0,previews:0,exports:0,uploads:0,bytes:0};
 function guestQuota(key,amount=1){
@@ -27,7 +28,7 @@ function guestQuota(key,amount=1){
  guestUsage[key]+=amount;
 }
 function guestActive(){
- return GUEST&&/^[0-9a-f]{64}$/.test(GUEST_HASH)&&GUEST_EXPIRES>Date.now();
+ return GUEST&&/^[0-9a-f]{64}$/.test(GUEST_HASH)&&GUEST_EXPIRES>Date.now()&&(!GUEST_STOP_FILE||!existsSync(GUEST_STOP_FILE));
 }
 const APP_HEADER={'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"};
 const hex=()=>randomBytes(12).toString('hex');
@@ -220,6 +221,21 @@ if(req.method==='GET'&&url.pathname==='/api/setup-state'){if(GUEST)return json(r
 if(req.method==='POST'&&url.pathname==='/api/setup'){if(GUEST)throw makeError(403,'체험에서는 계정 설정을 변경할 수 없습니다.');const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
 if(req.method==='POST'&&url.pathname==='/api/login'){if(GUEST)throw makeError(403,'초대 링크로 접속하세요.');const ip=req.socket.remoteAddress||'unknown',now=Date.now();const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');const b=await data(req),cfg=await loadJson(cfgPath,null);if(!cfg)throw makeError(403,'PC에서 먼저 초기 설정을 완료하세요.');const hash=scryptSync(String(b.password||''),Buffer.from(cfg.salt,'hex'),64);if(!timingSafeEqual(hash,Buffer.from(cfg.hash,'hex'))){attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'비밀번호가 틀렸습니다.');}loginFailures.delete(ip);const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');sessions.set(token,{csrf,expires:Date.now()+7*86400000});return json(res,200,{csrf},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});}
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
+if(req.method==='GET'&&url.pathname==='/api/guest/link'){
+ if(GUEST)throw makeError(403,'관리자 전용입니다.');
+ const current=await loadJson(path.join(STATE,'guest-preview.json'),null);
+ if(!current||!Number.isInteger(current.expires)||current.expires<Date.now()||!/^[a-f0-9]{32}$/.test(current.guestId)||!/^https:\/\/[a-z0-9-]+[.]trycloudflare[.]com\/invite\/[a-f0-9]{64}$/.test(current.url))return json(res,200,{active:false});
+ const revoked=path.join(process.env.LOCALAPPDATA||'', 'StudioEditor-GuestSessions',current.guestId,'revoked');
+ return json(res,200,{active:!existsSync(revoked),url:existsSync(revoked)?null:current.url,expires:current.expires});
+}
+if(req.method==='POST'&&url.pathname==='/api/guest/stop'){
+ if(GUEST)throw makeError(403,'관리자 전용입니다.');
+ const info=await loadJson(path.join(STATE,'guest-preview.json'),null);
+ if(!info||!/^[a-f0-9]{32}$/.test(info.guestId))return json(res,200,{ok:true,active:false});
+ const dir=path.join(process.env.LOCALAPPDATA||'', 'StudioEditor-GuestSessions',info.guestId);
+ await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'revoked'),'revoked',{mode:0o600});
+ return json(res,200,{ok:true,active:false});
+}
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
 if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
