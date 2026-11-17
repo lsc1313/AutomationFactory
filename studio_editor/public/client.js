@@ -1,5 +1,6 @@
 'use strict';
 let csrf='',library=[],projects=[],project=null,selected=0,dirty=false,poll=null,aiPoll=null,aiDraft=null,previewAnimation=null,openFullAfterRender=false,renderedProjectId=null;
+let selectedMediaId=null;
 const $=id=>document.getElementById(id);
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 const rand=()=>[...crypto.getRandomValues(new Uint8Array(12))].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -10,6 +11,58 @@ $('logout').onclick=async()=>{await api('/api/logout','POST',{}).catch(()=>{});c
 async function reload(){const result=await api('/api/library');library=result.media;projects=result.projects;const last=project?.id;project=projects.find(p=>p.id===last)||projects[0]||null;if(!project){const r=await api('/api/new','POST',{});project=r.project;projects.push(project)}selected=Math.min(selected,Math.max(0,project.scenes.length-1));renderedProjectId=null;$('full-review').hidden=true;render();await updateAiStatus();}
 function isAudio(m){return m.group==='music'}
 function previewMedia(media,target){const src='/api/media/'+media.id;const e=node(media.group==='video'?'video':'img');e.src=src;if(media.group==='video'){e.muted=true;e.playsInline=true;e.loop=true;e.preload='metadata'}target.append(e);return e;}
+function renderSelectedMedia(){
+ const file=library.find(f=>f.id===selectedMediaId);
+ const panel=$('selected-media-panel');
+ panel.hidden=!file;
+ for(const btn of document.querySelectorAll('#media-list .media-item'))btn.classList.remove('active');
+ if(!file)return;
+ const index=library.indexOf(file),btn=$('media-list').children[index];
+ if(btn)btn.classList.add('active');
+ $('selected-media-name').textContent=file.name;
+ const target=$('selected-media-preview');target.replaceChildren();
+ if(file.group==='image'){
+  const img=node('img');img.src='/api/media/'+file.id;img.alt=file.name;target.append(img);
+ }else if(file.group==='video'){
+  const v=node('video');v.src='/api/media/'+file.id;v.controls=true;v.playsInline=true;v.preload='metadata';target.append(v);
+ }else{
+  const audio=node('audio');audio.src='/api/media/'+file.id;audio.controls=true;target.append(audio);
+ }
+ const sceneCount=project.scenes.filter(s=>s.mediaId===file.id).length;
+ $('selected-media-note').textContent=sceneCount
+  ?'현재 프로젝트에서 '+sceneCount+'개 장면에 사용 중입니다. 삭제하면 연결된 장면도 삭제됩니다.'
+  :'미리보기만 선택한 상태입니다. 장면에 넣으려면 추가 버튼을 누르세요.';
+ $('add-selected-scene').textContent=isAudio(file)?'+ 이 음악을 배경음악으로 선택':'+ 선택한 사진 장면 추가';
+}
+$('add-selected-scene').onclick=()=>{
+ const file=library.find(f=>f.id===selectedMediaId);
+ if(!file)return;
+ if(isAudio(file)){
+  project.bgmId=file.id;setDirty();render();return;
+ }
+ project.scenes.push({id:rand(),mediaId:file.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});
+ selected=project.scenes.length-1;setDirty();render();
+};
+$('delete-selected-media').onclick=async()=>{
+ const file=library.find(f=>f.id===selectedMediaId);if(!file)return;
+ const sceneCount=project.scenes.filter(s=>s.mediaId===file.id).length;
+ const usedVoice=project.scenes.some(s=>s.voiceMediaId===file.id);
+ const usedBgm=project.bgmId===file.id;
+ const message='정말 '+file.name+'을(를) 라이브러리에서 제거할까요?'
+  +(sceneCount?'\\n연결된 장면 '+sceneCount+'개도 삭제됩니다.':'')
+  +((usedVoice||usedBgm)?'\\n연결된 음성·배경음악도 해제됩니다.':'')
+  +'\\n원본은 PC 휴지통 보관 폴더로 이동합니다.';
+ if(!confirm(message))return;
+ try{
+  if(dirty)await save();
+  const result=await api('/api/media/remove','POST',{projectId:project.id,mediaId:file.id,confirm:true});
+  const idx=library.findIndex(f=>f.id===file.id);if(idx>=0)library.splice(idx,1);
+  project=result.project;projects=projects.map(p=>p.id===project.id?project:p);
+  selected=Math.min(selected,Math.max(0,project.scenes.length-1));
+  selectedMediaId=null;dirty=false;renderedProjectId=null;$('full-review').hidden=true;
+  render();$('save-state').textContent='미디어 삭제 완료 · 프로젝트 자동 저장됨';
+ }catch(err){alert('삭제할 수 없습니다: '+err.message);}
+};
 function setDirty(){
  dirty=true;renderedProjectId=null;
  $('full-review').hidden=true;
@@ -93,7 +146,16 @@ function render(){if(project&&!['off','ko-KR-SunHiNeural','ko-KR-InJoonNeural','
 }
  const picker=$('project-picker');picker.replaceChildren();for(const p of projects){const o=node('option',p.title);o.value=p.id;picker.append(o)}picker.value=project.id;$('project-title').value=project.title;$('voice').value=project.voice||'ko-KR-SunHiNeural';$('ai-voice').value=project.voice||'ko-KR-SunHiNeural';$('bgm-volume').value=String(Math.round((project.bgmVolume??0.16)*100));$('volume-label').textContent=$('bgm-volume').value+'%';
 const bgm=$('bgm');bgm.replaceChildren(new Option('사용 안 함',''));for(const m of library.filter(isAudio)){bgm.append(new Option(m.name,m.id))}bgm.value=project.bgmId||'';const aiBgm=$('ai-bgm');aiBgm.replaceChildren(new Option('배경음악 없음',''));for(const m of library.filter(isAudio)){aiBgm.append(new Option(m.name,m.id))}aiBgm.value=project.bgmId||'';
-const media=$('media-list');media.replaceChildren();for(const f of library){const b=node('button',undefined,'media-item '+(isAudio(f)?'audio':''));b.title=f.name;if(!isAudio(f))previewMedia(f,b);else b.append(node('div','♫  '+f.name,'audio-icon'));b.append(node('strong',f.name));b.onclick=()=>{if(isAudio(f)){project.bgmId=f.id;$('bgm').value=f.id;setDirty();return;}project.scenes.push({id:rand(),mediaId:f.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});selected=project.scenes.length-1;setDirty();render();};media.append(b)}
+const media=$('media-list');media.replaceChildren();
+for(const f of library){
+ const b=node('button',undefined,'media-item '+(isAudio(f)?'audio':'')+(f.id===selectedMediaId?' active':''));
+ b.type='button';b.title=f.name;b.setAttribute('aria-pressed',String(f.id===selectedMediaId));
+ if(!isAudio(f))previewMedia(f,b);else b.append(node('div','♫  '+f.name,'audio-icon'));
+ b.append(node('strong',f.name));
+ b.onclick=()=>{selectedMediaId=f.id;renderSelectedMedia();};
+ media.append(b);
+}
+renderSelectedMedia();
 const tl=$('timeline');tl.replaceChildren();project.scenes.forEach((s,i)=>{const file=library.find(f=>f.id===s.mediaId),b=node('button',undefined,'scene-card'+(i===selected?' active':''));if(file)previewMedia(file,b);b.append(node('span',fmt(s.duration),'time-label'),node('span',s.caption||`장면 ${i+1}`,'name'));b.onclick=()=>{selected=i;render();};tl.append(b)});
 $('total-time').textContent=fmt(safeDuration());$('bgm-track').textContent=library.find(f=>f.id===project.bgmId)?.name||'배경음악 없음';$('narration-track').textContent=project.scenes.map(s=>s.narration?'●':'○').join('  ')||'음성 대사 없음';
 stopPreview();const scene=project.scenes[selected],file=scene&&library.find(f=>f.id===scene.mediaId);$('empty-props').hidden=!!scene;$('scene-props').hidden=!scene;$('selected-label').textContent=scene?'장면 '+(selected+1)+' / '+project.scenes.length:'선택된 장면 없음';$('scene-indicator').textContent=scene?`장면 ${selected+1} / ${project.scenes.length}`:'장면 없음';$('preview-time').textContent=scene?fmt(scene.duration):'00:00';
@@ -128,7 +190,7 @@ $('preview-voice-project').onclick=()=>{stopPreview();return previewVoice(undefi
 $('ai-voice').addEventListener('change',()=>{stopPreview();void previewVoice(undefined,$('ai-voice').value)});
 $('voice').addEventListener('change',()=>{stopPreview();void previewVoice(undefined,$('voice').value)});
 
-$('upload-files').onchange=async e=>{const files=[...e.target.files],label=$('save-state');for(const file of files){try{label.textContent='업로드 중: '+file.name;const res=await fetch('/api/upload?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/octet-stream'},body:file});const result=await res.json();if(!res.ok)throw Error(result.error);library.push(result.media);if(result.media.group!=='music'){project.scenes.push({id:rand(),mediaId:result.media.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});selected=project.scenes.length-1;setDirty()}}catch(err){alert(file.name+': '+err.message)}}render();e.target.value='';};
+$('upload-files').onchange=async e=>{const files=[...e.target.files],label=$('save-state');for(const file of files){try{label.textContent='업로드 중: '+file.name;const res=await fetch('/api/upload?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/octet-stream'},body:file});const result=await res.json();if(!res.ok)throw Error(result.error);library.push(result.media);selectedMediaId=result.media.id;}catch(err){alert(file.name+': '+err.message)}}render();e.target.value='';};
 async function checkExport(){
  try{
   const state=await api('/api/export/status');
@@ -192,7 +254,7 @@ void session();
 async function updateAiStatus(){try{const x=await api('/api/ai/status');$('ai-key-btn').textContent=x.configured?'AI 연결됨 · 키 변경':'AI 키 설정';if(!x.configured)$('ai-status').textContent='Gemini 무료 사용량이 있는 API 키를 등록하면 업로드한 사진·영상 내용을 분석하고 초안을 만들 수 있습니다.';}catch(e){$('ai-status').textContent='AI 연결 확인 실패: '+e.message;}}
 $('ai-key-btn').onclick=async()=>{const key=prompt('Gemini API 키를 입력하세요. PC 로컬 설정에 저장되며 공개 화면에는 표시되지 않습니다.');if(key===null)return;try{await api('/api/ai/config','POST',{key:key.trim()});await updateAiStatus();$('ai-status').textContent='AI 키가 설정되었습니다. 업로드한 사진·영상으로 초안을 만들 수 있습니다.';}catch(e){alert(e.message)}};
 $('ai-select-all').onclick=()=>{$('ai-status').textContent='AI 초안 생성 시 현재 프로젝트에 연결된 사진·영상이 우선 사용됩니다. 장면이 없다면 업로드한 전체 미디어를 사용합니다.'};
-function aiMedia(){let ids=[...new Set(project.scenes.map(s=>s.mediaId))].filter(id=>library.some(f=>f.id===id&&f.group!=='music'));if(!ids.length)ids=library.filter(f=>f.group!=='music').map(f=>f.id);return ids.slice(0,10);}
+function aiMedia(){const all=library.filter(f=>f.group==='image'||f.group==='video');return all.slice(-10).map(f=>f.id);}
 async function pollAi(){try{const x=await api('/api/ai/draft/status');$('ai-status').textContent=x.status==='running'?'AI 작업 중: '+(x.step||'준비 중'):x.status==='failed'?'AI 실패: '+x.error:x.status==='done'?'AI 초안을 생성했습니다. 내용을 확인하고 편집기로 가져오세요.':'대기';if(x.status==='running')return;clearInterval(aiPoll);aiPoll=null;$('ai-generate').disabled=false;if(x.status==='done'&&x.projectId===project.id){aiDraft=x.draft;showAiDraft()}}catch(e){clearInterval(aiPoll);aiPoll=null;$('ai-generate').disabled=false;$('ai-status').textContent=e.message}}
 $('ai-generate').onclick=async()=>{try{const mediaIds=aiMedia();if(!mediaIds.length)throw Error('먼저 사진 또는 영상을 업로드하세요.');if(dirty)await save();const requirements=$('ai-requirements').value.trim();if(requirements.length<5)throw Error('원하는 영상을 5자 이상 설명해 주세요.');$('ai-generate').disabled=true;await api('/api/ai/draft','POST',{projectId:project.id,mediaIds,requirements,productFacts:$('ai-facts').value,style:$('ai-style').value,voice:$('ai-voice').value,bgmId:$('ai-bgm').value||null,bgmVolume:project.bgmVolume});$('ai-status').textContent='이미지 분석 및 영상 대사 생성 중…';if(aiPoll)clearInterval(aiPoll);aiPoll=setInterval(pollAi,1500);await pollAi()}catch(e){$('ai-generate').disabled=false;$('ai-status').textContent='초안 생성 실패: '+e.message}};
 function showAiDraft(){const root=$('ai-review-scenes');root.replaceChildren();$('ai-review-note').textContent=(aiDraft.notes||'AI가 생성한 장면입니다. 실제 사진과 대사의 일치 여부를 확인하세요.')+' | 음성: '+(aiDraft.voice==='off'?'없음':aiDraft.voice||'여성 기본')+' | 음악: '+(library.find(x=>x.id===aiDraft.bgmId)?.name||'없음');aiDraft.scenes.forEach((scene,i)=>{const media=library.find(f=>f.id===scene.mediaId);const div=node('div',undefined,'ai-review-scene');div.append(node('small',`장면 ${i+1} · ${media?.name||'미디어'} · ${scene.duration}초`),node('b','대사: '+scene.narration),node('p','자막: '+scene.caption));root.append(div)});$('ai-draft-review').hidden=false;$('ai-draft-review').scrollIntoView({behavior:'smooth',block:'start'})}
