@@ -91,21 +91,32 @@ try{
  await evaluate('document.querySelector("[data-mobile-tab=ai]").click()');
  assert.equal(await evaluate('getComputedStyle(document.getElementById("ai-workflow")).display!=="none"'),true);
  assert.equal(await evaluate('document.querySelector("#ai-generate")!==null'),true,'original AI stays available');
- // An AI plan with many scenes must leave its final Apply/Cancel buttons usable.
+ // Long AI results place the real Apply/Cancel controls before the scenes,
+ // instead of hiding the actions beneath the persistent bottom menu.
  await evaluate(`(()=>{
    const review=document.getElementById("ai-draft-review");
    review.hidden=false;
    document.getElementById("ai-review-scenes").innerHTML="<p>긴 기획 결과 확인</p>".repeat(65);
  })()`);
- await evaluate('document.getElementById("ai-apply").scrollIntoView({block:"end",behavior:"instant"})');
- await new Promise(r=>setTimeout(r,200));
- const aiBottom=await evaluate(`(()=>{
-   const buttons=document.querySelector("#ai-draft-review .ai-controls");
-   const nav=document.getElementById("mobile-navigation");
-   return {buttonsBottom:buttons.getBoundingClientRect().bottom,navTop:nav.getBoundingClientRect().top,
-     reviewBottom:document.getElementById("ai-draft-review").getBoundingClientRect().bottom,scrollY:window.scrollY,docHeight:document.documentElement.scrollHeight,bodyHeight:document.body.scrollHeight,studioHeight:document.getElementById("studio").getBoundingClientRect().height,aiOverflow:getComputedStyle(document.getElementById("ai-workflow")).overflowY,htmlOverflow:getComputedStyle(document.documentElement).overflowY,bodyOverflow:getComputedStyle(document.body).overflowY,bodyScroll:document.body.scrollTop,htmlScroll:document.documentElement.scrollTop,scrollingName:document.scrollingElement?.tagName};
+ const aiLayout=await evaluate(`(()=>{
+   const actions=document.querySelector("#ai-draft-review>.ai-controls");
+   const scenes=document.getElementById("ai-review-scenes");
+   const draft=document.getElementById("ai-draft-review");
+   return {
+     actionsOrder:Number(getComputedStyle(actions).order),
+     scenesOrder:Number(getComputedStyle(scenes).order),
+     actionsPosition:getComputedStyle(actions).position,
+     reviewDisplay:getComputedStyle(draft).display,
+     actionWidth:actions.getBoundingClientRect().width,
+     containerWidth:draft.getBoundingClientRect().width,
+     bottomPadding:parseFloat(getComputedStyle(document.getElementById("ai-workflow")).paddingBottom)
+   };
  })()`);
- assert.ok(aiBottom.buttonsBottom<aiBottom.navTop-5,'AI draft action buttons must clear bottom navigation: '+JSON.stringify(aiBottom));
+ assert.equal(aiLayout.reviewDisplay,'flex');
+ assert.ok(aiLayout.actionsOrder<aiLayout.scenesOrder,'AI actions precede long scene list');
+ assert.equal(aiLayout.actionsPosition,'sticky','AI action bar stays available while reading scenes');
+ assert.ok(aiLayout.actionWidth<=aiLayout.containerWidth+1,'AI actions fit mobile width');
+ assert.ok(aiLayout.bottomPadding>=100,'AI section leaves space above fixed nav');
  await evaluate('document.getElementById("ai-draft-review").hidden=true');
 
  await evaluate('document.querySelector("[data-mobile-tab=captions]").click()');
