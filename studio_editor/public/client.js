@@ -131,11 +131,10 @@ function positionEditorTools(){
  const mobile=window.matchMedia('(max-width: 900px)').matches;
  if(mobile){
   if(ai.previousElementSibling!==mediaPanel)ai.before(mediaPanel);
-  const preview=main.querySelector('.preview-wrap');
   const details=document.getElementById('mobile-clip-details');
-  if(details&&preview.nextElementSibling!==details)preview.after(details);
-  const anchor=details||preview;
-  if(anchor.nextElementSibling!==props)anchor.after(props);
+  const anchor=main.querySelector('.worktop');
+  if(details&&details.previousElementSibling!==anchor)anchor.after(details);
+  if((details||anchor).nextElementSibling!==props)(details||anchor).after(props);
   const timeline=main.querySelector('.timeline-wrap');
   if(timeline.nextElementSibling!==settings)timeline.after(settings);
  }else{
