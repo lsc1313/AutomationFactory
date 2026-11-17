@@ -96,7 +96,6 @@ try{
  await evaluate('document.querySelector("[data-mobile-tab=sound]").click()');
  assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display'),"none",'project settings must not appear under sound tracks');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-audio-track")).display!=="none"'),true);
- assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display!=="none"'),true);
  await evaluate('document.querySelector("[data-mobile-tab=edit]").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".properties")).display'),"none");
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-clip-settings")).display'),"none");
