@@ -20,12 +20,12 @@ const GUEST=process.env.STUDIO_GUEST_MODE==='1';
 const GUEST_HASH=String(process.env.STUDIO_GUEST_TOKEN_HASH||'');
 const GUEST_EXPIRES=Number(process.env.STUDIO_GUEST_EXPIRES_AT||0);
 const GUEST_STOP_FILE=process.env.STUDIO_GUEST_STOP_FILE||'';
-const GUEST_LIMITS={drafts:3,previews:8,exports:5,uploads:15,bytes:160_000_000};
-const guestUsage={drafts:0,previews:0,exports:0,uploads:0,bytes:0};
+const GUEST_LIMITS={drafts:3,previews:8,exports:5,uploads:15,bytes:160_000_000,transcriptions:2};
+const guestUsage={drafts:0,previews:0,exports:0,uploads:0,bytes:0,transcriptions:0};
 let guestLaunchAt=0;
 function guestQuota(key,amount=1){
  if(!GUEST)return;
- if(guestUsage[key]+amount>GUEST_LIMITS[key])throw makeError(429,'지인 체험의 '+({drafts:'AI 초안',previews:'음성 미리듣기',exports:'MP4 제작',uploads:'업로드 개수',bytes:'총 업로드 용량'}[key]||'')+' 제한에 도달했습니다.');
+ if(guestUsage[key]+amount>GUEST_LIMITS[key])throw makeError(429,'지인 체험의 '+({drafts:'AI 초안',previews:'음성 미리듣기',exports:'MP4 제작',uploads:'업로드 개수',bytes:'총 업로드 용량',transcriptions:'자동 자막 인식'}[key]||'')+' 제한에 도달했습니다.');
  guestUsage[key]+=amount;
 }
 function guestActive(){
@@ -281,6 +281,7 @@ if(req.method==='GET'&&sampleUrl){
 }
 if(req.method==='GET'&&url.pathname==='/api/stt/status')return json(res,200,sttJob);
 if(req.method==='POST'&&url.pathname==='/api/stt'){
+ guestQuota('transcriptions');
  if(sttJob.status==='running')throw makeError(409,'다른 음성 인식 작업이 진행 중입니다.');
  const b=await data(req),projects=await loadJson(projectsPath,[]),files=await enrichMedia(await loadJson(path.join(STATE,'media.json'),[]));
  const project=projects.find(p=>p.id===b.projectId);
@@ -291,7 +292,7 @@ if(req.method==='POST'&&url.pathname==='/api/stt'){
  if(media.hasAudio===false)throw makeError(400,'선택한 영상에 원본 음성 트랙이 없습니다.');
  const begin=Math.max(0,Number(clip.sourceIn||0)),end=Math.min(media.duration||1200,Number(clip.sourceOut||clip.duration||60));
  const duration=Math.max(0,end-begin);
- if(duration<.2||duration>1200)throw makeError(400,'한 번에 0.2초~20분 구간의 음성을 인식할 수 있습니다.');
+ if(GUEST&&duration>90)throw makeError(400,'체험 음성 인식은 최대 90초입니다.');if(duration<.2||duration>1200)throw makeError(400,'한 번에 0.2초~20분 구간의 음성을 인식할 수 있습니다.');
  sttJob={status:'running',error:null,step:'CPU 음성 인식 준비',projectId:project.id,clipId:clip.id,segments:null};
  void transcribeLocal({file:path.join(mediaDir,media.id+'.'+media.ext),start:begin,duration,workDir:path.join(STATE,'stt'),
   onStep:step=>{sttJob.step=step}
