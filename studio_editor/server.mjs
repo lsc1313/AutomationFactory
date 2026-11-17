@@ -235,10 +235,64 @@ if(GUEST&&req.method==='GET'&&url.pathname.startsWith('/invite/')){
  sessions.set(sid,{csrf,expires:Math.min(GUEST_EXPIRES,Date.now()+maxAge*1000)});
  res.writeHead(303,{...APP_HEADER,'Location':'/app','Set-Cookie':`studio_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}; Secure`});res.end();return;
 }
-if(req.method==='GET'&&url.pathname==='/api/setup-state'){if(GUEST)return json(res,200,{setupNeeded:false});const config=await loadJson(cfgPath,null);return json(res,200,{setupNeeded:!config&&local&&addrLocal(req)});}
-if(req.method==='POST'&&url.pathname==='/api/setup'){if(GUEST)throw makeError(403,'체험에서는 계정 설정을 변경할 수 없습니다.');const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
-if(req.method==='POST'&&url.pathname==='/api/login'){if(GUEST)throw makeError(403,'초대 링크로 접속하세요.');const ip=req.socket.remoteAddress||'unknown',now=Date.now();const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');const b=await data(req),cfg=await loadJson(cfgPath,null);if(!cfg)throw makeError(403,'PC에서 먼저 초기 설정을 완료하세요.');const hash=scryptSync(String(b.password||''),Buffer.from(cfg.salt,'hex'),64);if(!timingSafeEqual(hash,Buffer.from(cfg.hash,'hex'))){attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'비밀번호가 틀렸습니다.');}loginFailures.delete(ip);const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');sessions.set(token,{csrf,expires:Date.now()+7*86400000});return json(res,200,{csrf},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});}
-const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
+
+if(req.method==='GET'&&url.pathname==='/api/setup-state'){
+ const legacy=await loadJson(cfgPath,null);
+ const accounts=await loadJson(accountsPath,[]);
+ return json(res,200,{setupNeeded:!legacy&&!accounts.length&&local&&addrLocal(req),registrationOpen:true,legacyAvailable:!!legacy});
+}
+if(req.method==='POST'&&url.pathname==='/api/setup'){
+ if(!local||!addrLocal(req)||await loadJson(cfgPath,null)||(await loadJson(accountsPath,[])).length)throw makeError(403,'초기 설정은 비어 있는 PC에서만 허용됩니다.');
+ const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');
+ const salt=randomBytes(16).toString('hex');
+ await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});
+ return json(res,201,{ok:true});
+}
+if(req.method==='POST'&&url.pathname==='/api/register'){
+ const ip=req.socket.remoteAddress||'unknown',now=Date.now();
+ const attempts=(loginFailures.get('register:'+ip)||[]).filter(t=>now-t<900000);
+ if(attempts.length>=10)throw makeError(429,'가입 시도가 많습니다. 잠시 후 다시 시도하세요.');
+ attempts.push(now);loginFailures.set('register:'+ip,attempts);
+ const b=await data(req),email=String(b.email||'').trim().toLowerCase();
+ if(!/^[a-z0-9][a-z0-9._+-]{0,62}@[a-z0-9.-]{1,180}\.[a-z]{2,20}$/.test(email))throw makeError(400,'올바른 이메일 주소를 입력하세요.');
+ if(typeof b.password!=='string'||b.password.length<12||b.password.length>256)throw makeError(400,'비밀번호는 12~256자여야 합니다.');
+ const accounts=await loadJson(accountsPath,[]);
+ if(accounts.some(a=>a.email===email))throw makeError(409,'이미 등록된 이메일입니다.');
+ if(accounts.length>=25)throw makeError(429,'시험판 계정 한도에 도달했습니다.');
+ const legacy=await loadJson(cfgPath,null);
+ const id=!legacy&&accounts.length===0?'owner':randomBytes(16).toString('hex');
+ const salt=randomBytes(16).toString('hex');
+ const account={id,email,salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex'),createdAt:new Date().toISOString()};
+ accounts.push(account);await saveJson(accountsPath,accounts);
+ const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');
+ sessions.set(token,{csrf,userId:id,email,expires:Date.now()+7*86400000});
+ return json(res,201,{ok:true,csrf,email},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});
+}
+if(req.method==='POST'&&url.pathname==='/api/login'){
+ const ip=req.socket.remoteAddress||'unknown',now=Date.now();
+ const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);
+ if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');
+ const b=await data(req),email=String(b.email||'').trim().toLowerCase();
+ const accounts=await loadJson(accountsPath,[]);
+ let account=accounts.find(a=>a.email===email);
+ if(!account&&(!email||email==='owner')){
+  const legacy=await loadJson(cfgPath,null);
+  if(legacy)account={id:'owner',email:'owner',salt:legacy.salt,hash:legacy.hash};
+ }
+ if(!account||typeof b.password!=='string'||b.password.length>256){
+  attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'계정 또는 비밀번호가 올바르지 않습니다.');
+ }
+ const supplied=scryptSync(b.password,Buffer.from(account.salt,'hex'),64),expected=Buffer.from(account.hash,'hex');
+ if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected)){
+  attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'계정 또는 비밀번호가 올바르지 않습니다.');
+ }
+ loginFailures.delete(ip);
+ const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');
+ sessions.set(token,{csrf,userId:account.id,email:account.email,expires:Date.now()+7*86400000});
+ return json(res,200,{csrf,email:account.email},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});
+}
+const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');
+ requestScope.enterWith({userId:session.userId||'owner'});if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
 if(req.method==='GET'&&url.pathname==='/api/guest/status'){
  if(GUEST)throw makeError(403,'관리자 전용입니다.');
  const p=await loadJson(path.join(STATE,'guest-progress.json'),null);
@@ -300,7 +354,7 @@ if(req.method==='POST'&&url.pathname==='/api/guest/stop'){
  await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'revoked'),'revoked',{mode:0o600});
  return json(res,200,{ok:true,active:false});
 }
-if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf,guest:GUEST,expires:GUEST?GUEST_EXPIRES:null});
+if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf,email:session.email||'owner',guest:false});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
 if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
  guestQuota('previews');
