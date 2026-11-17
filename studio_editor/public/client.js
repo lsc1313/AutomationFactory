@@ -5,7 +5,13 @@ const $=id=>document.getElementById(id);
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 const rand=()=>[...crypto.getRandomValues(new Uint8Array(12))].map(x=>x.toString(16).padStart(2,'0')).join('');
 async function api(url,method='GET',body){const opt={method,credentials:'same-origin',headers:{}};if(body!==undefined){opt.headers['Content-Type']='application/json';opt.headers['X-CSRF-Token']=csrf;opt.body=JSON.stringify(body);}const res=await fetch(url,opt);const obj=await res.json();if(!res.ok)throw Error(obj.error||'오류');return obj;}
-async function session(){try{const x=await api('/api/me');csrf=x.csrf;$('gate').hidden=true;$('studio').hidden=false;await reload();}catch{const setup=await api('/api/setup-state').catch(()=>({setupNeeded:false}));$('gate').hidden=false;$('studio').hidden=true;$('access-note').textContent=setup.setupNeeded?'처음 실행입니다. 이 PC에서 12자 이상 관리자 비밀번호를 만들어 주세요.':'설정한 비밀번호로 로그인하세요.';$('login-btn').textContent=setup.setupNeeded?'첫 계정 생성':'로그인';$('access').dataset.setup=setup.setupNeeded?'yes':'no';}}
+async function session(){try{const x=await api('/api/me');csrf=x.csrf;$('gate').hidden=true;$('studio').hidden=false;
+ document.body.dataset.guestMode=x.guest?'true':'false';
+ $('guest-link-btn').hidden=Boolean(x.guest);
+ $('guest-stop-btn').hidden=true;
+ $('ai-key-btn').hidden=Boolean(x.guest);
+ $('guest-notice').hidden=!x.guest;
+ await reload();}catch{const setup=await api('/api/setup-state').catch(()=>({setupNeeded:false}));$('gate').hidden=false;$('studio').hidden=true;$('access-note').textContent=setup.setupNeeded?'처음 실행입니다. 이 PC에서 12자 이상 관리자 비밀번호를 만들어 주세요.':'설정한 비밀번호로 로그인하세요.';$('login-btn').textContent=setup.setupNeeded?'첫 계정 생성':'로그인';$('access').dataset.setup=setup.setupNeeded?'yes':'no';}}
 $('access').onsubmit=async e=>{e.preventDefault();const pass=$('password').value;try{if(e.target.dataset.setup==='yes')await api('/api/setup','POST',{password:pass});const x=await api('/api/login','POST',{password:pass});csrf=x.csrf;await session();}catch(err){$('access-note').textContent='오류: '+err.message;}};
 $('logout').onclick=async()=>{await api('/api/logout','POST',{}).catch(()=>{});csrf='';await session();};
 async function reload(){const result=await api('/api/library');library=result.media;projects=result.projects;const last=project?.id;project=projects.find(p=>p.id===last)||projects[0]||null;if(!project){const r=await api('/api/new','POST',{});project=r.project;projects.push(project)}selected=Math.min(selected,Math.max(0,project.scenes.length-1));renderedProjectId=null;$('full-review').hidden=true;render();await updateAiStatus();}

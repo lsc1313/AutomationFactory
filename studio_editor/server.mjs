@@ -241,7 +241,7 @@ if(req.method==='POST'&&url.pathname==='/api/guest/stop'){
  await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'revoked'),'revoked',{mode:0o600});
  return json(res,200,{ok:true,active:false});
 }
-if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf});
+if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf,guest:GUEST,expires:GUEST?GUEST_EXPIRES:null});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
 if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
  guestQuota('previews');

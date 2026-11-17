@@ -102,3 +102,7 @@
 #guest-link-btn{background:#eff4ee;color:#3c6452;border:1px solid #c7d9ca}
 #guest-stop-btn{background:#fff5f4;color:#914f43;border:1px solid #dfb9b1}
 @media(max-width:900px){.topactions #guest-link-btn{grid-column:auto}.topactions #guest-stop-btn:not([hidden]){grid-column:auto}}
+
+#guest-notice{background:#eef5eb;color:#3e5d49;border:1px solid #cbdcc7;border-radius:10px;margin:12px;padding:12px;font-size:12px;line-height:1.55}
+#guest-notice[hidden]{display:none}
+body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-stop-btn,body[data-guest-mode=true] #ai-key-btn{display:none!important}
