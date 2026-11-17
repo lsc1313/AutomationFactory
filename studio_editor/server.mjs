@@ -143,18 +143,18 @@ export async function synthesizeVoice(voice,text,out,cwd,runner=run,options={}){
 }
 const voiceSamples=new Map();
 let voicePreviewBusy=false;
-const voiceSampleDir=path.join(userRoot(),'voice-previews');
+const voiceSampleDir=()=>path.join(userRoot(),'voice-previews');
 async function makeVoicePreview(voice,text){
  const normalized=safeText(text,160);
  if(!VOICES.includes(voice)||voice==='off')throw makeError(400,'미리듣기 음성을 선택하세요.');
  if(!normalized)throw makeError(400,'대사가 비어 있습니다.');
  const id=createHash('sha256').update(voice+'|'+normalized).digest('hex').slice(0,32);
- const filename=path.join(voiceSampleDir,id+'.mp3');
+ const filename=path.join(voiceSampleDir(),id+'.mp3');
  try{if((await stat(filename)).size>500)return id;}catch{}
  if(voicePreviewBusy)throw makeError(409,'다른 음성 미리듣기를 생성 중입니다.');
  voicePreviewBusy=true;
  try{
-  await mkdir(voiceSampleDir,{recursive:true});
+  await mkdir(voiceSampleDir(),{recursive:true});
   await synthesizeVoice(voice,normalized,filename,voiceSampleDir);
  }finally{voicePreviewBusy=false;}
  return id;
@@ -225,17 +225,6 @@ if(!local){
 }
 if(!['GET','POST'].includes(req.method))throw makeError(405,'지원하지 않는 요청');if(req.method==='POST'){const origin=req.headers.origin;if(origin&&new URL(origin).host.toLowerCase()!==hostRaw.toLowerCase())throw makeError(403,'외부 출처 차단');}
 if(req.method==='GET'&&['/','/app','/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css'].includes(url.pathname)){const asset=['/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css'].includes(url.pathname)?url.pathname.slice(1):'index.html';const p=path.join(ROOT,'public',asset);res.writeHead(200,{...APP_HEADER,'Content-Type':mime(path.extname(p))});res.end(await readFile(p));return;}
-if(GUEST&&req.method==='GET'&&url.pathname.startsWith('/invite/')){
- const candidate=url.pathname.slice('/invite/'.length);
- if(!/^[0-9a-f]{64}$/.test(candidate))throw makeError(403,'올바르지 않은 체험 링크입니다.');
- const received=createHash('sha256').update(candidate).digest('hex');
- if(!timingSafeEqual(Buffer.from(received,'hex'),Buffer.from(GUEST_HASH,'hex')))throw makeError(403,'체험 초대 링크가 유효하지 않습니다.');
- const sid=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');
- const maxAge=Math.min(7200,Math.max(1,Math.floor((GUEST_EXPIRES-Date.now())/1000)));
- sessions.set(sid,{csrf,expires:Math.min(GUEST_EXPIRES,Date.now()+maxAge*1000)});
- res.writeHead(303,{...APP_HEADER,'Location':'/app','Set-Cookie':`studio_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}; Secure`});res.end();return;
-}
-
 if(req.method==='GET'&&url.pathname==='/api/setup-state'){
  const legacy=await loadJson(cfgPath,null);
  const accounts=await loadJson(accountsPath,[]);
@@ -293,67 +282,6 @@ if(req.method==='POST'&&url.pathname==='/api/login'){
 }
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');
  requestScope.enterWith({userId:session.userId||'owner'});if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
-if(req.method==='GET'&&url.pathname==='/api/guest/status'){
- if(GUEST)throw makeError(403,'관리자 전용입니다.');
- const p=await loadJson(path.join(STATE,'guest-progress.json'),null);
- if(!p||!['download','launching','starting','tunnel','ready','failed'].includes(p.phase)||!Number.isFinite(p.at)||Math.abs(Date.now()-p.at)>10*60*1000)return json(res,200,{phase:'idle',message:'PC에서 연결 상태 기록을 받지 못했습니다. 체험 서버 실행을 확인하세요.'});
- if(p.phase==='launching'&&Date.now()-p.at>15000)return json(res,200,{phase:'failed',message:'Windows 체험 서버 실행 명령이 응답하지 않습니다. PC의 StudioEditor/private/guest-launch.log를 확인하세요.'});
- const messages={
-  launching:'PC에서 체험 서버 실행 명령을 시작했습니다.',
-  download:'Cloudflare 연결 프로그램을 다운로드하고 있습니다.',
-  starting:'지인 전용 서버를 준비하고 있습니다.',
-  tunnel:'Cloudflare 외부 연결을 생성하고 있습니다.',
-  ready:'체험 링크가 준비되었습니다.'
- };
- const message=p.phase==='failed'&&typeof p.message==='string'&&p.message.length<=250?p.message:(messages[p.phase]||'연결 상태를 확인 중입니다.');
- return json(res,200,{phase:p.phase,message});
-}
-if(req.method==='POST'&&url.pathname==='/api/guest/start'){
- if(GUEST)throw makeError(403,'관리자 전용입니다.');
- if(process.platform!=='win32')throw makeError(501,'지인 체험 링크 자동 시작은 Windows PC에서 지원합니다.');
- const current=await loadJson(path.join(STATE,'guest-preview.json'),null);
- const active=current&&Number.isInteger(current.expires)&&current.expires>Date.now()&&/^[a-f0-9]{32}$/.test(current.guestId)&&
-  !existsSync(path.join(process.env.LOCALAPPDATA||'', 'StudioEditor-GuestSessions', current.guestId,'revoked'));
- if(active)return json(res,200,{started:true,alreadyRunning:true});
- if(Date.now()-guestLaunchAt<90000)return json(res,202,{started:true,launching:true});
- const file=path.join(ROOT,'windows','start-guest-preview.ps1');
- if(!existsSync(file))throw makeError(503,'체험 링크 생성 스크립트를 찾을 수 없습니다. 편집기를 업데이트하세요.');
- await mkdir(STATE,{recursive:true});
- await saveJson(path.join(STATE,'guest-progress.json'),{phase:'launching',message:'PC에서 체험 서버 실행 명령을 시작했습니다.',at:Date.now()});
- const log=openSync(path.join(STATE,'guest-launch.log'),'a');
- try{
-  const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',file],
-   {cwd:ROOT,windowsHide:true,detached:true,stdio:['ignore',log,log]});
-  child.once('error',async()=>{
-   guestLaunchAt=0;
-   await saveJson(path.join(STATE,'guest-progress.json'),{phase:'failed',message:'체험 링크 실행 도구를 시작하지 못했습니다. Node와 PowerShell 실행 설정을 확인하세요.',at:Date.now()}).catch(()=>{});
-  });
-  child.once('exit',async(code)=>{
-   if(code===0)return;
-   const progress=await loadJson(path.join(STATE,'guest-progress.json'),null).catch(()=>null);
-   if(progress?.phase==='failed'||progress?.phase==='ready')return;
-   await saveJson(path.join(STATE,'guest-progress.json'),{phase:'failed',message:'체험 서버 또는 외부 연결 프로그램이 종료되었습니다. PC의 guest-launch.log를 확인하세요.',at:Date.now()}).catch(()=>{});
-  });
-  child.unref();
-  guestLaunchAt=Date.now();
- }finally{closeSync(log);}
- return json(res,202,{started:true,launching:true});
-}
-if(req.method==='GET'&&url.pathname==='/api/guest/link'){
- if(GUEST)throw makeError(403,'관리자 전용입니다.');
- const current=await loadJson(path.join(STATE,'guest-preview.json'),null);
- if(!current||!Number.isInteger(current.expires)||current.expires<Date.now()||!/^[a-f0-9]{32}$/.test(current.guestId)||!/^https:\/\/[a-z0-9-]+[.]trycloudflare[.]com\/invite\/[a-f0-9]{64}$/.test(current.url))return json(res,200,{active:false});
- const revoked=path.join(process.env.LOCALAPPDATA||'', 'StudioEditor-GuestSessions',current.guestId,'revoked');
- return json(res,200,{active:!existsSync(revoked),url:existsSync(revoked)?null:current.url,expires:current.expires});
-}
-if(req.method==='POST'&&url.pathname==='/api/guest/stop'){
- if(GUEST)throw makeError(403,'관리자 전용입니다.');
- const info=await loadJson(path.join(STATE,'guest-preview.json'),null);
- if(!info||!/^[a-f0-9]{32}$/.test(info.guestId))return json(res,200,{ok:true,active:false});
- const dir=path.join(process.env.LOCALAPPDATA||'', 'StudioEditor-GuestSessions',info.guestId);
- await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'revoked'),'revoked',{mode:0o600});
- return json(res,200,{ok:true,active:false});
-}
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf,email:session.email||'owner',guest:false});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
 if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
@@ -365,11 +293,11 @@ if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
 }
 const sampleUrl=url.pathname.match(/^[/]api[/]voice[/]sample[/]([0-9a-f]{32})[.]mp3$/);
 if(req.method==='GET'&&sampleUrl){
- const filepath=path.join(voiceSampleDir,sampleUrl[1]+'.mp3');
+ const filepath=path.join(voiceSampleDir(),sampleUrl[1]+'.mp3');
  let bytes;try{bytes=await readFile(filepath)}catch{throw makeError(404,'음성 미리듣기가 아직 준비되지 않았습니다.')}
  res.writeHead(200,{...APP_HEADER,'Content-Type':'audio/mpeg'});res.end(bytes);return;
 }
-if(req.method==='GET'&&url.pathname==='/api/stt/status')return json(res,200,sttJob);
+if(req.method==='GET'&&url.pathname==='/api/stt/status')return json(res,200,ownedJob(sttJob));
 if(req.method==='POST'&&url.pathname==='/api/stt'){
  guestQuota('transcriptions');
  if(sttJob.status==='running')throw makeError(409,'다른 음성 인식 작업이 진행 중입니다.');
@@ -383,17 +311,17 @@ if(req.method==='POST'&&url.pathname==='/api/stt'){
  const begin=Math.max(0,Number(clip.sourceIn||0)),end=Math.min(media.duration||1200,Number(clip.sourceOut||clip.duration||60));
  const duration=Math.max(0,end-begin);
  if(GUEST&&duration>90)throw makeError(400,'체험 음성 인식은 최대 90초입니다.');if(duration<.2||duration>1200)throw makeError(400,'한 번에 0.2초~20분 구간의 음성을 인식할 수 있습니다.');
- sttJob={status:'running',error:null,step:'CPU 음성 인식 준비',projectId:project.id,clipId:clip.id,segments:null};
+ sttJob={ownerId:currentUser(),status:'running',error:null,step:'CPU 음성 인식 준비',projectId:project.id,clipId:clip.id,segments:null};
  void transcribeLocal({file:path.join(userMediaDir(),media.id+'.'+media.ext),start:begin,duration,workDir:path.join(userRoot(),'stt'),
   onStep:step=>{sttJob.step=step}
  }).then(result=>{
-  sttJob={status:'done',error:null,step:'음성 인식 완료',projectId:project.id,clipId:clip.id,segments:result.segments,language:result.language};
- }).catch(e=>{sttJob={status:'failed',error:e.message.slice(0,650),step:'실패',projectId:project.id,clipId:clip.id,segments:null}});
+  sttJob={ownerId:currentUser(),status:'done',error:null,step:'음성 인식 완료',projectId:project.id,clipId:clip.id,segments:result.segments,language:result.language};
+ }).catch(e=>{sttJob={ownerId:currentUser(),status:'failed',error:e.message.slice(0,650),step:'실패',projectId:project.id,clipId:clip.id,segments:null}});
  return json(res,202,{status:'running'});
 }
-if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
+if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:ownedJob({status:draftJob.status,step:draftJob.step,error:draftJob.error,ownerId:draftJob.ownerId})});
 if(req.method==='POST'&&url.pathname==='/api/ai/config'){if(GUEST)throw makeError(403,'체험 사용자는 AI 키를 변경할 수 없습니다.');const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath(),{geminiKey:b.key});return json(res,200,{configured:true});}
-if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,draftJob);return json(res,200,{status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId});}
+if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,ownedJob(draftJob));return json(res,200,ownedJob({status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId,ownerId:draftJob.ownerId}));}
 if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  guestQuota('drafts');
  if(draftJob.status==='running')throw makeError(409,'AI가 다른 영상 초안을 작성하고 있습니다.');
@@ -408,14 +336,14 @@ if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  const bgmId=b.bgmId||null;
  if(bgmId&&!files.some(f=>f.id===bgmId&&f.group==='music'))throw makeError(400,'등록된 배경음악만 선택할 수 있습니다.');
  const bgmVolume=Math.max(0,Math.min(1,Number(b.bgmVolume??0.16)||0));
- draftJob={status:'running',step:'사진 확인 준비',error:null,projectId:project.id,draft:null};
+ draftJob={ownerId:currentUser(),status:'running',step:'사진 확인 준비',error:null,projectId:project.id,draft:null};
  void generateAiDraft({key,media,requirements:b.requirements,productFacts:b.productFacts,style:[b.style,'선택 음성 '+voice,'선택 음악 '+(files.find(f=>f.id===bgmId)?.name||'없음')].join(' / '),
   mediaPath:f=>path.join(userMediaDir(),f.id+'.'+f.ext),onStep:step=>{draftJob.step=step}}).then(draft=>{
-  draftJob={status:'done',step:'수정 가능한 영상 초안 생성 완료',error:null,projectId:project.id,draft:{...draft,voice,bgmId,bgmVolume}};
- }).catch(e=>{draftJob={status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
+  draftJob={ownerId:currentUser(),status:'done',step:'수정 가능한 영상 초안 생성 완료',error:null,projectId:project.id,draft:{...draft,voice,bgmId,bgmVolume}};
+ }).catch(e=>{draftJob={ownerId:currentUser(),status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
  return json(res,202,{status:'running'});
 }
-if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectFile(),[]),media=await enrichMedia(await loadJson(mediaListFile(),[]));return json(res,200,{projects,media,export:exportJob});}
+if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectFile(),[]),media=await enrichMedia(await loadJson(mediaListFile(),[]));return json(res,200,{projects,media,export:ownedJob(exportJob)});}
 if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectFile(),[]),media=await loadJson(mediaListFile(),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}
 else{
  if(projects[idx].schemaVersion!==2&&value.schemaVersion===2){
@@ -502,11 +430,11 @@ if(req.method==='GET'&&mediaMatch){
  headers['Content-Length']=end-start+1;res.writeHead(range?206:200,headers);
  createReadStream(filepath,{start,end}).on('error',()=>res.destroy()).pipe(res);return;
 }
-if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
-if(req.method==='POST'&&url.pathname==='/api/export'){guestQuota('exports');if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectFile(),[]),media=await loadJson(mediaListFile(),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{userOutputDir(),userMediaDir(),onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
+if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,ownedJob(exportJob));
+if(req.method==='POST'&&url.pathname==='/api/export'){guestQuota('exports');if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectFile(),[]),media=await loadJson(mediaListFile(),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={ownerId:currentUser(),status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{userOutputDir(),userMediaDir(),onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={ownerId:currentUser(),status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={ownerId:currentUser(),status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,ownedJob(exportJob));}
 const download=url.pathname.match(/^[/]api[/]export[/]([0-9a-f]{24}[.]mp4)$/);
 if(req.method==='GET'&&download){
- if(exportJob.status!=='done'||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');
+ if(exportJob.status!=='done'||exportJob.ownerId!==currentUser()||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');
  const filepath=path.join(userOutputDir(),download[1]),file=await stat(filepath);
  const range=String(req.headers.range||''),match=range.match(/^bytes=(\d*)-(\d*)$/);
  const headers={...APP_HEADER,'Content-Type':'video/mp4','Accept-Ranges':'bytes','Content-Disposition':url.searchParams.has('download')?`attachment; filename="studio-${download[1]}"`:'inline'};
