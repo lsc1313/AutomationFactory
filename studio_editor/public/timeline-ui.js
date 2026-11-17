@@ -6,6 +6,9 @@
  const safeNum=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
  let playhead=0,dragSource=-1;
+ const undoStack=[],redoStack=[];let historyProjectId=null;
+ function snapshot(){return JSON.stringify({scenes:project.scenes,textClips:project.textClips||[],audioClips:project.audioClips||[],ratio:project.ratio,selected,playhead})}
+ function restore(text){const v=JSON.parse(text);project.scenes=v.scenes;project.textClips=v.textClips;project.audioClips=v.audioClips;project.ratio=v.ratio;selected=v.selected;playhead=v.playhead;setDirty();render()}
  function duration(clip){
   if(!clip)return 0;
   const speed=clamp(safeNum(clip.speed,1),.5,2),repeats=clamp(safeNum(clip.repeats,1),1,40);
@@ -30,7 +33,9 @@
  }
  function selectedScene(){return project?.scenes?.[selected]||null}
  function applyChange(fn){
-  if(!project)return;ensureV2();fn();setDirty();render();
+  if(!project)return;ensureV2();
+  undoStack.push(snapshot());if(undoStack.length>80)undoStack.shift();redoStack.length=0;
+  fn();setDirty();render();
  }
  function makeUI(){
   if(get('v2-editor'))return;
@@ -42,6 +47,7 @@
     <label>재생 위치<input id="v2-playhead" type="range" min="0" max="1000" value="0"><output id="v2-time">00:00 / 00:00</output></label>
    </div>
    <div class="v2-actions">
+    <button id="v2-undo">↶ 실행 취소</button><button id="v2-redo">↷ 다시 실행</button>
     <button id="v2-split">✂ 현재 위치에서 분할</button>
     <button id="v2-repeat">↻ 클립 복제</button>
     <button id="v2-remove" class="danger">선택 클립 삭제</button>
@@ -68,6 +74,8 @@
    <div class="v2-subtitle-track"><div class="v2-heading"><b>독립 자막 트랙</b><button id="v2-add-text" type="button">+ 현재 위치에 자막 삽입</button></div><div class="v2-stt-bar"><button id="v2-stt" type="button">🎙 선택 영상 음성 → 자동 자막</button><small id="v2-stt-status">무료 CPU 음성 인식 (최초 실행 시 모델 다운로드)</small></div><div id="v2-text-clips" class="v2-text-clips"></div></div>`;
   section.insertAdjacentHTML('beforeend',`<div class="v2-audio-track"><div class="v2-heading"><b>음악·효과음 오디오 트랙</b><button id="v2-add-audio" type="button">+ 음악·효과음 배치</button></div><div id="v2-audio-clips"></div></div>`);
   document.querySelector('.timeline-wrap').before(section);
+  get('v2-undo').onclick=()=>{if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop())};
+  get('v2-redo').onclick=()=>{if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop())};
   get('v2-ratio').onchange=e=>applyChange(()=>project.ratio=e.target.value);
   get('v2-add-audio').onclick=()=>{
    const audio=library.find(f=>f.id===selectedMediaId&&f.group==='music')||library.find(f=>f.group==='music');
@@ -205,7 +213,10 @@
   if(!(project.audioClips||[]).length)wrap.append(create('small','추가 음악·효과음 없음 — 기본 배경음악은 프로젝트 설정에서 선택하세요.'));
  }
  function update(){
-  if(!project)return;ensureV2();makeUI();
+  if(!project)return;
+  if(historyProjectId!==project.id){undoStack.length=0;redoStack.length=0;historyProjectId=project.id;playhead=0;}
+  ensureV2();makeUI();
+  get('v2-undo').disabled=!undoStack.length;get('v2-redo').disabled=!redoStack.length;
   get('v2-ratio').value=project.ratio||'9:16';
   get('v2-clip-settings').hidden=!selectedScene();
   get('v2-stt').hidden=selectedScene()?.sourceType!=='video';
