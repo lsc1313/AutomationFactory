@@ -70,3 +70,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create
 ```
 
 선택: ZIP 안의 `windows/Install-StudioEditor.cmd`를 더블클릭하는 방법도 있습니다. 설치·업데이트 모두 같은 실행으로 처리합니다. 설치 위치는 `%LOCALAPPDATA%\StudioEditor`, 실행 주소는 `http://127.0.0.1:8050/app`이고, Tailscale이 활성화되어 있다면 휴대폰용 HTTPS 10000 연결도 시도합니다. 첫 실행에는 PC에서 관리자 비밀번호를 1회 설정하세요. Node.js 20+는 필요하고, FFmpeg/FFprobe가 없으면 영상 출력만 비활성화됩니다. 오류가 날 경우 `%TEMP%\StudioEditor-install.log`를 확인하세요.
+## 2026-11-17 Gemini 모델 갱신
+AI 초안은 API 키로 `models.list`를 먼저 호출해 실제 `generateContent` 가능한 모델을 확인한 뒤 `gemini-3.5-flash-lite`를 우선 사용합니다. 모델 404/미지원 시 `gemini-3.8-flash` 등 사용 가능한 모델로 넘어갑니다. 구형 `gemini-2.5-flash-lite` 고정값을 제거했습니다. 무료 한도 초과(429)는 다른 유료 모델로 우회하지 않고 명확한 오류를 반환합니다.

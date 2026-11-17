@@ -5,7 +5,17 @@ import path from 'node:path';
 import os from 'node:os';
 import {readFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
-const MODEL=process.env.STUDIO_GEMINI_MODEL||'gemini-2.5-flash-lite';
+const DEFAULT_MODELS=['gemini-3.5-flash-lite','gemini-3.8-flash'];
+const STALE_MODELS=/^gemini-(1\.|2\.|3\.1-flash-lite-preview|3-flash-preview)/;
+const modelName=x=>String(x||'').replace(/^models\//,'').trim();
+export function preferredModels(list=[],override=process.env.STUDIO_GEMINI_MODEL){
+ const offered=list.filter(x=>x?.supportedGenerationMethods?.includes('generateContent')).map(x=>modelName(x.name)).filter(Boolean);
+ const safe=offered.filter(x=>!STALE_MODELS.test(x));
+ const ordered=[...DEFAULT_MODELS,...safe.filter(x=>/gemini-3\.(5|6|7|8)-flash/.test(x))];
+ // A custom override is eligible only if the list explicitly supports it.
+ if(override&&offered.includes(modelName(override)))ordered.unshift(modelName(override));
+ return [...new Set(ordered)].filter(x=>!offered.length||offered.includes(x)).slice(0,6);
+}
 const API='https://generativelanguage.googleapis.com/v1beta/models/';
 const safe=t=>String(t??'').replace(/[\r\n\0]+/g,' ').trim();
 export function parseKeyFile(text){return String(text).split(/\r?\n/).map(x=>x.match(/^\s*(?:export\s+)?GEMINI_API_KEY\s*=\s*["']?([^\s"'#]+)["']?/)?.[1]||'') .find(Boolean)||null;}
@@ -68,13 +78,43 @@ export async function generateAiDraft({key,media,requirements,productFacts='',st
  '출력 형식 {"title":"영상 제목","notes":"사용자 검토가 필요한 사실이나 이미지 내용이 있으면 작성","scenes":[{"mediaIndex":0,"duration":4,"narration":"대사","caption":"자막","captionStyle":"impact|minimal|boxed|clean","captionPosition":"top|middle|bottom","effect":"zoom-in|zoom-out|pan-left|pan-right|none"}]}',
  '스타일: '+style,'사용자의 영상 제작 요구사항: '+instruction,'사용자가 제공한 설명·특징: '+facts
  ].join('\n');
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),110000);
- let response;
- try{response=await fetchFn(`${API}${encodeURIComponent(MODEL)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:prompt},...vision]}],generationConfig:{responseMimeType:'application/json',temperature:0.5}}),signal:controller.signal});}
- catch(e){throw new Error(e.name==='AbortError'?'AI 응답 시간 초과입니다. 나중에 다시 시도하세요.':'AI 연결 실패: '+e.message)}finally{clearTimeout(timeout)}
- const data=await response.json().catch(()=>({}));
- if(!response.ok){const message=safe(data.error?.message||response.statusText).slice(0,220);throw new Error(`Gemini API 요청 실패 (${response.status}): ${message}`)}
- const text=data.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
- if(!text)throw new Error('AI가 장면 초안을 반환하지 않았습니다. 모델 무료 사용량이나 콘텐츠 제한을 확인하세요.');
- return normalizeDraft(parseModelJson(text),media);
+ // Ask Gemini which generateContent models this exact API key can use.
+ // If model discovery is unavailable, use current stable defaults; never fall back to 2.5.
+ let available=[];
+ try{
+  const listed=await fetchFn('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',{
+   method:'GET',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(12000)
+  });
+  if(listed.ok){const info=await listed.json();available=Array.isArray(info.models)?info.models:[];}
+ }catch{}
+ const candidates=preferredModels(available);
+ if(!candidates.length)throw new Error('이 API 키로 사용 가능한 Gemini 영상 초안 모델을 찾지 못했습니다. Gemini API 모델 권한을 확인하세요.');
+ const body=JSON.stringify({contents:[{parts:[{text:prompt},...vision]}],generationConfig:{responseMimeType:'application/json',temperature:0.5}});
+ let lastUnavailable='';
+ for(const model of candidates){
+  onStep('AI 대본과 자막 기획: '+model);
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),110000);
+  let response;
+  try{response=await fetchFn(`${API}${encodeURIComponent(model)}:generateContent`,{
+   method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body,signal:controller.signal
+  });}
+  catch(e){throw new Error(e.name==='AbortError'?'AI 응답 시간 초과입니다. 나중에 다시 시도하세요.':'AI 연결 실패: '+e.message)}
+  finally{clearTimeout(timeout);}
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok){
+   const message=safe(data.error?.message||response.statusText).slice(0,220);
+   // 404/unsupported model: try a different model, not a different billing tier.
+   if(response.status===404 || (response.status===400 && /not supported|not found|model/i.test(message))){
+    lastUnavailable=model+': '+message;
+    continue;
+   }
+   if(response.status===429)throw new Error('Gemini 무료 사용량 또는 속도 제한에 도달했습니다(429). 잠시 후 다시 시도하거나 AI 무료 한도를 확인하세요.');
+   throw new Error(`Gemini API 요청 실패 (${response.status}): ${message}`);
+  }
+  const answer=data.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
+  if(!answer)throw new Error('AI가 장면 초안을 반환하지 않았습니다. 콘텐츠 제한이나 응답 형식을 확인하세요.');
+  return normalizeDraft(parseModelJson(answer),media);
+ }
+ throw new Error('사용 가능한 Gemini 모델이 응답하지 않았습니다. '+lastUnavailable);
+
 }

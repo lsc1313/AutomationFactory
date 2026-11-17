@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseKeyFile,normalizeDraft,parseModelJson,generateAiDraft} from '../ai-draft.mjs';
+import {parseKeyFile,normalizeDraft,parseModelJson,generateAiDraft,preferredModels} from '../ai-draft.mjs';
 const media=[{id:'a',name:'사진1.jpg',group:'image'},{id:'b',name:'영상2.mp4',group:'video'}];
 const out={title:'테스트 광고',notes:'사진을 검토하세요',scenes:[
  {mediaIndex:0,duration:4,narration:'첫 번째 사진 소개입니다.',caption:'사진 소개',captionPosition:'top'},
@@ -24,4 +24,29 @@ test('AI draft sends actual image/frame bytes to Gemini but never synthesizes vi
 test('fails closed on AI quota errors rather than fabricating captions',async()=>{
  await assert.rejects(()=>generateAiDraft({key:'test',media:[media[0]],requirements:'광고 장면 만들기',mediaPath:()=>'',sampler:async()=>'',fetchFn:async()=>({ok:false,status:429,json:async()=>({error:{message:'Quota exceeded'}})})}),/429/);
  assert.equal(parseModelJson('```json\n{"scenes":[]}\n```').scenes.length,0);
+});
+test('new projects prefer current Gemini 3.5 Lite and supported fallback; stale 2.5 is ignored',()=>{
+ const models=[{name:'models/gemini-2.5-flash-lite',supportedGenerationMethods:['generateContent']},
+ {name:'models/gemini-3.5-flash-lite',supportedGenerationMethods:['generateContent']},
+ {name:'models/gemini-3.8-flash',supportedGenerationMethods:['generateContent']}];
+ assert.deepEqual(preferredModels(models),['gemini-3.5-flash-lite','gemini-3.8-flash']);
+ assert.deepEqual(preferredModels(models,'gemini-2.5-flash-lite'),['gemini-3.5-flash-lite','gemini-3.8-flash']);
+});
+test('404 on one Gemini model automatically retries an available alternative',async()=>{
+ const called=[];
+ const media1=[media[0]];
+ const result=await generateAiDraft({key:'test',media:media1,requirements:'상품 광고 초안 만들기',
+  mediaPath:()=>'',sampler:async()=> 'ZmFrZQ==',
+  fetchFn:async(url,options)=>{
+   called.push(url);
+   if(options.method==='GET')return {ok:true,json:async()=>({models:[
+    {name:'models/gemini-3.5-flash-lite',supportedGenerationMethods:['generateContent']},
+    {name:'models/gemini-3.8-flash',supportedGenerationMethods:['generateContent']}]})};
+   if(url.includes('gemini-3.5-flash-lite'))return {ok:false,status:404,json:async()=>({error:{message:'Model not available'}})};
+   return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({...out,scenes:out.scenes.map(x=>({...x,mediaIndex:0}))})}]}}]})};
+  }
+ });
+ assert.equal(result.scenes.length,2);
+ assert.ok(called.some(x=>x.includes('gemini-3.8-flash')));
+ assert.ok(called.every(x=>!x.includes('gemini-2.5-flash-lite')));
 });
