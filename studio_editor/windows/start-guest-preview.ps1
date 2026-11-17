@@ -28,6 +28,13 @@ $guestId = [guid]::NewGuid().ToString('N')
 $guestDir = Join-Path $local ('StudioEditor-GuestSessions\' + $guestId)
 $ownerPrivate = Join-Path $root 'private'
 $statusPath = Join-Path $ownerPrivate 'guest-preview.json'
+$progressPath = Join-Path $ownerPrivate 'guest-progress.json'
+function Set-GuestProgress([string]$phase, [string]$message) {
+ try {
+  $record = @{phase=$phase;message=$message;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
+  [IO.File]::WriteAllText($progressPath,($record | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+ }catch{}
+}
 $revokedFile = Join-Path $guestDir 'revoked'
 $stdout = Join-Path $guestDir 'server.log'
 $stderr = Join-Path $guestDir 'server-error.log'
@@ -49,6 +56,7 @@ $vars = @{
  STUDIO_PORT='8060'
 }
 try {
+ Set-GuestProgress 'starting' '지인 전용 서버를 준비하고 있습니다.'
  foreach ($key in $vars.Keys) {
   $old[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
   [Environment]::SetEnvironmentVariable($key,$vars[$key],'Process')
@@ -57,6 +65,7 @@ try {
  foreach ($key in $vars.Keys) { [Environment]::SetEnvironmentVariable($key,$old[$key],'Process') }
  Start-Sleep -Seconds 2
  if ($nodeProcess.HasExited) { throw 'Guest editor failed to start. Inspect: ' + $stderr }
+ Set-GuestProgress 'tunnel' '외부 체험 연결을 생성하고 있습니다.'
  $tunnelProcess = Start-Process -FilePath $cloudflared -ArgumentList @('tunnel','--no-autoupdate','--url','http://127.0.0.1:8060') -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardError $tunnelLog -RedirectStandardOutput $tunnelOut
  $url = $null
  for($i=0;$i -lt 65;$i++){
@@ -71,6 +80,7 @@ try {
  $invite = $url.TrimEnd('/') + '/invite/' + $token
  $info = @{url=$invite;expires=$end.ToUnixTimeMilliseconds();guestId=$guestId;startedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
  [IO.File]::WriteAllText($statusPath,($info | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+ Set-GuestProgress 'ready' '체험 링크가 준비되었습니다.'
  try { Set-Clipboard -Value $invite -ErrorAction Stop }catch{}
  Write-Host ''
  Write-Host '========================================================'
@@ -94,6 +104,11 @@ try {
   }catch{}
   Start-Sleep -Milliseconds 800
  }
+}catch{
+ $reason = $_.Exception.Message
+ $summary = if($reason -match 'cloudflared download|Downloading official|Invoke-WebRequest|download is incomplete'){'Cloudflare 연결 프로그램 다운로드에 실패했습니다. PC의 인터넷 연결과 보안 프로그램을 확인하세요.'} elseif($reason -match 'Guest editor failed|Guest editor|server-error'){'지인 전용 서버 실행에 실패했습니다. StudioEditor-GuestSessions 서버 오류 로그를 확인하세요.'} elseif($reason -match 'Temporary tunnel stopped|Could not obtain a share URL'){'Cloudflare 외부 연결을 만들지 못했습니다. PC의 방화벽 또는 인터넷 연결을 확인하세요.'}else{'체험 링크 연결 작업에 실패했습니다. PC의 private/guest-launch.log 파일을 확인하세요.'}
+ Set-GuestProgress 'failed' $summary
+ throw
 }finally{
  foreach ($key in $vars.Keys) { [Environment]::SetEnvironmentVariable($key,$old[$key],'Process') }
  if($tunnelProcess -and -not $tunnelProcess.HasExited){Stop-Process -Id $tunnelProcess.Id -Force -ErrorAction SilentlyContinue}
