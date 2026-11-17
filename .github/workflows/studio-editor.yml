@@ -36,6 +36,17 @@ jobs:
           node --check studio_editor/public/timeline-ui.js
           node --check studio_editor/ai-draft.mjs
           node --check studio_editor/public/client.js
+      - name: Validate Windows one-click installer PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("studio_editor/windows/install-oneclick.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Output "PowerShell installer syntax OK"
       - name: Editor API and security tests
         run: node --test studio_editor/tests/*.test.mjs
       - name: Browser interactive editing smoke test
