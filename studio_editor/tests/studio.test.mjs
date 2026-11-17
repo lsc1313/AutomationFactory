@@ -43,6 +43,34 @@ test('editor UI and localhost-only bootstrap',async t=>{
  assert.equal(after.media.length,0);
  assert.equal(after.projects[0].scenes.length,0);
  response=await fetch(base+'/api/new',{method:'POST',headers:{Cookie:cookie},body:'{}'});assert.equal(response.status,403);
+ // Registration and login must never expose legacy owner's workspace.
+ response=await fetch(base+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tester1@example.test',password:'valid_private_password_12'})});
+ assert.equal(response.status,201,await response.text());
+ const member1Cookie=response.headers.get('set-cookie').split(';')[0],member1=await response.json();
+ const member1Headers={'Content-Type':'application/json','X-CSRF-Token':member1.csrf,Cookie:member1Cookie};
+ response=await fetch(base+'/api/library',{headers:{Cookie:member1Cookie}});
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).projects.length,0,'new account has no legacy projects');
+ response=await fetch(base+'/api/new',{method:'POST',headers:member1Headers,body:'{}'});
+ assert.equal(response.status,201);
+ const memberProject=(await response.json()).project;
+ response=await fetch(base+'/api/projects',{method:'POST',headers:member1Headers,body:JSON.stringify({...memberProject,title:'회원 전용 프로젝트'})});
+ assert.equal(response.status,200);
+ response=await fetch(base+'/api/library',{headers:{Cookie:cookie}});
+ assert.equal((await response.json()).projects.some(x=>x.title==='회원 전용 프로젝트'),false,'owner cannot access member project');
+ response=await fetch(base+'/api/library',{headers:{Cookie:member1Cookie}});
+ assert.equal((await response.json()).projects.some(x=>x.title==='회원 전용 프로젝트'),true);
+ response=await fetch(base+'/api/projects',{method:'POST',headers,body:JSON.stringify({...memberProject,title:'다른 계정 수정'})});
+ assert.equal(response.status,200);
+ response=await fetch(base+'/api/library',{headers:{Cookie:member1Cookie}});
+ assert.equal((await response.json()).projects[0].title,'회원 전용 프로젝트','owner cannot edit member project via project id');
+ response=await fetch(base+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tester1@example.test',password:'valid_private_password_12'})});
+ assert.equal(response.status,409);
+ response=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tester1@example.test',password:'valid_private_password_12'})});
+ assert.equal(response.status,200);
+ response=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'tester1@example.test',password:'incorrect_password_12'})});
+ assert.equal(response.status,401);
+
 });
 test('AI voice defaults to Korean female and audio plan keeps selected music/voice',()=>{
  assert.equal(DEFAULT_VOICE,'ko-KR-SunHiNeural');
@@ -147,61 +175,17 @@ test('separate phone UI retains desktop AI editing and mobile controls',async()=
 });
 
 
-test('guest invite is fully selectable and clipboard errors cannot fake success',async()=>{
+
+test('account UI replaces temporary share controls and installer verifies the build',async()=>{
  const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
  const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
- for(const id of ['guest-share-dialog','guest-share-url','guest-copy-btn','guest-share-status'])assert.ok(page.includes('id="'+id+'"'),id);
- assert.match(client,/navigator\.clipboard\?\.writeText/);
- assert.match(client,/field\.select\(\)/);
- assert.match(client,/document\.execCommand\?\.\('copy'\)/);
- assert.match(client,/d\.showModal\(\)/);
- assert.doesNotMatch(client,/prompt\('아래 링크를 복사해서 지인에게 보내세요/);
-});
-
-test('one-click update identifies release and verifies the live service before claiming success',async()=>{
+ const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
  const installer=await readFile(new URL('../windows/install-oneclick.ps1',import.meta.url),'utf8');
- const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
- assert.match(installer,/\$version = 'v1\.3\.13'/);
+ for(const id of ['email','password','signup-toggle','studio-user-email'])assert.ok(page.includes('id="'+id+'"'),id);
+ assert.doesNotMatch(page,/id="guest-link-btn"/);
+ assert.doesNotMatch(page,/id="guest-share-dialog"/);
+ assert.match(client,/\/api\/register/);
+ assert.match(server,/\/api\/register/);
+ assert.match(server,/requestScope\.enterWith/);
  assert.match(installer,/Verified running editor release/);
- assert.match(installer,/\$live\.Content\.Contains\(\$version\)/);
- assert.doesNotMatch(installer,/v1\[\.\]3\[\.\]8/);
- assert.match(installer,/Wrong editor release downloaded/);
- assert.match(page,/id="guest-share-dialog"/);
- assert.match(page,/id="studio-build-label"/);
-});
-
-test('guest connection checks distinguish real tunnel errors from polling',async()=>{
- const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
- const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
- const launcher=await readFile(new URL('../windows/start-guest-preview.ps1',import.meta.url),'utf8');
- assert.match(server,/\/api\/guest\/status/);
- assert.match(server,/phase:'idle'/);
- assert.match(client,/state\.phase==='failed'/);
- assert.match(launcher,/Set-GuestProgress 'failed'/);
- assert.match(launcher,/Set-GuestProgress 'ready'/);
- assert.match(launcher,/Cloudflare 외부 연결/);
-});
-
-test('guest downloader reports its progress before network access and both tunnel log streams are parsed',async()=>{
- const launcher=await readFile(new URL('../windows/start-guest-preview.ps1',import.meta.url),'utf8');
- const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
- const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
- assert.ok(launcher.indexOf("Set-GuestProgress 'download'")<launcher.indexOf("Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/cloudflare"),'download progress must precede remote network request');
- assert.match(launcher,/Set-GuestProgress 'failed'/);
- assert.match(launcher,/Guest editor HTTP health check failed/);
- assert.match(launcher,/@\(\$tunnelLog,\$tunnelOut\)/);
- assert.match(server,/download:'Cloudflare/);
- assert.match(client,/state\.phase==='download'/);
-});
-
-test('guest launcher establishes a status before spawning and reports an unresponsive Windows child',async()=>{
- const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
- const launcher=await readFile(new URL('../windows/start-guest-preview.ps1',import.meta.url),'utf8');
- const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
- assert.match(server,/phase:'launching'/);
- assert.match(server,/p\.phase==='launching'&&Date\.now\(\)-p\.at>15000/);
- assert.ok(server.indexOf("phase:'launching'")<server.indexOf("const child=spawn('powershell.exe'"));
- assert.match(server,/NonInteractive/);
- assert.ok(launcher.indexOf("Set-GuestProgress 'starting'")<launcher.indexOf("Node.js is required"));
- assert.match(client,/state\.phase==='launching'/);
 });
