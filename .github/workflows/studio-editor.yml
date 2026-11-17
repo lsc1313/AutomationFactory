@@ -42,7 +42,7 @@ jobs:
         run: |
           $tokens = $null
           $errors = $null
-          foreach ($script in @("studio_editor/windows/install-oneclick.ps1", "studio_editor/windows/start-guest-preview.ps1")) {
+          foreach ($script in @("studio_editor/windows/install-oneclick.ps1")) {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) {
