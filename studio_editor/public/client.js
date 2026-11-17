@@ -15,7 +15,7 @@ const scenePreviewAudio=()=> $('voice-audio');
 let previewRun=0;
 function stopPreview(){
  previewRun++;
- scenePreviewAudio().pause();scenePreviewAudio().removeAttribute('src');
+ scenePreviewAudio().pause();scenePreviewAudio().removeAttribute('src');scenePreviewAudio().hidden=true;
  if(previewAnimation){previewAnimation.cancel();previewAnimation=null}
  const vid=$('preview-video');vid.pause();
 }
@@ -29,8 +29,9 @@ async function previewVoice(text= '안녕하세요. 자연스럽고 또렷하게
   const r=await api('/api/voice/preview','POST',{voice,text:text.slice(0,160)});
   if(current!==previewRun)return;
   const audio=scenePreviewAudio();
-  audio.pause();audio.src=r.url;
-  await audio.play();status.textContent='음성 재생 중';
+  audio.pause();audio.src=r.url;audio.hidden=false;
+  try{await audio.play();status.textContent='음성 재생 중';}
+  catch{status.textContent='모바일 자동재생이 제한됐습니다. 아래 재생 버튼을 눌러주세요.';}
   audio.onended=()=>{if(current===previewRun)status.textContent='재생 완료'};
  }catch(e){if(current===previewRun)status.textContent='미리듣기 실패: '+e.message;}
 }
@@ -94,7 +95,7 @@ $('play-scene').onclick=async()=>{
  stopPreview();animateCurrentScene();
  const v=$('preview-video');if(!v.hidden){v.currentTime=0;v.play().catch(()=>{});}
  if(scene.voiceMediaId){
-  const audio=scenePreviewAudio();audio.src='/api/media/'+scene.voiceMediaId;
+  const audio=scenePreviewAudio();audio.src='/api/media/'+scene.voiceMediaId;audio.hidden=false;
   audio.play().catch(e=>$('voice-preview-status').textContent='음성 재생 실패: '+e.message);return;
  }
  if(scene.narration&&project.voice!=='off')await previewVoice(scene.narration,project.voice);
