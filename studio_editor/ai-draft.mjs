@@ -92,29 +92,45 @@ export async function generateAiDraft({key,media,requirements,productFacts='',st
  const body=JSON.stringify({contents:[{parts:[{text:prompt},...vision]}],generationConfig:{responseMimeType:'application/json',temperature:0.5}});
  let lastUnavailable='';
  for(const model of candidates){
-  onStep('AI 대본과 자막 기획: '+model);
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),110000);
-  let response;
-  try{response=await fetchFn(`${API}${encodeURIComponent(model)}:generateContent`,{
-   method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body,signal:controller.signal
-  });}
-  catch(e){throw new Error(e.name==='AbortError'?'AI 응답 시간 초과입니다. 나중에 다시 시도하세요.':'AI 연결 실패: '+e.message)}
-  finally{clearTimeout(timeout);}
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok){
-   const message=safe(data.error?.message||response.statusText).slice(0,220);
-   // 404/unsupported model: try a different model, not a different billing tier.
-   if(response.status===404 || (response.status===400 && /not supported|not found|model/i.test(message))){
+  // 503/502/504 often indicate a temporary overloaded model, not an invalid key.
+  // Retry once with a short bounded delay, then fail over to a DIFFERENT
+  // generateContent-capable model (without silently selecting paid-only models).
+  for(let attempt=0;attempt<2;attempt++){
+   onStep('AI 대본과 자막 기획: '+model+(attempt?' (혼잡 재시도)':''));
+   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),110000);
+   let response;
+   try{response=await fetchFn(`${API}${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body,signal:controller.signal
+   });}
+   catch(e){
+    if(e.name==='AbortError'){
+     lastUnavailable=model+': AI 응답 시간이 초과됐습니다.';
+     break;
+    }
+    throw new Error('AI 연결 실패: '+e.message);
+   }finally{clearTimeout(timeout);}
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok){
+    const message=safe(data.error?.message||response.statusText).slice(0,220);
     lastUnavailable=model+': '+message;
-    continue;
+    if(response.status===429)throw new Error('Gemini 무료 사용량 또는 속도 제한에 도달했습니다(429). 잠시 후 다시 시도하거나 AI 무료 한도를 확인하세요.');
+    // Invalid model: immediately try the next candidate.
+    if(response.status===404 || (response.status===400 && /not supported|not found|model/i.test(message)))break;
+    if([500,502,503,504].includes(response.status)){
+     if(attempt===0){
+      onStep('Gemini 서버 혼잡 — 잠시 후 자동 재시도');
+      await new Promise(resolve=>setTimeout(resolve,1200));
+      continue;
+     }
+     break;
+    }
+    throw new Error(`Gemini API 요청 실패 (${response.status}): ${message}`);
    }
-   if(response.status===429)throw new Error('Gemini 무료 사용량 또는 속도 제한에 도달했습니다(429). 잠시 후 다시 시도하거나 AI 무료 한도를 확인하세요.');
-   throw new Error(`Gemini API 요청 실패 (${response.status}): ${message}`);
+   const answer=data.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
+   if(!answer)throw new Error('AI가 장면 초안을 반환하지 않았습니다. 콘텐츠 제한이나 응답 형식을 확인하세요.');
+   return normalizeDraft(parseModelJson(answer),media);
   }
-  const answer=data.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
-  if(!answer)throw new Error('AI가 장면 초안을 반환하지 않았습니다. 콘텐츠 제한이나 응답 형식을 확인하세요.');
-  return normalizeDraft(parseModelJson(answer),media);
  }
- throw new Error('사용 가능한 Gemini 모델이 응답하지 않았습니다. '+lastUnavailable);
+ throw new Error('Gemini 모델들이 모두 일시적으로 응답하지 않았습니다. 잠시 후 다시 시도하세요. 마지막 오류: '+lastUnavailable);
 
 }

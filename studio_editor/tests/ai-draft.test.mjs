@@ -50,3 +50,32 @@ test('404 on one Gemini model automatically retries an available alternative',as
  assert.ok(called.some(x=>x.includes('gemini-3.8-flash')));
  assert.ok(called.every(x=>!x.includes('gemini-2.5-flash-lite')));
 });
+
+test('Gemini 503 overload retries same model once and then automatically tries the next available model',async()=>{
+ const seen=[];
+ const oneMedia=[media[0]];
+ const good={...out,scenes:out.scenes.map(x=>({...x,mediaIndex:0}))};
+ const result=await generateAiDraft({key:'test',media:oneMedia,requirements:'광고 영상을 자연스럽게 만들어줘',
+  mediaPath:()=>'',sampler:async()=> 'ZmFrZQ==',
+  fetchFn:async(url,options)=>{
+   if(options.method==='GET')return {ok:true,json:async()=>({models:[
+    {name:'models/gemini-3.5-flash-lite',supportedGenerationMethods:['generateContent']},
+    {name:'models/gemini-3.8-flash',supportedGenerationMethods:['generateContent']}]})};
+   seen.push(url);
+   if(url.includes('gemini-3.5-flash-lite'))return {ok:false,status:503,json:async()=>({error:{message:'high demand'}})};
+   return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify(good)}]}}]})};
+  }
+ });
+ assert.equal(result.scenes.length,2);
+ assert.equal(seen.filter(x=>x.includes('gemini-3.5-flash-lite')).length,2);
+ assert.ok(seen.some(x=>x.includes('gemini-3.8-flash')));
+});
+test('Gemini 503 overload on every model reports a clear retryable error',async()=>{
+ await assert.rejects(()=>generateAiDraft({
+  key:'test',media:[media[0]],requirements:'자연스러운 영상 만들어줘',
+  mediaPath:()=>'',sampler:async()=> 'ZmFrZQ==',
+  fetchFn:async(url,options)=>options.method==='GET'
+   ? {ok:true,json:async()=>({models:[{name:'models/gemini-3.5-flash-lite',supportedGenerationMethods:['generateContent']}]})}
+   : {ok:false,status:503,json:async()=>({error:{message:'high demand'}})}
+ }),/일시적으로 응답하지 않았습니다/);
+});
