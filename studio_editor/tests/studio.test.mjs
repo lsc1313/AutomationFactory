@@ -26,10 +26,12 @@ test('editor UI and localhost-only bootstrap',async t=>{
 });
 test('AI voice defaults to Korean female and audio plan keeps selected music/voice',()=>{
  assert.equal(DEFAULT_VOICE,'ko-KR-SunHiNeural');
- assert.ok(VOICES.includes('ko-KR-JiMinNeural'));
- assert.ok(VOICES.includes('ko-KR-SeoHyeonNeural'));
- const x=audioPlan({voice:'ko-KR-YuJinNeural',bgmId:'abc',bgmVolume:0.18});
- assert.deepEqual(x,{voice:'ko-KR-YuJinNeural',bgmId:'abc',bgmVolume:0.18});
+ assert.ok(!VOICES.includes('ko-KR-JiMinNeural'));
+ assert.ok(UNVERIFIED_VOICES.includes('ko-KR-JiMinNeural'));
+ assert.ok(!VOICES.includes('ko-KR-SeoHyeonNeural'));
+ assert.ok(UNVERIFIED_VOICES.includes('ko-KR-SeoHyeonNeural'));
+ const x=audioPlan({voice:'ko-KR-InJoonNeural',bgmId:'abc',bgmVolume:0.18});
+ assert.deepEqual(x,{voice:'ko-KR-InJoonNeural',bgmId:'abc',bgmVolume:0.18});
 });
 
 test('scene motion applies distinct left/right transforms with 1.2x tempo',()=>{
