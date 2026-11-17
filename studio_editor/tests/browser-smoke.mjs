@@ -91,6 +91,23 @@ try{
  await evaluate('document.querySelector("[data-mobile-tab=ai]").click()');
  assert.equal(await evaluate('getComputedStyle(document.getElementById("ai-workflow")).display!=="none"'),true);
  assert.equal(await evaluate('document.querySelector("#ai-generate")!==null'),true,'original AI stays available');
+ // An AI plan with many scenes must leave its final Apply/Cancel buttons usable.
+ await evaluate(`(()=>{
+   const review=document.getElementById("ai-draft-review");
+   review.hidden=false;
+   document.getElementById("ai-review-scenes").innerHTML="<p>긴 기획 결과 확인</p>".repeat(65);
+ })()`);
+ await evaluate('window.scrollTo(0,document.documentElement.scrollHeight)');
+ await new Promise(r=>setTimeout(r,200));
+ const aiBottom=await evaluate(`(()=>{
+   const buttons=document.querySelector("#ai-draft-review .ai-controls");
+   const nav=document.getElementById("mobile-navigation");
+   return {buttonsBottom:buttons.getBoundingClientRect().bottom,navTop:nav.getBoundingClientRect().top,
+     reviewBottom:document.getElementById("ai-draft-review").getBoundingClientRect().bottom};
+ })()`);
+ assert.ok(aiBottom.buttonsBottom<aiBottom.navTop-5,'AI draft action buttons must clear bottom navigation: '+JSON.stringify(aiBottom));
+ await evaluate('document.getElementById("ai-draft-review").hidden=true');
+
  await evaluate('document.querySelector("[data-mobile-tab=captions]").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-subtitle-track")).display!=="none"'),true);
  await evaluate('document.querySelector("[data-mobile-tab=sound]").click()');
