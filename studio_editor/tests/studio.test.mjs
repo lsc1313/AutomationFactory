@@ -161,8 +161,10 @@ test('guest invite is fully selectable and clipboard errors cannot fake success'
 test('one-click update identifies release and verifies the live service before claiming success',async()=>{
  const installer=await readFile(new URL('../windows/install-oneclick.ps1',import.meta.url),'utf8');
  const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
- assert.match(installer,/\$version = 'v1\.3\.10'/);
+ assert.match(installer,/\$version = 'v1\.3\.11'/);
  assert.match(installer,/Verified running editor release/);
+ assert.match(installer,/\$live\.Content\.Contains\(\$version\)/);
+ assert.doesNotMatch(installer,/v1\[\.\]3\[\.\]8/);
  assert.match(installer,/Wrong editor release downloaded/);
  assert.match(page,/id="guest-share-dialog"/);
  assert.match(page,/id="studio-build-label"/);
