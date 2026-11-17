@@ -102,7 +102,7 @@ export function visualFilter(c,canvas,totalFrames){
   zoom='1.18';x=c.effect==='pan-left'?`(iw-iw/zoom)*(1-${elapsed})`:`(iw-iw/zoom)*${elapsed}`;
  }
  const fit=c.fit==='fit'?`scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black`:`scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
- return `[0:v]fps=24,${fit},setsar=1,zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=${w}x${h}:fps=24,format=yuv420p,ass=caption.ass${c.transition==='fade'?`,fade=t=in:st=0:d=0.2,fade=t=out:st=${Math.max(0,totalFrames/24-.2).toFixed(3)}:d=0.2`:''}[v]`;
+ return `[0:v]setpts=(PTS-STARTPTS)/${c.sourceType==='video'?limit(finite(c.speed,1),0.5,2):1},fps=24,${fit},setsar=1,zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=${w}x${h}:fps=24,format=yuv420p,ass=caption.ass${c.transition==='fade'?`,fade=t=in:st=0:d=0.2,fade=t=out:st=${Math.max(0,totalFrames/24-.2).toFixed(3)}:d=0.2`:''}[v]`;
 }
 export function run(exe,args,{cwd,timeout=300000}={}){
  return new Promise((resolve,reject)=>{const p=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','pipe','pipe']});let output='',done=false;

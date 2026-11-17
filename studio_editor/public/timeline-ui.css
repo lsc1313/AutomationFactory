@@ -1,0 +1,17 @@
+/* Precision timeline controls: warm native editing UI, mouse and touch. */
+.v2-editor{background:#fff;border:1px solid #dce3da;border-radius:14px;padding:14px;margin:10px 0 16px;box-shadow:0 2px 14px #30362f0c}
+.v2-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.v2-heading b{font-size:15px;color:#33493c}.v2-heading small{color:#758278;font-size:12px}
+.v2-settings{display:grid;grid-template-columns:1fr 2fr;gap:12px;align-items:end}
+.v2-settings label,.v2-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:#4c5b51}
+.v2-settings input,.v2-settings select,.v2-grid input,.v2-grid select{width:100%;background:#fff;color:#29342d;border:1px solid #cfd9d0;border-radius:8px;padding:9px;min-width:0}
+.v2-settings output{color:#5b7463;font-size:11px;font-weight:600}
+.v2-actions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:12px 0}
+.v2-actions button{padding:9px 6px;font-size:12px;min-width:0;overflow-wrap:anywhere}
+.v2-clip-settings{background:#f8faf6;border:1px solid #e6ede4;border-radius:10px;padding:12px}
+.v2-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 8px}
+#v2-hint{color:#6d8370}
+#timeline .scene-card{touch-action:pan-x;cursor:grab}
+#timeline .scene-card[draggable=true]:active{cursor:grabbing}
+@media(max-width:900px){.v2-actions{grid-template-columns:repeat(3,minmax(0,1fr))}.v2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v2-settings{grid-template-columns:1fr 1fr}}
+@media(max-width:530px){.v2-editor{padding:11px;margin:7px 0}.v2-settings{grid-template-columns:1fr}.v2-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.v2-actions button{font-size:12px;min-height:40px}.v2-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}

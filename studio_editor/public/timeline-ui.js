@@ -15,9 +15,10 @@
  function fileOf(scene){return library.find(f=>f.id===scene?.mediaId)}
  function sceneStart(index){return project.scenes.slice(0,index).reduce((a,c)=>a+duration(c),0)}
  function ensureV2(){
-  if(!project||project.schemaVersion===2)return;
+  if(!project)return;
   project.schemaVersion=2;project.ratio=project.ratio||'9:16';
   for(const scene of project.scenes){
+   if(scene.sourceType)continue;
    const f=fileOf(scene),isVideo=f?.group==='video';
    scene.sourceType=isVideo?'video':'image';scene.sourceIn=0;
    scene.sourceOut=isVideo?Math.min(safeNum(f.duration,scene.duration||4),scene.duration||4):0;
