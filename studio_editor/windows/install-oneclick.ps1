@@ -4,14 +4,14 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v0.1.1'
+$version = 'v0.2.0'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
 $private = Join-Path $dest 'private'
 $log = Join-Path $env:TEMP 'StudioEditor-install.log'
 $files = @(
- 'server.mjs', 'public/index.html', 'public/client.js', 'public/styles.css',
+ 'server.mjs', 'ai-draft.mjs', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css',
  'tests/studio.test.mjs', 'windows/start-hidden.ps1',
  'windows/start-hidden.vbs', 'windows/stop-hidden.ps1',
  'windows/enable-phone.ps1', 'README.md', 'windows/install-oneclick.ps1'

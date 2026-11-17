@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const STATE=path.resolve(process.env.STUDIO_DATA_DIR||path.join(ROOT,'private'));
 const PORT=Number(process.env.STUDIO_PORT||8050);
@@ -26,6 +27,9 @@ const outputDir=path.join(STATE,'exports');
 const sessions=new Map();
 const loginFailures=new Map();
 let exportJob={status:'idle',error:null,filename:null,projectId:null,step:null};
+let draftJob={status:'idle',error:null,step:null,projectId:null,draft:null};
+const keyPath=path.join(STATE,'ai-config.json');
+async function aiKey(){const cfg=await loadJson(keyPath,{});return cfg.geminiKey||await findExistingGeminiKey();}
 async function loadJson(filename,fallback){try{return JSON.parse(await readFile(filename,'utf8'));}catch(e){if(e.code==='ENOENT')return fallback;throw e;}}
 async function saveJson(filename,value){await mkdir(path.dirname(filename),{recursive:true});const tmp=filename+'.'+hex()+'.tmp';await writeFile(tmp,JSON.stringify(value,null,2),{mode:0o600});await (await import('node:fs/promises')).rename(tmp,filename);}
 async function body(req,max=1_000_000){let size=0,parts=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw makeError(413,'요청 용량을 초과했습니다.');parts.push(chunk);}return Buffer.concat(parts);}
@@ -68,6 +72,25 @@ if(req.method==='POST'&&url.pathname==='/api/login'){const ip=req.socket.remoteA
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
+if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'gemini-2.5-flash-lite',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
+if(req.method==='POST'&&url.pathname==='/api/ai/config'){const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}
+if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,draftJob);return json(res,200,{status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId});}
+if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
+ if(draftJob.status==='running')throw makeError(409,'AI가 다른 영상 초안을 작성하고 있습니다.');
+ const b=await data(req),projects=await loadJson(projectsPath,[]),files=await loadJson(path.join(STATE,'media.json'),[]);
+ const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트를 찾을 수 없습니다.');
+ const mediaIds=Array.isArray(b.mediaIds)?[...new Set(b.mediaIds)]:[];
+ if(mediaIds.length<1||mediaIds.length>10)throw makeError(400,'사진 또는 영상 1~10개를 선택하세요.');
+ const media=mediaIds.map(id=>files.find(f=>f.id===id&&['image','video'].includes(f.group)));
+ if(media.some(x=>!x))throw makeError(400,'업로드한 사진/영상에서만 선택하세요.');
+ const key=await aiKey();if(!key)throw makeError(400,'Gemini API 키를 먼저 등록하세요. 무료 사용량이 있다면 해당 범위에서 이용할 수 있습니다.');
+ draftJob={status:'running',step:'사진 확인 준비',error:null,projectId:project.id,draft:null};
+ void generateAiDraft({key,media,requirements:b.requirements,productFacts:b.productFacts,style:b.style,
+  mediaPath:f=>path.join(mediaDir,f.id+'.'+f.ext),onStep:step=>{draftJob.step=step}}).then(draft=>{
+  draftJob={status:'done',step:'수정 가능한 영상 초안 생성 완료',error:null,projectId:project.id,draft};
+ }).catch(e=>{draftJob={status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
+ return json(res,202,{status:'running'});
+}
 if(req.method==='GET'&&url.pathname==='/api/library'){const projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);return json(res,200,{projects,media,export:exportJob});}
 if(req.method==='POST'&&url.pathname==='/api/projects'){const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const value=validateProject(b,media);const idx=projects.findIndex(p=>p.id===value.id);if(idx===-1){if(projects.length>=100)throw makeError(400,'프로젝트 최대 100개');projects.push(value)}else projects[idx]=value;await saveJson(projectsPath,projects);return json(res,200,{project:value});}
 if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',scenes:[],bgmId:null,bgmVolume:0.16,voice:'off',updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
