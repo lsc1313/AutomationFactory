@@ -1,6 +1,16 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#faf8f4"><title>Studio Editor — AI 영상 편집기</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/timeline-ui.css"><link rel="stylesheet" href="/mobile-ui.css"></head><body>
 <section id="gate" class="gate"><div class="auth"><div class="mark">S.</div><h1>Studio Editor</h1><p>설치형 구독료 없이 내 PC에서 만드는 영상 편집기</p><form id="access"><label>편집기 비밀번호<input id="password" type="password" autocomplete="current-password" minlength="12" required></label><button class="primary" type="submit" id="login-btn">열기</button></form><p id="access-note" class="hint"></p></div></section>
 <div id="studio" hidden><header class="top"><div class="topbrand"><span class="mark small">S.</span><div><b>Studio Editor</b><small>LOCAL-FIRST VIDEO WORKSPACE</small></div></div><div class="topactions"><select id="project-picker" aria-label="프로젝트 선택"></select><button id="create-project">+ 프로젝트</button><button id="save-project">저장</button><button id="export-btn" class="primary">MP4 제작</button><button id="guest-link-btn" type="button" title="지인 휴대폰 체험 링크 복사">🔗 체험 링크</button><button id="guest-stop-btn" type="button" title="지인 체험 링크 중지" hidden>체험 종료</button><button id="logout">로그아웃</button></div></header>
+<dialog id="guest-share-dialog" class="guest-share-dialog" aria-labelledby="guest-share-title">
+ <div class="guest-share-inner">
+  <h3 id="guest-share-title">지인 체험 링크</h3>
+  <p>링크 전체를 복사해 카카오톡으로 보내세요. 링크는 최대 2시간 동안 유효합니다.</p>
+  <label for="guest-share-url">체험 링크 주소</label>
+  <textarea id="guest-share-url" rows="4" readonly spellcheck="false" aria-label="지인 체험 링크 주소"></textarea>
+  <p id="guest-share-status" role="status" aria-live="polite">링크를 확인한 뒤 복사하세요.</p>
+  <div class="guest-share-actions"><button id="guest-copy-btn" type="button" class="primary">전체 링크 복사</button><button id="guest-close-btn" type="button">닫기</button></div>
+ </div>
+</dialog>
 <p id="guest-notice" hidden>🔒 지인 체험 모드 · 관리자 프로젝트와 자료는 분리돼 있습니다. AI 3회 · 음성 미리듣기 8회 · MP4 5회 · 최대 2시간 사용 가능. 같은 초대 링크를 공유하면 같은 체험 공간을 사용합니다.</p>
 <section id="ai-workflow" class="ai-workflow"><div class="ai-header"><div><h2>2. AI 영상 초안 만들기</h2><p>사진·영상 업로드 → 원하는 영상 설명 → AI 대본·자막·장면 구성 → 직접 수정</p></div><span class="ai-pill">영상 생성 GPU 불필요</span></div>
 <div class="ai-grid"><label>어떤 영상을 만들까요? <textarea id="ai-requirements" rows="3" placeholder="예: 올린 닭볶음탕 사진을 바탕으로 30초짜리 가게 홍보 쇼츠를 만들어줘. 첫 3초에 시선을 끌고, 자연스럽고 친근한 말투로 구성해줘."></textarea></label>
