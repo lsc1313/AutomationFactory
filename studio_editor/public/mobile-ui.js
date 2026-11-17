@@ -32,11 +32,12 @@
  function select(value){
    if(!query.matches)return;
    currentTab(value);
-   const target=value==='media'?document.querySelector('.media-panel'):
-      value==='ai'?document.getElementById('ai-workflow'):
-      value==='sound'||value==='captions'?preview:main;
-   // Reset the viewport to the tool currently being used.
-   requestAnimationFrame(()=>target?.scrollIntoView({block:'start',behavior:'instant'}));
+   // Scroll only the tool pane. Scrolling the whole document used to push
+   // the player behind the header and left mobile overlays above controls.
+   requestAnimationFrame(()=>{
+     const pane=value==='ai'?document.getElementById('ai-workflow'):document.querySelector('#studio>.layout');
+     if(pane)pane.scrollTop=0;
+   });
  }
  for(const button of buttons)button.addEventListener('click',()=>select(button.dataset.mobileTab));
  details.addEventListener('click',()=>{
