@@ -73,9 +73,15 @@ try{
  assert.equal(await evaluate('document.body.dataset.mobileView'),'project');
  assert.equal(await evaluate('getComputedStyle(document.getElementById("mobile-navigation")).display!=="none"'),true);
  assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display!=="none"'),true);
+ assert.equal(await evaluate('document.getElementById("project-settings").parentElement.classList.contains("layout")'),true,'project settings are not nested inside timeline');
+ assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).overflowY'),"visible",'project settings must not have an inner scroll');
+
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".media-panel")).display'),"none");
  await evaluate('document.querySelector("[data-mobile-tab=edit]").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".editor-main")).display!=="none"'),true);
+ assert.equal(await evaluate('document.querySelector(".v2-actions").getBoundingClientRect().right<=innerWidth+1'),true,'edit action grid fits viewport');
+ assert.equal(await evaluate('document.querySelector(".v2-actions").scrollWidth<=document.querySelector(".v2-actions").clientWidth+1'),true,'edit buttons do not overflow');
+
  assert.equal(await evaluate('document.querySelector(".preview-wrap").parentElement.id'),"mobile-preview-dock");
  assert.equal(await evaluate('getComputedStyle(document.getElementById("mobile-preview-dock")).display!=="none"'),true);
  await evaluate('document.querySelector("[data-mobile-tab=media]").click()');
@@ -88,6 +94,7 @@ try{
  await evaluate('document.querySelector("[data-mobile-tab=captions]").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-subtitle-track")).display!=="none"'),true);
  await evaluate('document.querySelector("[data-mobile-tab=sound]").click()');
+ assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display'),"none",'project settings must not appear under sound tracks');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-audio-track")).display!=="none"'),true);
  assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display!=="none"'),true);
  await evaluate('document.querySelector("[data-mobile-tab=edit]").click()');
