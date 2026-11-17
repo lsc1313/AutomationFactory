@@ -16,6 +16,19 @@ const STATE=path.resolve(process.env.STUDIO_DATA_DIR||path.join(ROOT,'private'))
 const PORT=Number(process.env.STUDIO_PORT||8050);
 const HOST=process.env.STUDIO_PUBLIC_HOST?.toLowerCase()||'';
 const TRUST=process.env.STUDIO_TRUST_PROXY==='1';
+const GUEST=process.env.STUDIO_GUEST_MODE==='1';
+const GUEST_HASH=String(process.env.STUDIO_GUEST_TOKEN_HASH||'');
+const GUEST_EXPIRES=Number(process.env.STUDIO_GUEST_EXPIRES_AT||0);
+const GUEST_LIMITS={drafts:3,previews:8,exports:5,uploads:15,bytes:160_000_000};
+const guestUsage={drafts:0,previews:0,exports:0,uploads:0,bytes:0};
+function guestQuota(key,amount=1){
+ if(!GUEST)return;
+ if(guestUsage[key]+amount>GUEST_LIMITS[key])throw makeError(429,'지인 체험의 '+({drafts:'AI 초안',previews:'음성 미리듣기',exports:'MP4 제작',uploads:'업로드 개수',bytes:'총 업로드 용량'}[key]||'')+' 제한에 도달했습니다.');
+ guestUsage[key]+=amount;
+}
+function guestActive(){
+ return GUEST&&/^[0-9a-f]{64}$/.test(GUEST_HASH)&&GUEST_EXPIRES>Date.now();
+}
 const APP_HEADER={'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"};
 const hex=()=>randomBytes(12).toString('hex');
 export const DEFAULT_VOICE='ko-KR-SunHiNeural';
@@ -185,16 +198,32 @@ if(bytes<10000)throw new Error('MP4 검증 실패: 파일이 비정상적으로 
 await copyFile(rendered,path.join(outputDir,job+'.mp4'));
 return {filename:job+'.mp4',duration:Number(metadata.format?.duration)||info.reduce((a,b)=>a+b.duration,0),bytes};}
 function auth(req){const t=String(req.headers.cookie||'').match(/(?:^|;\s*)studio_session=([a-z0-9]+)/)?.[1];return t&&sessions.get(t)||null;}
-export function createStudioServer({state=STATE}={}){const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');const hostRaw=String(req.headers.host||'');let host;try{host=new URL('http://'+hostRaw).hostname.toLowerCase()}catch{throw makeError(403,'호스트 오류')}const local=isLocalHost(host);if(!local){if(!HOST||host!==HOST||!TRUST||req.headers['x-forwarded-proto']!=='https'||!addrLocal(req))throw makeError(403,'승인되지 않은 호스트입니다.');}
+export function createStudioServer({state=STATE}={}){const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');const hostRaw=String(req.headers.host||'');let host;try{host=new URL('http://'+hostRaw).hostname.toLowerCase()}catch{throw makeError(403,'호스트 오류')}const local=isLocalHost(host);
+if(GUEST&&!guestActive())throw makeError(403,'체험 링크가 만료되었거나 중지되었습니다.');
+if(!local){
+ const trustedGuest=GUEST&&host.endsWith('.trycloudflare.com')&&host.length<120;
+ if(!(trustedGuest||(HOST&&host===HOST))||!TRUST||req.headers['x-forwarded-proto']!=='https'||!addrLocal(req))throw makeError(403,'승인되지 않은 호스트입니다.');
+}
 if(!['GET','POST'].includes(req.method))throw makeError(405,'지원하지 않는 요청');if(req.method==='POST'){const origin=req.headers.origin;if(origin&&new URL(origin).host.toLowerCase()!==hostRaw.toLowerCase())throw makeError(403,'외부 출처 차단');}
 if(req.method==='GET'&&['/','/app','/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css'].includes(url.pathname)){const asset=['/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css'].includes(url.pathname)?url.pathname.slice(1):'index.html';const p=path.join(ROOT,'public',asset);res.writeHead(200,{...APP_HEADER,'Content-Type':mime(path.extname(p))});res.end(await readFile(p));return;}
-if(req.method==='GET'&&url.pathname==='/api/setup-state'){const config=await loadJson(cfgPath,null);return json(res,200,{setupNeeded:!config&&local&&addrLocal(req)});}
-if(req.method==='POST'&&url.pathname==='/api/setup'){const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
-if(req.method==='POST'&&url.pathname==='/api/login'){const ip=req.socket.remoteAddress||'unknown',now=Date.now();const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');const b=await data(req),cfg=await loadJson(cfgPath,null);if(!cfg)throw makeError(403,'PC에서 먼저 초기 설정을 완료하세요.');const hash=scryptSync(String(b.password||''),Buffer.from(cfg.salt,'hex'),64);if(!timingSafeEqual(hash,Buffer.from(cfg.hash,'hex'))){attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'비밀번호가 틀렸습니다.');}loginFailures.delete(ip);const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');sessions.set(token,{csrf,expires:Date.now()+7*86400000});return json(res,200,{csrf},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});}
+if(GUEST&&req.method==='GET'&&url.pathname.startsWith('/invite/')){
+ const candidate=url.pathname.slice('/invite/'.length);
+ if(!/^[0-9a-f]{64}$/.test(candidate))throw makeError(403,'올바르지 않은 체험 링크입니다.');
+ const received=createHash('sha256').update(candidate).digest('hex');
+ if(!timingSafeEqual(Buffer.from(received,'hex'),Buffer.from(GUEST_HASH,'hex')))throw makeError(403,'체험 초대 링크가 유효하지 않습니다.');
+ const sid=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');
+ const maxAge=Math.min(7200,Math.max(1,Math.floor((GUEST_EXPIRES-Date.now())/1000)));
+ sessions.set(sid,{csrf,expires:Math.min(GUEST_EXPIRES,Date.now()+maxAge*1000)});
+ res.writeHead(303,{...APP_HEADER,'Location':'/app','Set-Cookie':`studio_session=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${local?'':'; Secure'}`});res.end();return;
+}
+if(req.method==='GET'&&url.pathname==='/api/setup-state'){if(GUEST)return json(res,200,{setupNeeded:false});const config=await loadJson(cfgPath,null);return json(res,200,{setupNeeded:!config&&local&&addrLocal(req)});}
+if(req.method==='POST'&&url.pathname==='/api/setup'){if(GUEST)throw makeError(403,'체험에서는 계정 설정을 변경할 수 없습니다.');const config=await loadJson(cfgPath,null);if(config||!local||!addrLocal(req))throw makeError(403,'초기 설정은 이 PC에서만 허용됩니다.');const b=await data(req);if(typeof b.password!=='string'||b.password.length<12)throw makeError(400,'비밀번호는 12자 이상 필요합니다.');const salt=randomBytes(16).toString('hex');await saveJson(cfgPath,{salt,hash:scryptSync(b.password,Buffer.from(salt,'hex'),64).toString('hex')});return json(res,201,{ok:true});}
+if(req.method==='POST'&&url.pathname==='/api/login'){if(GUEST)throw makeError(403,'초대 링크로 접속하세요.');const ip=req.socket.remoteAddress||'unknown',now=Date.now();const attempts=(loginFailures.get(ip)||[]).filter(t=>now-t<900000);if(attempts.length>=12)throw makeError(429,'로그인 시도가 많습니다. 15분 뒤 다시 시도하세요.');const b=await data(req),cfg=await loadJson(cfgPath,null);if(!cfg)throw makeError(403,'PC에서 먼저 초기 설정을 완료하세요.');const hash=scryptSync(String(b.password||''),Buffer.from(cfg.salt,'hex'),64);if(!timingSafeEqual(hash,Buffer.from(cfg.hash,'hex'))){attempts.push(now);loginFailures.set(ip,attempts);throw makeError(401,'비밀번호가 틀렸습니다.');}loginFailures.delete(ip);const token=randomBytes(32).toString('hex'),csrf=randomBytes(24).toString('hex');sessions.set(token,{csrf,expires:Date.now()+7*86400000});return json(res,200,{csrf},{'Set-Cookie':`studio_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${!local?'; Secure':''}`});}
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf});
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
 if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
+ guestQuota('previews');
  const b=await data(req,4000);
  if(typeof b.text!=='string'||b.text.length>160)throw makeError(400,'미리듣기 대사는 160자 이내입니다.');
  const id=await makeVoicePreview(b.voice,b.text);
@@ -228,9 +257,10 @@ if(req.method==='POST'&&url.pathname==='/api/stt'){
  return json(res,202,{status:'running'});
 }
 if(req.method==='GET'&&url.pathname==='/api/ai/status')return json(res,200,{configured:!!(await aiKey()),model:'auto',provider:'Gemini Vision',job:{status:draftJob.status,step:draftJob.step,error:draftJob.error}});
-if(req.method==='POST'&&url.pathname==='/api/ai/config'){const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}
+if(req.method==='POST'&&url.pathname==='/api/ai/config'){if(GUEST)throw makeError(403,'체험 사용자는 AI 키를 변경할 수 없습니다.');const b=await data(req);if(typeof b.key!=='string'||b.key.length<15||b.key.length>300||!/^[-_A-Za-z0-9]+$/.test(b.key))throw makeError(400,'올바른 Gemini API 키를 입력하세요.');await saveJson(keyPath,{geminiKey:b.key});return json(res,200,{configured:true});}
 if(req.method==='GET'&&url.pathname==='/api/ai/draft/status'){if(draftJob.status==='done')return json(res,200,draftJob);return json(res,200,{status:draftJob.status,step:draftJob.step,error:draftJob.error,projectId:draftJob.projectId});}
 if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
+ guestQuota('drafts');
  if(draftJob.status==='running')throw makeError(409,'AI가 다른 영상 초안을 작성하고 있습니다.');
  const b=await data(req),projects=await loadJson(projectsPath,[]),files=await loadJson(path.join(STATE,'media.json'),[]);
  const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트를 찾을 수 없습니다.');
@@ -263,7 +293,12 @@ else{
 await saveJson(projectsPath,projects);return json(res,200,{project:value});}
 if(req.method==='POST'&&url.pathname==='/api/new'){const projects=await loadJson(projectsPath,[]);const item={id:hex(),title:'새 프로젝트',schemaVersion:2,ratio:'9:16',scenes:[],textClips:[],bgmId:null,bgmVolume:0.16,voice:DEFAULT_VOICE,updatedAt:new Date().toISOString()};projects.push(item);await saveJson(projectsPath,projects);return json(res,201,{project:item});}
 if(req.method==='POST'&&url.pathname==='/api/upload'){
- const name=url.searchParams.get('name')||'file',upload=await streamUpload(req);
+ const name=url.searchParams.get('name')||'file';
+ if(GUEST)guestQuota('uploads');
+ const upload=await streamUpload(req,GUEST?30_000_000:1_073_741_824);
+ if(GUEST){
+  try{guestQuota('bytes',upload.total)}catch(err){await rm(upload.temp,{force:true}).catch(()=>{});throw err;}
+ }
  let item;
  try{
   if(upload.total<1500)throw makeError(400,'파일 크기가 너무 작습니다.');
@@ -333,7 +368,7 @@ if(req.method==='GET'&&mediaMatch){
  createReadStream(filepath,{start,end}).on('error',()=>res.destroy()).pipe(res);return;
 }
 if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
-if(req.method==='POST'&&url.pathname==='/api/export'){if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{outputDir,mediaDir,onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
+if(req.method==='POST'&&url.pathname==='/api/export'){guestQuota('exports');if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void (p.schemaVersion===2?renderTimeline(p,media,{outputDir,mediaDir,onStep:step=>{exportJob.step=step},synthesizeVoice}):renderProject(p,media,step=>{exportJob.step=step})).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
 const download=url.pathname.match(/^[/]api[/]export[/]([0-9a-f]{24}[.]mp4)$/);
 if(req.method==='GET'&&download){
  if(exportJob.status!=='done'||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');
