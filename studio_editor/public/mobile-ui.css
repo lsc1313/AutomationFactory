@@ -65,6 +65,8 @@
    padding:12px;border:1px solid #ccdbcd;border-radius:11px;font-weight:700;margin:4px 0
  }
  body:not([data-mobile-view="edit"]) .mobile-clip-details{display:none!important}
+ body[data-mobile-view="edit"] .v2-clip-settings{display:none!important}
+ body[data-mobile-view="edit"].mobile-details-open .v2-clip-settings{display:block!important}
  body[data-mobile-view="edit"] .properties{display:none!important}
  body[data-mobile-view="edit"].mobile-details-open .properties{display:block!important}
  body[data-mobile-view="captions"] .properties{display:block!important}
