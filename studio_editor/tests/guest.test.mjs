@@ -54,6 +54,7 @@ test('external guest is isolated, invite-authenticated, restricted and immediate
  const state=await response.json();assert.deepEqual(state.projects,[]);assert.deepEqual(state.media,[]);
  response=await request('/api/guest/link',{headers:{Cookie:cookie}});assert.equal(response.status,403);
  response=await request('/api/guest/stop',{method:'POST',headers:authed,body:'{}'});assert.equal(response.status,403);
+ response=await request('/api/guest/start',{method:'POST',headers:authed,body:'{}'});assert.equal(response.status,403);
  response=await request('/api/ai/config',{method:'POST',headers:authed,body:JSON.stringify({key:'a'.repeat(40)})});assert.equal(response.status,403);
  for(let i=0;i<8;i++){
   response=await request('/api/voice/preview',{method:'POST',headers:authed,body:JSON.stringify({voice:'off',text:'hello'})});

@@ -4,7 +4,7 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.3.0'
+$version = 'v1.3.1'
 $branch = if ($env:STUDIO_SOURCE_REF -and $env:STUDIO_SOURCE_REF -match '^[0-9a-f]{40}$') { $env:STUDIO_SOURCE_REF } else { 'feature/standalone-studio-editor-v0-1' }
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'

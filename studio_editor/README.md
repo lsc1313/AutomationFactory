@@ -159,3 +159,7 @@ AI 초안 생성 전 연출 스타일 옆에서 기본 여성 선희 및 다른 
 **주의:** 동일한 초대 링크를 여러 사람에게 전달하면 **같은 게스트 작업 공간**을 공유하게 됩니다. 지인마다 분리하려면 한 번에 한 명에게 링크를 전달하거나 게스트 실행을 중지 후 새로 시작하세요. 초대 URL을 아는 누구나 링크 유효시간 동안 접근할 수 있으므로 공개 게시하지 마세요. 외부 Cloudflare Quick Tunnel 서비스와 네트워크를 통해 체험 영상·사진이 전달되므로 민감한 파일은 업로드하지 마세요. 테스트용 기능이며 공개 서비스용으로 사용하지 마세요.
 
 Cloudflare 공식 안내: https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
+
+### v1.3.1 지인 링크: PC 실행 없이 관리자 휴대폰에서 생성 가능
+
+기존 관리자가 Tailscale로 로그인한 Studio Editor 상단에서 **🔗 체험 링크**를 누르고 확인하면, PC에서 백그라운드로 임시 게스트 서버와 Cloudflare Quick Tunnel을 시작합니다. 링크 생성이 끝나면 휴대폰의 클립보드에 자동 복사하므로 카카오톡으로 지인에게 전송하면 됩니다. 필요하면 **체험 종료** 버튼으로 즉시 접근을 차단할 수 있습니다. Windows PC는 켜져 있어야 하고, 최초 실행 시 cloudflared 공식 릴리스를 내려받습니다. 실패 시 PC의 `%LOCALAPPDATA%\\StudioEditor\\private\\guest-launch.log`를 확인하세요. 원래 관리자 편집기(8050)는 외부에 노출되지 않습니다.
