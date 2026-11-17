@@ -46,9 +46,9 @@ export function windowsPythonPaths(localAppData=process.env.LOCALAPPDATA){
 }
 function voiceFailureDetail(err){
  const detail=String(err?.message||err||'');
- const explicit=detail.match(/TTS_ERROR:\\s*([^\\r\\n]+)/);
+ const explicit=detail.match(/TTS_ERROR:[ ]*([^\r\n]+)/);
  if(explicit)return explicit[1].slice(0,380);
- const early=detail.split(/Exception ignored in:|ProactorBasePipeTransport\\.__del__/)[0];
+ const early=detail.split(/Exception ignored in:|ProactorBasePipeTransport[.]__del__/)[0];
  return (early.trim()||detail).slice(-380);
 }
 export async function synthesizeVoice(voice,text,out,cwd,runner=run,options={}){
