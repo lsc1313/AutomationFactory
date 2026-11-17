@@ -39,21 +39,43 @@ async function body(req,max=1_000_000){let size=0,parts=[];for await(const chunk
 async function data(req,max){let obj;try{obj=JSON.parse((await body(req,max)).toString());}catch(e){if(e.status)throw e;throw makeError(400,'JSON 형식이 잘못되었습니다.');}return obj;}
 function mime(ext){return({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.mp4':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'})[ext]||'application/octet-stream';}
 function run(exe,args,{cwd,timeout=240000}={}){return new Promise((resolve,reject)=>{let log='';const p=spawn(exe,args,{cwd,windowsHide:true,stdio:['ignore','pipe','pipe']});let expired=false;const timer=setTimeout(()=>{expired=true;p.kill();},timeout);p.stdout.on('data',d=>{log=(log+d.toString()).slice(-3000)});p.stderr.on('data',d=>{log=(log+d.toString()).slice(-3000)});p.on('error',e=>{clearTimeout(timer);reject(new Error(exe+' 실행 실패: '+e.message));});p.on('close',c=>{clearTimeout(timer);if(expired)reject(new Error(exe+' 실행 시간 초과'));else if(c!==0)reject(new Error(exe+' 실패: '+log.slice(-600)));else resolve(log)});});}
-export async function synthesizeVoice(voice,text,out,cwd,runner=run){
+export function windowsPythonPaths(localAppData=process.env.LOCALAPPDATA){
+ const base=localAppData?path.join(localAppData,'Programs','Python'):null;
+ return base?['Python314','Python313','Python312','Python311','Python310','Python39']
+  .map(v=>path.join(base,v,'python.exe')):[];
+}
+function voiceFailureDetail(err){
+ const detail=String(err?.message||err||'');
+ const explicit=detail.match(/TTS_ERROR:\\s*([^\\r\\n]+)/);
+ if(explicit)return explicit[1].slice(0,380);
+ const early=detail.split(/Exception ignored in:|ProactorBasePipeTransport\\.__del__/)[0];
+ return (early.trim()||detail).slice(-380);
+}
+export async function synthesizeVoice(voice,text,out,cwd,runner=run,options={}){
  if(!VOICES.includes(voice)||voice==='off')throw new Error('음성 설정을 확인하세요.');
  const args=['--voice',voice,'--text',text,'--write-media',out];
- try{
-  // Prefer the installed CLI. Windows pip --user scripts may not be in PATH.
-  await runner('edge-tts',args,{cwd,timeout:90000});
- }catch(first){
+ const platform=options.platform||process.platform;
+ const bridge=path.join(ROOT,'tts_windows.py');
+ const pythonChoices=platform==='win32'
+  ? [...new Set([process.env.STUDIO_PYTHON,...windowsPythonPaths(options.localAppData),'python','py'].flat().filter(Boolean))]
+  : ['python3','python'];
+ const attempts=[];
+ for(const exe of pythonChoices){
   try{
-   await runner('python',['-m','edge_tts',...args],{cwd,timeout:90000});
-  }catch(second){
-   throw new Error('AI 음성 생성에 실패했습니다. edge-tts 또는 Python edge_tts 모듈 설치와 네트워크 연결을 확인하세요. '+second.message);
-  }
+   await runner(exe,[...(exe==='py'?['-3']:[]),bridge,...args],{cwd,timeout:45000});
+   const result=await stat(out).catch(()=>null);
+   if(result&&result.size>=500)return;
+   attempts.push(exe+': output missing');
+  }catch(error){attempts.push(exe+': '+voiceFailureDetail(error));}
  }
- const result=await stat(out).catch(()=>null);
- if(!result||result.size<500)throw new Error('AI 음성 파일이 생성되지 않았습니다. 무음 영상으로 저장하지 않습니다.');
+ // Last resort: cli may use a different Python installation or a standalone binary.
+ try{
+  await runner('edge-tts',args,{cwd,timeout:45000});
+  const result=await stat(out).catch(()=>null);
+  if(result&&result.size>=500)return;
+ }catch(error){attempts.push('edge-tts: '+voiceFailureDetail(error));}
+ throw new Error('AI 음성 생성 실패. Python TTS 또는 서비스 연결을 확인하세요. '
+  + attempts.filter(Boolean).slice(-3).join(' | '));
 }
 const voiceSamples=new Map();
 let voicePreviewBusy=false;

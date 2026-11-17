@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-test-'));
 process.env.STUDIO_DATA_DIR=dir;
-const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan,imageFilter,videoFilter,synthesizeVoice}=await import('../server.mjs');
+const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan,imageFilter,videoFilter,synthesizeVoice,windowsPythonPaths}=await import('../server.mjs');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const a=makeAss({caption:'상품 {100%} 구매',captionStyle:'minimal',captionPosition:'top'},4);
 test('ASS subtitles escape syntax, show safe upper positioning',()=>{assert.match(a,/Style: Captions,Malgun Gothic,43/);assert.match(a,/100%/);assert.doesNotMatch(a,/\{100%\}/);assert.match(a,/4\.00/);});
@@ -42,19 +42,22 @@ test('scene motion applies distinct left/right transforms with 1.2x tempo',()=>{
  assert.match(right,/zoom\)\*min/);
  assert.match(zoom,/0\.20\*min/);
 });
-test('voice renderer uses Edge CLI then Python module if PATH lacks script',async()=>{
+test('Windows TTS recognizes Python39 interpreter explicitly',()=>{
+ const choices=windowsPythonPaths('C:/Users/Example/AppData/Local');
+ assert.ok(choices.some(p=>p.includes('Python39')));
+});
+test('TTS runner tries Python helper with selected voice and preserves an audio file',async()=>{
  const tmp=await mkdtemp(path.join(os.tmpdir(),'studio-voice-test-'));
- const p=path.join(tmp,'test-speech.mp3');
- const attempts=[];
- await synthesizeVoice('ko-KR-SunHiNeural','미리 듣기입니다',p,tmp,async(exe,args)=>{
-  attempts.push(exe);
-  if(exe==='edge-tts')throw new Error('command not found');
-  assert.equal(exe,'python');
-  assert.deepEqual(args.slice(0,2),['-m','edge_tts']);
-  await writeFile(p,Buffer.alloc(1000,1));
- });
- assert.deepEqual(attempts,['edge-tts','python']);
- await rm(tmp,{recursive:true,force:true});
+ const out=path.join(tmp,'test.mp3'),attempts=[];
+ try{
+  await synthesizeVoice('ko-KR-SunHiNeural','미리 듣기입니다',out,tmp,async(exe,args)=>{
+   attempts.push({exe,args});
+   await writeFile(out,Buffer.alloc(1200,7));
+  },{platform:'win32',localAppData:'C:/Users/Example/AppData/Local'});
+  assert.equal(attempts.length,1);
+  assert.ok(attempts[0].args.some(a=>String(a).endsWith('tts_windows.py')));
+  assert.ok(attempts[0].args.includes('--voice'));
+ }finally{await rm(tmp,{recursive:true,force:true});}
 });
 
 test('video footage gets same zoom/pan effects as photo scenes',()=>{

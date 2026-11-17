@@ -4,14 +4,14 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v0.3.1'
+$version = 'v0.3.2'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
 $private = Join-Path $dest 'private'
 $log = Join-Path $env:TEMP 'StudioEditor-install.log'
 $files = @(
- 'server.mjs', 'ai-draft.mjs', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css',
+ 'server.mjs', 'ai-draft.mjs', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/styles.css',
  'tests/studio.test.mjs', 'windows/start-hidden.ps1',
  'windows/start-hidden.vbs', 'windows/stop-hidden.ps1',
  'windows/enable-phone.ps1', 'README.md', 'windows/install-oneclick.ps1'
@@ -111,15 +111,28 @@ try {
  $ffprobe = Find-Program 'ffprobe.exe' @("$dest\bin\ffprobe.exe")
  if ($ffmpeg -and $ffprobe) {Note 'FFmpeg and FFprobe found. MP4 export available.'}
  else {Note 'WARNING: FFmpeg/FFprobe not found in PATH. Editor can open, but exporting MP4 requires FFmpeg.'}
- # Ensure narration engine is present for actual audio export (no silent fallback).
- $tts = Get-Command edge-tts -ErrorAction SilentlyContinue
- if (-not $tts) {
-  $python = Find-Program 'python.exe' @("$env:LOCALAPPDATA\\Programs\\Python\\Python313\\python.exe", "$env:LOCALAPPDATA\\Programs\\Python\\Python312\\python.exe")
-  if ($python) {
-   Note 'Installing optional Edge TTS voice engine for automatic narration'
-   try { & $python -m pip install --user --disable-pip-version-check edge-tts 2>&1 | ForEach-Object { Note "TTS: $_" } }
-   catch { Note "TTS installation warning: $($_.Exception.Message)" }
-  } else { Note 'WARNING: Python not found. AI narration needs edge-tts; install when convenient.' }
+ # Install/update TTS for the exact local interpreter, including Python 3.9.
+ $pythonCandidates = @(
+  "$env:LOCALAPPDATA\\Programs\\Python\\Python314\\python.exe",
+  "$env:LOCALAPPDATA\\Programs\\Python\\Python313\\python.exe",
+  "$env:LOCALAPPDATA\\Programs\\Python\\Python312\\python.exe",
+  "$env:LOCALAPPDATA\\Programs\\Python\\Python311\\python.exe",
+  "$env:LOCALAPPDATA\\Programs\\Python\\Python310\\python.exe",
+  "$env:LOCALAPPDATA\\Programs\\Python\\Python39\\python.exe"
+ )
+ # Prefer known real installations over a Windows Store shim in PATH.
+ $python = $pythonCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+ if (-not $python) { $python = Find-Program 'python.exe' @() }
+ if ($python) {
+  Note "Preparing Edge TTS with Python interpreter: $python"
+  try {
+   & $python -m pip install --user --disable-pip-version-check --upgrade 'edge-tts==7.3.1' 2>&1 |
+    ForEach-Object { Note "TTS: $_" }
+   if ($LASTEXITCODE -ne 0) { Note "WARNING: TTS setup exit code $LASTEXITCODE; see install log." }
+   else { Note 'TTS package verified/updated; selector event-loop bridge installed.' }
+  } catch { Note "WARNING: TTS install failed: $($_.Exception.Message)" }
+ } else {
+  Note 'WARNING: Python was not detected. TTS preview will require manual repair.'
  }
  # Private Tailscale Serve setup is best-effort; do not replace 443/8443.
  if (-not $NoPhone) {
