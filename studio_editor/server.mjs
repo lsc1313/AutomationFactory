@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile, readdir, copyFile, stat } from 'node:fs/promises';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { createReadStream } from 'node:fs';
 import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const STATE=path.resolve(process.env.STUDIO_DATA_DIR||path.join(ROOT,'private'));
@@ -137,7 +138,14 @@ const localExt=source.ext,srcName=`source.${localExt}`;await copyFile(path.join(
 const args=['-hide_banner','-loglevel','error','-y',...(isImg?['-loop','1','-framerate','24']:['-stream_loop','-1']),'-i',srcName];const hasVoice=Boolean(voiceFile);args.push(...(hasVoice?['-i',voiceFile]:['-f','lavfi','-i','anullsrc=r=44100:cl=stereo']));args.push('-filter_complex',filter,'-map','[v]','-map','1:a:0','-t',String(duration),'-r','24','-c:v','libx264','-preset','veryfast','-crf','26','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-ar','44100','-ac','2','-af','apad','-movflags','+faststart',segmentName);
 await run('ffmpeg',args,{cwd:dir,timeout:240000});segments.push(segmentName);info.push({index:i,duration});}
 onStep('장면 병합');await writeFile(path.join(dir,'concat.txt'),segments.map(n=>`file '${n}'`).join('\n'));await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','concat','-safe','0','-i','concat.txt','-c','copy','merged.mp4'],{cwd:dir,timeout:180000});let final='merged.mp4';if(project.bgmId){onStep('배경음악 믹싱');const music=mediaById.get(project.bgmId),name='music.'+music.ext;await copyFile(path.join(mediaDir,music.id+'.'+music.ext),path.join(dir,name));await run('ffmpeg',['-hide_banner','-loglevel','error','-y','-i','merged.mp4','-stream_loop','-1','-i',name,'-filter_complex',`[1:a]volume=${project.bgmVolume}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[a]`,'-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','160k','-movflags','+faststart','final.mp4'],{cwd:dir,timeout:180000});final='final.mp4';}
-await copyFile(path.join(dir,final),path.join(outputDir,job+'.mp4'));return {filename:job+'.mp4',duration:info.reduce((a,b)=>a+b.duration,0),bytes:(await stat(path.join(outputDir,job+'.mp4'))).size};}
+const rendered=path.join(dir,final);
+const metadata=await probe(rendered);
+if(!metadata.streams?.some(s=>s.codec_type==='video')||!metadata.streams?.some(s=>s.codec_type==='audio'))
+ throw new Error('MP4 검증 실패: 영상 또는 음성 트랙이 없습니다.');
+const bytes=(await stat(rendered)).size;
+if(bytes<10000)throw new Error('MP4 검증 실패: 파일이 비정상적으로 작습니다.');
+await copyFile(rendered,path.join(outputDir,job+'.mp4'));
+return {filename:job+'.mp4',duration:Number(metadata.format?.duration)||info.reduce((a,b)=>a+b.duration,0),bytes};}
 function auth(req){const t=String(req.headers.cookie||'').match(/(?:^|;\s*)studio_session=([a-z0-9]+)/)?.[1];return t&&sessions.get(t)||null;}
 export function createStudioServer({state=STATE}={}){const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');const hostRaw=String(req.headers.host||'');let host;try{host=new URL('http://'+hostRaw).hostname.toLowerCase()}catch{throw makeError(403,'호스트 오류')}const local=isLocalHost(host);if(!local){if(!HOST||host!==HOST||!TRUST||req.headers['x-forwarded-proto']!=='https'||!addrLocal(req))throw makeError(403,'승인되지 않은 호스트입니다.');}
 if(!['GET','POST'].includes(req.method))throw makeError(405,'지원하지 않는 요청');if(req.method==='POST'){const origin=req.headers.origin;if(origin&&new URL(origin).host.toLowerCase()!==hostRaw.toLowerCase())throw makeError(403,'외부 출처 차단');}
@@ -190,7 +198,28 @@ if(req.method==='POST'&&url.pathname==='/api/upload'){const name=url.searchParam
 const mediaMatch=url.pathname.match(/^\/api\/media\/([0-9a-f]{24})$/);if(req.method==='GET'&&mediaMatch){const files=await loadJson(path.join(STATE,'media.json'),[]),item=files.find(f=>f.id===mediaMatch[1]);if(!item)throw makeError(404,'파일 없음');res.writeHead(200,{...APP_HEADER,'Content-Type':mime('.'+item.ext),'Content-Disposition':'inline'});res.end(await readFile(path.join(mediaDir,item.id+'.'+item.ext)));return;}
 if(req.method==='GET'&&url.pathname==='/api/export/status')return json(res,200,exportJob);
 if(req.method==='POST'&&url.pathname==='/api/export'){if(exportJob.status==='running')throw makeError(409,'다른 영상이 제작 중입니다.');const b=await data(req),projects=await loadJson(projectsPath,[]),media=await loadJson(path.join(STATE,'media.json'),[]);const project=projects.find(p=>p.id===b.projectId);if(!project)throw makeError(404,'프로젝트 없음');const p=validateProject(project,media);if(!p.scenes.length)throw makeError(400,'영상 장면이 없습니다.');exportJob={status:'running',error:null,filename:null,projectId:p.id,step:'준비'};void renderProject(p,media,step=>{exportJob.step=step}).then(result=>{exportJob={status:'done',error:null,projectId:p.id,step:'완료',...result}}).catch(e=>{exportJob={status:'failed',error:e.message,projectId:p.id,step:'실패'}});return json(res,202,exportJob);}
-const download=url.pathname.match(/^\/api\/export\/([0-9a-f]{24}\.mp4)$/);if(req.method==='GET'&&download){if(exportJob.status!=='done'||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');res.writeHead(200,{...APP_HEADER,'Content-Type':'video/mp4','Content-Disposition':`attachment; filename="studio-${download[1]}"`});res.end(await readFile(path.join(outputDir,download[1])));return;}
+const download=url.pathname.match(/^[/]api[/]export[/]([0-9a-f]{24}[.]mp4)$/);
+if(req.method==='GET'&&download){
+ if(exportJob.status!=='done'||download[1]!==exportJob.filename)throw makeError(404,'출력 파일 없음');
+ const filepath=path.join(outputDir,download[1]),file=await stat(filepath);
+ const range=String(req.headers.range||''),match=range.match(/^bytes=(\d*)-(\d*)$/);
+ const headers={...APP_HEADER,'Content-Type':'video/mp4','Accept-Ranges':'bytes','Content-Disposition':url.searchParams.has('download')?`attachment; filename="studio-${download[1]}"`:'inline'};
+ let start=0,end=file.size-1;
+ if(range){
+  if(!match)throw makeError(416,'지원하지 않는 영상 범위 요청입니다.');
+  start=match[1]?Number(match[1]):Math.max(0,file.size-Number(match[2]||0));
+  end=match[1]?(match[2]?Number(match[2]):end):end;
+  if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||start>=file.size||end<start){
+   res.writeHead(416,{...headers,'Content-Range':`bytes */${file.size}`});res.end();return;
+  }
+  end=Math.min(end,file.size-1);
+  headers['Content-Range']=`bytes ${start}-${end}/${file.size}`;
+ }
+ headers['Content-Length']=end-start+1;
+ res.writeHead(range?206:200,headers);
+ createReadStream(filepath,{start,end}).on('error',()=>res.destroy()).pipe(res);
+ return;
+}
 throw makeError(404,'주소 없음');
 }catch(e){json(res,e.status||500,{error:e.message});}});return server;}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
