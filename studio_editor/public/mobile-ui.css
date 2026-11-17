@@ -1,0 +1,97 @@
+/* Studio Editor mobile-only workspace. PC original layout is untouched. */
+.mobile-navigation,.mobile-clip-details{display:none!important}
+@media(max-width:900px){
+ body{padding-bottom:calc(82px + env(safe-area-inset-bottom,0px))}
+ #studio[hidden]+.mobile-navigation{display:none!important}
+ #studio:not([hidden])+.mobile-navigation{
+  display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));
+  position:fixed;z-index:80;left:0;right:0;bottom:0;
+  padding:6px 5px calc(7px + env(safe-area-inset-bottom,0px));
+  background:#fffdfa;border-top:1px solid #d7e0d6;
+  box-shadow:0 -4px 18px #253a2e20;
+ }
+ .mobile-navigation button{display:flex;flex-direction:column;align-items:center;
+  gap:0;justify-content:center;background:transparent;border:0;box-shadow:none;
+  min-height:54px;padding:3px 2px;border-radius:10px;font-size:11px;color:#606f63}
+ .mobile-navigation button span:first-child{font-size:21px;line-height:1.25}
+ .mobile-navigation button[aria-current="page"]{background:#e4eee4;color:#355d46;font-weight:800}
+ .top{position:sticky;top:0;z-index:45;padding:8px 12px;background:#fffdfa;box-shadow:0 2px 9px #1f2b1c0b}
+ .topbrand{min-width:unset}
+ .topbrand small{display:none}
+ .topactions{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ .topactions #project-picker{grid-column:1 / -1}
+ .topactions #export-btn{grid-column:auto}
+ .topactions #logout{grid-column:auto}
+ .topactions>*{font-size:12px;padding:8px 5px}
+ .layout{display:flex;flex-direction:column}
+ /* Mobile tabs: keep one shared editor instance and selectively expose panels. */
+ body[data-mobile-view="edit"] #ai-workflow,
+ body[data-mobile-view="edit"] .media-panel,
+ body[data-mobile-view="edit"] #project-settings,
+ body[data-mobile-view="media"] #ai-workflow,
+ body[data-mobile-view="media"] .editor-main,
+ body[data-mobile-view="media"] #project-settings,
+ body[data-mobile-view="ai"] .media-panel,
+ body[data-mobile-view="ai"] .editor-main,
+ body[data-mobile-view="ai"] #project-settings,
+ body[data-mobile-view="captions"] #ai-workflow,
+ body[data-mobile-view="captions"] .media-panel,
+ body[data-mobile-view="captions"] #project-settings,
+ body[data-mobile-view="sound"] #ai-workflow,
+ body[data-mobile-view="sound"] .media-panel{display:none!important}
+ body[data-mobile-view="edit"] .v2-subtitle-track,
+ body[data-mobile-view="edit"] .v2-audio-track{display:none!important}
+ body[data-mobile-view="captions"] .v2-settings,
+ body[data-mobile-view="captions"] .v2-actions,
+ body[data-mobile-view="captions"] .v2-clip-settings,
+ body[data-mobile-view="captions"] .v2-audio-track,
+ body[data-mobile-view="captions"] .timeline-wrap{display:none!important}
+ body[data-mobile-view="sound"] .v2-settings,
+ body[data-mobile-view="sound"] .v2-actions,
+ body[data-mobile-view="sound"] .v2-clip-settings,
+ body[data-mobile-view="sound"] .v2-subtitle-track,
+ body[data-mobile-view="sound"] .timeline-wrap{display:none!important}
+ body[data-mobile-view="captions"] #v2-editor>.v2-heading,
+ body[data-mobile-view="sound"] #v2-editor>.v2-heading{display:none!important}
+ body[data-mobile-view="captions"] .v2-subtitle-track,
+ body[data-mobile-view="sound"] .v2-audio-track{display:block!important;border:0;margin:0;padding:0}
+ body[data-mobile-view="captions"] .v2-editor,
+ body[data-mobile-view="sound"] .v2-editor{padding:12px;margin:0}
+ body[data-mobile-view="captions"] .preview-wrap,
+ body[data-mobile-view="sound"] .preview-wrap,
+ body[data-mobile-view="edit"] .preview-wrap{position:relative;max-width:100%;margin:0 auto}
+ .mobile-clip-details{
+   display:block!important;width:100%;text-align:center;background:#e8efe8;
+   padding:12px;border:1px solid #ccdbcd;border-radius:11px;font-weight:700;margin:4px 0
+ }
+ body:not([data-mobile-view="edit"]) .mobile-clip-details{display:none!important}
+ body[data-mobile-view="edit"] .properties{display:none!important}
+ body[data-mobile-view="edit"].mobile-details-open .properties{display:block!important}
+ body[data-mobile-view="captions"] .properties{display:block!important}
+ body[data-mobile-view="captions"] .properties #scene-props>label:not(:nth-child(2)):not(:nth-child(4)):not(:nth-child(5)):not(:nth-child(6)){display:none!important}
+ body[data-mobile-view="captions"] .properties .row-buttons,
+ body[data-mobile-view="captions"] .properties .panel-note{display:none!important}
+ body[data-mobile-view="sound"] .properties{display:none!important}
+ body[data-mobile-view="sound"] #project-settings{display:block!important;margin:10px 12px}
+ body[data-mobile-view="media"] .media-panel{display:block!important;margin:12px}
+ body[data-mobile-view="ai"] #ai-workflow{display:block!important;margin:12px}
+ body[data-mobile-view="ai"] .ai-controls,
+ body[data-mobile-view="ai"] .ai-grid{display:grid;grid-template-columns:1fr 1fr}
+ body[data-mobile-view="ai"] .ai-grid>label{grid-column:1/-1}
+ body[data-mobile-view="ai"] #ai-generate{grid-column:1/-1}
+ body[data-mobile-view="edit"] .editor-main{display:flex!important}
+ body[data-mobile-view="edit"] .worktop{padding:0 6px}
+ body[data-mobile-view="captions"] .worktop,
+ body[data-mobile-view="sound"] .worktop{display:none!important}
+ .v2-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .v2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .preview-tools{width:100%}
+ #full-review{width:100%}
+ footer{padding:12px}
+}
+@media(max-width:480px){
+ .v2-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .topactions>*{font-size:11px}
+ .ai-controls button{min-height:42px}
+ .mobile-navigation button{font-size:10px}
+}
