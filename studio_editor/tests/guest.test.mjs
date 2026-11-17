@@ -4,6 +4,7 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {randomBytes,createHash} from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 
 const temp=await mkdtemp(path.join(os.tmpdir(),'studio-guest-test-'));
 const token=randomBytes(32).toString('hex');
@@ -33,8 +34,12 @@ test('external guest is isolated, invite-authenticated, restricted and immediate
  response=await request('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'attack-password-123'})});
  assert.equal(response.status,403);
  response=await request('/invite/'+'f'.repeat(64));assert.equal(response.status,403);
- response=await fetch(base+'/invite/'+token,{headers:{Host:'attacker.example.org','X-Forwarded-Proto':'https'},redirect:'manual'});
- assert.equal(response.status,403,'unknown public hosts are denied');
+ const evilStatus=await new Promise((resolve,reject)=>{
+  const req=http.request({hostname:'127.0.0.1',port:server.address().port,path:'/invite/'+token,method:'GET',
+    headers:{Host:'attacker.example.org','X-Forwarded-Proto':'https'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});
+  req.once('error',reject);req.end();
+ });
+ assert.equal(evilStatus,403,'unknown public hosts are denied');
  response=await request('/invite/'+token);
  assert.equal(response.status,303);
  assert.equal(response.headers.get('location'),'/app');
