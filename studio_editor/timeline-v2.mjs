@@ -10,6 +10,9 @@ const limit=(n,a,b)=>Math.min(b,Math.max(a,n));
 export const CANVASES={'9:16':{width:720,height:1280},'16:9':{width:1280,height:720},'1:1':{width:720,height:720}};
 export const EFFECTS=['none','zoom-in','zoom-out','pan-left','pan-right'];
 export const MODES=['original','narration','mix','mute'];
+export const FONTS=['Malgun Gothic','Batang','Gungsuh','Arial','Noto Sans CJK KR'];
+const safeColor=c=>/^#[0-9a-f]{6}$/i.test(String(c||''))?c:'#FFFFFF';
+const assColor=c=>{const v=safeColor(c).slice(1);return '&H00'+v.slice(4,6)+v.slice(2,4)+v.slice(0,2).toUpperCase()};
 export function canvasFor(ratio){return CANVASES[ratio]||CANVASES['9:16'];}
 export function clipMs(clip){
  const reps=limit(Math.floor(finite(clip.repeats,1)),1,40),speed=limit(finite(clip.speed,1),0.5,2);
@@ -36,7 +39,9 @@ export function sourceClip(raw,media){
   captionStart:Math.max(0,finite(raw.captionStart,0)),captionEnd:Math.max(0,finite(raw.captionEnd,0)),
   captionStyle:['impact','minimal','boxed','clean'].includes(raw.captionStyle)?raw.captionStyle:'impact',
   captionPosition:['top','middle','bottom'].includes(raw.captionPosition)?raw.captionPosition:'bottom',
-  captionSize:limit(finite(raw.captionSize,56),20,108),voiceMediaId:raw.voiceMediaId||null,
+  captionSize:limit(finite(raw.captionSize,56),20,108),captionColor:safeColor(raw.captionColor||(raw.captionStyle==='clean'?'#FFE700':'#FFFFFF')),
+  captionFont:FONTS.includes(raw.captionFont)?raw.captionFont:'Malgun Gothic',captionOutline:limit(finite(raw.captionOutline,3),0,8),
+  voiceMediaId:raw.voiceMediaId||null,
   fit:raw.fit==='fit'?'fit':'fill',transition:raw.transition==='fade'?'fade':'cut'
  };
  const seg=clipMs({...clip,repeats:1})/1000;
@@ -60,7 +65,8 @@ export function normalizeTimeline(project,media){
  normalized.textClips=(Array.isArray(project.textClips)?project.textClips:[]).slice(0,500).map(t=>({
   id:/^[0-9a-f]{24}$/.test(t.id||'')?t.id:id(),text:String(t.text||'').slice(0,1200),
   startMs:limit(Math.round(finite(t.startMs,0)),0,total),endMs:limit(Math.round(finite(t.endMs,1000)),0,total),
-  size:limit(Math.round(finite(t.size,50)),20,108),position:['top','middle','bottom'].includes(t.position)?t.position:'bottom'
+  size:limit(Math.round(finite(t.size,50)),20,108),position:['top','middle','bottom'].includes(t.position)?t.position:'bottom',
+  color:safeColor(t.color),font:FONTS.includes(t.font)?t.font:'Malgun Gothic'
  })).filter(t=>t.endMs>t.startMs);
  if(timelineDuration(normalized)>3600000)throw Error('최종 영상은 60분 이내로 편집하세요.');
  return normalized;
@@ -103,12 +109,16 @@ function assEscape(t){return String(t||'').replace(/\\/g,'').replace(/\{/g,'(').
 function assTime(s){let c=Math.round(s*100);return Math.floor(c/360000)+':'+String(Math.floor(c/6000)%60).padStart(2,'0')+':'+String(Math.floor(c/100)%60).padStart(2,'0')+'.'+String(c%100).padStart(2,'0');}
 export function clipAss(c,duration,canvas,overlays=[]){
  const size=Math.round(c.captionSize||56),start=Math.min(duration,Math.max(0,c.captionStart||0)),end=Math.max(start,Math.min(duration,c.captionEnd||duration));
+ const font=FONTS.includes(c.captionFont)?c.captionFont:'Malgun Gothic';
+ const style=c.captionStyle||'impact',bold=style==='minimal'?'0':'-1';
+ const primary=assColor(c.captionColor||((style==='clean')?'#FFE700':'#FFFFFF'));
+ const outline=limit(finite(c.captionOutline,style==='minimal'?2:3),0,8);
  const align=c.captionPosition==='top'?8:c.captionPosition==='middle'?5:2;
  const overlayEvents=overlays.filter(t=>t.text&&t.endMs>t.startMs).map(t=>{
   const align=t.position==='top'?8:t.position==='middle'?5:2;
-  return `Dialogue: 1,${assTime(t.startMs/1000)},${assTime(t.endMs/1000)},Caption,,0,0,0,,{\\an${align}\\fs${t.size}}${assEscape(t.text)}\n`;
+  return `Dialogue: 1,${assTime(t.startMs/1000)},${assTime(t.endMs/1000)},Caption,,0,0,0,,{\\an${align}\\fs${t.size}\\c${assColor(t.color)}\\fn${FONTS.includes(t.font)?t.font:'Malgun Gothic'}}${assEscape(t.text)}\n`;
  }).join('');
- return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${canvas.width}\nPlayResY: ${canvas.height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Caption,Malgun Gothic,${size},&H00FFFFFF,&H000000FF,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,1,3,1,${align},45,45,110,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${assEscape(c.caption)}\n${overlayEvents}`;
+ return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${canvas.width}\nPlayResY: ${canvas.height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Caption,${font},${size},${primary},&H000000FF,&H00000000,&HFF000000,${bold},0,0,0,100,100,0,0,1,${outline},1,${align},45,45,110,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${assEscape(c.caption)}\n${overlayEvents}`;
 }
 export function visualFilter(c,canvas,totalFrames){
  const w=canvas.width,h=canvas.height,elapsed=`min(1,on/${Math.max(1,Math.round(Math.max(2,totalFrames)/1.2)-1)})`;

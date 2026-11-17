@@ -30,3 +30,7 @@
 .v2-audio-row{display:grid;grid-template-columns:minmax(150px,2fr) repeat(3,minmax(60px,1fr)) auto;gap:7px;padding:8px;background:#f8faf7;border:1px solid #e2e7dd;border-radius:9px;margin-bottom:7px;align-items:center}
 .v2-audio-row select,.v2-audio-row input{min-width:0;width:100%;padding:7px;border:1px solid #d1dacc;border-radius:7px;background:white;color:#29342d}
 @media(max-width:650px){.v2-audio-row{grid-template-columns:repeat(3,minmax(0,1fr))}.v2-audio-row select{grid-column:1/-1}.v2-audio-row button{grid-column:1/-1}}
+#v2-live-overlay{z-index:6;white-space:pre-wrap;background:transparent!important;pointer-events:none;max-width:90%}
+.v2-text-row{grid-template-columns:minmax(110px,2fr) repeat(3,minmax(55px,1fr)) minmax(70px,1fr) 40px minmax(70px,1fr) auto}
+.v2-text-row input[type=color]{padding:2px;min-width:35px;height:40px}
+@media(max-width:650px){.v2-text-row{grid-template-columns:repeat(4,minmax(0,1fr))}.v2-text-row input[type=color]{grid-column:span 1}.v2-text-row select{grid-column:span 2}}

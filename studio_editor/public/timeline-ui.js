@@ -68,11 +68,16 @@
      <label>자막 시작(초)<input id="v2-caption-in" type="number" min="0" step="0.1"></label>
      <label>자막 종료(초)<input id="v2-caption-out" type="number" min="0" step="0.1"></label>
      <label>자막 크기<input id="v2-font" type="range" min="20" max="108" step="1"><output id="v2-font-text">56</output></label>
+     <label>자막 글꼴<select id="v2-caption-font"><option value="Malgun Gothic">맑은 고딕</option><option value="Batang">바탕</option><option value="Gungsuh">궁서</option><option value="Arial">Arial</option><option value="Noto Sans CJK KR">Noto Sans</option></select></label>
+     <label>자막 글자색<input id="v2-caption-color" type="color" value="#FFFFFF"></label>
+     <label>글자 외곽선<input id="v2-caption-outline" type="number" min="0" max="8" step="1" value="3"></label>
     </div>
     <small id="v2-hint">변경한 설정은 즉시 프로젝트에 반영되며 MP4 제작 시 사용됩니다.</small>
    </div>
    <div class="v2-subtitle-track"><div class="v2-heading"><b>독립 자막 트랙</b><button id="v2-add-text" type="button">+ 현재 위치에 자막 삽입</button></div><div class="v2-stt-bar"><button id="v2-stt" type="button">🎙 선택 영상 음성 → 자동 자막</button><small id="v2-stt-status">무료 CPU 음성 인식 (최초 실행 시 모델 다운로드)</small></div><div id="v2-text-clips" class="v2-text-clips"></div></div>`;
   section.insertAdjacentHTML('beforeend',`<div class="v2-audio-track"><div class="v2-heading"><b>음악·효과음 오디오 트랙</b><button id="v2-add-audio" type="button">+ 음악·효과음 배치</button></div><div id="v2-audio-clips"></div></div>`);
+  const overlay=create('div');overlay.id='v2-live-overlay';overlay.className='caption bottom';
+  document.querySelector('.phone-preview').append(overlay);
   document.querySelector('.timeline-wrap').before(section);
   get('v2-undo').onclick=()=>{if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop())};
   get('v2-redo').onclick=()=>{if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop())};
@@ -155,7 +160,8 @@
   const fields={'v2-in':['sourceIn',Number],'v2-out':['sourceOut',Number],'v2-duration':['duration',Number],
    'v2-repeats':['repeats',Number],'v2-speed':['speed',Number],'v2-audio':['audioMode',String],
    'v2-volume':['volume',v=>Number(v)/100],'v2-fit':['fit',String],'v2-transition':['transition',String],
-   'v2-caption-in':['captionStart',Number],'v2-caption-out':['captionEnd',Number],'v2-font':['captionSize',Number]};
+   'v2-caption-in':['captionStart',Number],'v2-caption-out':['captionEnd',Number],'v2-font':['captionSize',Number],
+   'v2-caption-font':['captionFont',String],'v2-caption-color':['captionColor',String],'v2-caption-outline':['captionOutline',Number]};
   for(const [id,[key,parse]] of Object.entries(fields)){
    get(id).onchange=e=>{
     const s=selectedScene();if(!s)return;
@@ -175,6 +181,22 @@
  function updatePlayheadLabel(){
   get('v2-time').textContent=clock(playhead)+' / '+clock(total());
   get('v2-playhead').value=total()?Math.round(playhead/total()*1000):0;
+  updateOverlay();
+ }
+ function updateOverlay(){
+  const overlay=get('v2-live-overlay');if(!overlay||!project)return;
+  const elapsed=Math.round(playhead*1000),text=(project.textClips||[]).find(t=>elapsed>=t.startMs&&elapsed<t.endMs&&t.text);
+  overlay.textContent=text?.text||'';
+  overlay.className='caption '+(text?.position||'bottom');
+  overlay.style.fontSize=(text?.size||50)/2.4+'px';
+  overlay.style.color=text?.color||'#FFFFFF';
+  overlay.style.fontFamily=text?.font||'Malgun Gothic';
+  const scene=selectedScene(),base=get('preview-caption');
+  if(scene){const loc=locate(playhead),relative=loc.offset%(duration({...scene,repeats:1})||1);
+   base.style.visibility=relative>=(scene.captionStart||0)&&relative<=(scene.captionEnd??duration(scene))?'visible':'hidden';
+   base.style.fontSize=(scene.captionSize||56)/2.4+'px';
+   base.style.color=scene.captionColor||(scene.captionStyle==='clean'?'#FFE700':'#FFFFFF');base.style.fontFamily=scene.captionFont||'Malgun Gothic';
+  }
  }
  function reorder(delta){const next=selected+delta;if(next<0||next>=project.scenes.length)return;
   applyChange(()=>{const item=project.scenes.splice(selected,1)[0];project.scenes.splice(next,0,item);selected=next;playhead=sceneStart(selected);});
@@ -188,9 +210,11 @@
    const end=create('input');end.type='number';end.min='0';end.step='.1';end.value=(t.endMs/1000).toFixed(1);end.title='자막 종료(초)';row.append(end);
    const size=create('input');size.type='number';size.min='20';size.max='108';size.value=t.size||50;size.title='글자 크기';row.append(size);
    const position=create('select');for(const [value,label] of [['top','상단'],['middle','중앙'],['bottom','하단']]){const option=create('option',label);option.value=value;position.append(option)}position.value=t.position||'bottom';row.append(position);
+   const color=create('input');color.type='color';color.value=t.color||'#FFFFFF';color.title='자막 색상';row.append(color);
+   const font=create('select');for(const [value,label] of [['Malgun Gothic','맑은 고딕'],['Batang','바탕'],['Gungsuh','궁서'],['Arial','Arial']]){const option=create('option',label);option.value=value;font.append(option)}font.value=t.font||'Malgun Gothic';row.append(font);
    const del=create('button','삭제');del.className='danger';del.title='이 자막만 삭제';row.append(del);
-   const commit=()=>{t.text=txt.value;t.startMs=Math.max(0,Math.round(Number(start.value)*1000));t.endMs=Math.max(t.startMs+100,Math.min(Math.round(total()*1000),Math.round(Number(end.value)*1000)));t.size=clamp(Number(size.value)||50,20,108);t.position=position.value;setDirty();render();};
-   for(const field of [txt,start,end,size,position])field.onchange=commit;
+   const commit=()=>{t.text=txt.value;t.startMs=Math.max(0,Math.round(Number(start.value)*1000));t.endMs=Math.max(t.startMs+100,Math.min(Math.round(total()*1000),Math.round(Number(end.value)*1000)));t.size=clamp(Number(size.value)||50,20,108);t.position=position.value;t.color=color.value;t.font=font.value;setDirty();render();};
+   for(const field of [txt,start,end,size,position,color,font])field.onchange=commit;
    del.onclick=()=>applyChange(()=>{project.textClips=project.textClips.filter(c=>c.id!==t.id)});
    wrap.append(row);
   }
@@ -231,7 +255,8 @@
     'v2-in':s.sourceIn||0,'v2-out':s.sourceOut||0,'v2-duration':s.duration||4,'v2-repeats':s.repeats||1,
     'v2-speed':s.speed||1,'v2-audio':s.audioMode||'mute','v2-volume':Math.round((s.volume??1)*100),
     'v2-fit':s.fit||'fill','v2-transition':s.transition||'cut','v2-caption-in':s.captionStart||0,
-    'v2-caption-out':s.captionEnd??duration(s),'v2-font':s.captionSize||56
+    'v2-caption-out':s.captionEnd??duration(s),'v2-font':s.captionSize||56,
+    'v2-caption-font':s.captionFont||'Malgun Gothic','v2-caption-color':s.captionColor||'#FFFFFF','v2-caption-outline':s.captionOutline??3
    }))get(id).value=String(value);
    get('v2-volume-text').textContent=Math.round((s.volume??1)*100)+'%';
    get('v2-font-text').textContent=s.captionSize||56;

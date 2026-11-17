@@ -84,3 +84,10 @@ test('text and audio overlay tracks are normalized, and text events have indepen
  assert.match(ass,/Dialogue: 1,0:00:00.50,0:00:01.20/);
  assert.match(ass,/별도 자막/);
 });
+test('caption font, transparent color and outline are preserved in ASS without a box',()=>{
+ const clip=sourceClip({mediaId:assetA.id,duration:3,caption:'노란색 자막',captionStyle:'clean',captionColor:'#12AB34',captionFont:'Batang',captionOutline:5},media);
+ const ass=clipAss(clip,3,{width:720,height:1280});
+ assert.match(ass,/Style: Caption,Batang,56,&H0034AB12/);
+ assert.match(ass,/&HFF000000/);
+ assert.match(ass,/,1,5,1,2,/);
+});
