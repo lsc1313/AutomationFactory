@@ -94,6 +94,19 @@ try {
   $shortcut.Save()
   Note 'Desktop shortcut created: Studio Editor'
  }
+ # Restart the editor automatically when this Windows user signs in.
+ $startup = [Environment]::GetFolderPath('Startup')
+ if ($startup) {
+  $shell = New-Object -ComObject WScript.Shell
+  $autostart = $shell.CreateShortcut((Join-Path $startup 'Studio Editor Background.lnk'))
+  $autostart.TargetPath = 'powershell.exe'
+  $autostart.Arguments = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $dest 'windows\start-hidden.ps1') + '"')
+  $autostart.WorkingDirectory = $dest
+  $autostart.WindowStyle = 7
+  $autostart.Description = 'Launch Studio Editor background server when Windows signs in'
+  $autostart.Save()
+  Note 'Editor will automatically restart after Windows login.'
+ }
  $ffmpeg = Find-Program 'ffmpeg.exe' @("$dest\bin\ffmpeg.exe")
  $ffprobe = Find-Program 'ffprobe.exe' @("$dest\bin\ffprobe.exe")
  if ($ffmpeg -and $ffprobe) {Note 'FFmpeg and FFprobe found. MP4 export available.'}
