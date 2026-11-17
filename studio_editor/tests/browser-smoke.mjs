@@ -105,8 +105,18 @@ try{
  await evaluate('document.getElementById("mobile-clip-details").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".properties")).display!=="none"'),true);
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-clip-settings")).display!=="none"'),true);
+ assert.equal(await evaluate('getComputedStyle(document.querySelector("#studio>.layout")).overflowY'),"visible",'mobile tool pane must not have a nested scrollbar');
+ assert.equal(await evaluate('getComputedStyle(document.documentElement).overflowY'),"auto",'document owns mobile scroll');
+ assert.ok(await evaluate('document.documentElement.scrollHeight')>844,'tool content grows below viewport');
+ await evaluate('window.scrollTo(0,500)');
+ await new Promise(r=>setTimeout(r,200));
+ const dockTop=await evaluate('document.getElementById("mobile-preview-dock").getBoundingClientRect().top');
+ assert.ok(Math.abs(dockTop)<6,'sticky preview remains pinned, top='+dockTop);
+ await evaluate('document.querySelector("[data-mobile-tab=captions]").click()');
+ await new Promise(r=>setTimeout(r,150));
+ assert.ok(await evaluate('window.scrollY')<6,'switching tools returns to beginning');
  assert.equal(await evaluate('window.__studioErrors.length'),0);
- console.log('PASS Chrome: desktop AI and editor; full MP4; six workflow tabs, docked preview, detailed controls and 390px layout.');
+ console.log('PASS Chrome: desktop AI and editor; MP4; mobile sticky preview, one full document scroll and six workflow tabs.');
 }finally{
  try{ws?.close()}catch{}
  chrome.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));
