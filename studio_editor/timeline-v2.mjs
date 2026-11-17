@@ -49,6 +49,12 @@ export function normalizeTimeline(project,media){
  const scenes=Array.isArray(project.scenes)?project.scenes:[];
  if(scenes.length>160)throw Error('타임라인 클립은 최대 160개입니다.');
  const normalized={...project,schemaVersion:2,ratio,scenes:scenes.map(c=>sourceClip(c,media))};
+ const total=timelineDuration(normalized);
+ normalized.textClips=(Array.isArray(project.textClips)?project.textClips:[]).slice(0,500).map(t=>({
+  id:/^[0-9a-f]{24}$/.test(t.id||'')?t.id:id(),text:String(t.text||'').slice(0,1200),
+  startMs:limit(Math.round(finite(t.startMs,0)),0,total),endMs:limit(Math.round(finite(t.endMs,1000)),0,total),
+  size:limit(Math.round(finite(t.size,50)),20,108),position:['top','middle','bottom'].includes(t.position)?t.position:'bottom'
+ })).filter(t=>t.endMs>t.startMs);
  if(timelineDuration(normalized)>3600000)throw Error('최종 영상은 60분 이내로 편집하세요.');
  return normalized;
 }
@@ -88,10 +94,14 @@ export function renderPlan(project){
 }
 function assEscape(t){return String(t||'').replace(/\\/g,'').replace(/\{/g,'(').replace(/\}/g,')').replace(/\r?\n/g,'\\N');}
 function assTime(s){let c=Math.round(s*100);return Math.floor(c/360000)+':'+String(Math.floor(c/6000)%60).padStart(2,'0')+':'+String(Math.floor(c/100)%60).padStart(2,'0')+'.'+String(c%100).padStart(2,'0');}
-export function clipAss(c,duration,canvas){
+export function clipAss(c,duration,canvas,overlays=[]){
  const size=Math.round(c.captionSize||56),start=Math.min(duration,Math.max(0,c.captionStart||0)),end=Math.max(start,Math.min(duration,c.captionEnd||duration));
  const align=c.captionPosition==='top'?8:c.captionPosition==='middle'?5:2;
- return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${canvas.width}\nPlayResY: ${canvas.height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Caption,Malgun Gothic,${size},&H00FFFFFF,&H000000FF,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,1,3,1,${align},45,45,110,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${assEscape(c.caption)}\n`;
+ const overlayEvents=overlays.filter(t=>t.text&&t.endMs>t.startMs).map(t=>{
+  const align=t.position==='top'?8:t.position==='middle'?5:2;
+  return `Dialogue: 1,${assTime(t.startMs/1000)},${assTime(t.endMs/1000)},Caption,,0,0,0,,{\\an${align}\\fs${t.size}}${assEscape(t.text)}\n`;
+ }).join('');
+ return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${canvas.width}\nPlayResY: ${canvas.height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Caption,Malgun Gothic,${size},&H00FFFFFF,&H000000FF,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,1,3,1,${align},45,45,110,1\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${assEscape(c.caption)}\n${overlayEvents}`;
 }
 export function visualFilter(c,canvas,totalFrames){
  const w=canvas.width,h=canvas.height,elapsed=`min(1,on/${Math.max(1,Math.round(Math.max(2,totalFrames)/1.2)-1)})`;
@@ -120,7 +130,10 @@ export async function renderTimeline(project,media,{outputDir,mediaDir,onStep=()
   const clip=entries[i].clip,asset=byId.get(clip.mediaId),duration=entries[i].durationMs/1000;
   onStep(`클립 ${i+1}/${entries.length} 렌더링`);
   const source=path.join(mediaDir,asset.id+'.'+asset.ext),segment='part-'+String(i).padStart(4,'0')+'.mp4';
-  await writeFile(path.join(folder,'caption.ass'),clipAss(clip,duration,canvas));
+  const overlayStart=entries[i].timelineStartMs,overlayEnd=overlayStart+entries[i].durationMs;
+  const overlays=(normalized.textClips||[]).filter(t=>t.startMs<overlayEnd&&t.endMs>overlayStart).map(t=>({...t,
+   startMs:Math.max(0,t.startMs-overlayStart),endMs:Math.min(entries[i].durationMs,t.endMs-overlayStart)}));
+  await writeFile(path.join(folder,'caption.ass'),clipAss(clip,duration,canvas,overlays));
   const args=['-hide_banner','-loglevel','error','-y'];
   if(clip.sourceType==='image')args.push('-loop','1','-framerate','24');else args.push('-ss',String(clip.sourceIn));
   args.push('-i',source);

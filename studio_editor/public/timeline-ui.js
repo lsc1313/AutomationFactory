@@ -64,9 +64,11 @@
      <label>자막 크기<input id="v2-font" type="range" min="20" max="108" step="1"><output id="v2-font-text">56</output></label>
     </div>
     <small id="v2-hint">변경한 설정은 즉시 프로젝트에 반영되며 MP4 제작 시 사용됩니다.</small>
-   </div>`;
+   </div>
+   <div class="v2-subtitle-track"><div class="v2-heading"><b>독립 자막 트랙</b><button id="v2-add-text" type="button">+ 현재 위치에 자막 삽입</button></div><div id="v2-text-clips" class="v2-text-clips"></div></div>`;
   document.querySelector('.timeline-wrap').before(section);
   get('v2-ratio').onchange=e=>applyChange(()=>project.ratio=e.target.value);
+  get('v2-add-text').onclick=()=>{const start=clamp(playhead,0,Math.max(0,total()-0.2));applyChange(()=>{project.textClips=project.textClips||[];project.textClips.push({id:rand(),text:'새 자막',startMs:Math.round(start*1000),endMs:Math.round(Math.min(total(),start+3)*1000),size:50,position:'bottom'});});};
   get('v2-playhead').oninput=e=>{
    playhead=total()*Number(e.target.value)/1000;
    const location=locate(playhead);
@@ -131,6 +133,23 @@
  function reorder(delta){const next=selected+delta;if(next<0||next>=project.scenes.length)return;
   applyChange(()=>{const item=project.scenes.splice(selected,1)[0];project.scenes.splice(next,0,item);selected=next;playhead=sceneStart(selected);});
  }
+ function updateTextTrack(){
+  const wrap=get('v2-text-clips');wrap.replaceChildren();
+  for(const t of project.textClips||[]){
+   const row=create('div');row.className='v2-text-row';
+   const txt=create('textarea');txt.rows=2;txt.value=t.text;txt.placeholder='자막 내용';row.append(txt);
+   const start=create('input');start.type='number';start.min='0';start.step='.1';start.value=(t.startMs/1000).toFixed(1);start.title='자막 시작(초)';row.append(start);
+   const end=create('input');end.type='number';end.min='0';end.step='.1';end.value=(t.endMs/1000).toFixed(1);end.title='자막 종료(초)';row.append(end);
+   const size=create('input');size.type='number';size.min='20';size.max='108';size.value=t.size||50;size.title='글자 크기';row.append(size);
+   const position=create('select');for(const [value,label] of [['top','상단'],['middle','중앙'],['bottom','하단']]){const option=create('option',label);option.value=value;position.append(option)}position.value=t.position||'bottom';row.append(position);
+   const del=create('button','삭제');del.className='danger';del.title='이 자막만 삭제';row.append(del);
+   const commit=()=>{t.text=txt.value;t.startMs=Math.max(0,Math.round(Number(start.value)*1000));t.endMs=Math.max(t.startMs+100,Math.min(Math.round(total()*1000),Math.round(Number(end.value)*1000)));t.size=clamp(Number(size.value)||50,20,108);t.position=position.value;setDirty();render();};
+   for(const field of [txt,start,end,size,position])field.onchange=commit;
+   del.onclick=()=>applyChange(()=>{project.textClips=project.textClips.filter(c=>c.id!==t.id)});
+   wrap.append(row);
+  }
+  if(!(project.textClips||[]).length)wrap.append(create('small','독립 자막 없음 — 필요할 때만 추가하세요.'));
+ }
  function update(){
   if(!project)return;ensureV2();makeUI();
   get('v2-ratio').value=project.ratio||'9:16';
@@ -165,6 +184,7 @@
    b.ondrop=e=>{e.preventDefault();if(dragSource===i||dragSource<0)return;
     applyChange(()=>{const c=project.scenes.splice(dragSource,1)[0];project.scenes.splice(i,0,c);selected=i;playhead=sceneStart(i);});dragSource=-1;};
   });
+  updateTextTrack();
   // Existing AI scene/caption/music strips remain, but show meaningful durations.
   get('narration-track').textContent=project.scenes.map(c=>c.narration?'🎙 '+duration(c).toFixed(1)+'s':'— '+duration(c).toFixed(1)+'s').join(' | ');
  }
