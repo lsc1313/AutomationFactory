@@ -19,6 +19,29 @@
  props.before(details);
  const studio=document.getElementById('studio');
  const layout=studio.querySelector('.layout');
+ // Use the existing voice/BGM inputs in Sound as well as Project.
+ // Move them; never clone controls or create divergent project settings.
+ const soundPanel=document.createElement('section');
+ soundPanel.className='panel mobile-sound-settings';
+ soundPanel.id='mobile-sound-settings';
+ soundPanel.innerHTML='<h3>목소리·배경음악 설정</h3>';
+ document.getElementById('v2-editor')?.after(soundPanel);
+ const soundFields=['voice','preview-voice-project','bgm','bgm-volume'];
+ const soundMoves=soundFields.map(id=>{
+   const input=document.getElementById(id);
+   const element=input?.closest('label')||input;
+   if(!element)return null;
+   const anchor=document.createComment('sound-setting:'+id);
+   element.before(anchor);
+   return {element,anchor};
+ }).filter(Boolean);
+ function placeSoundControls(tab){
+   if(query.matches&&tab==='sound'){
+     for(const move of soundMoves)soundPanel.append(move.element);
+   }else{
+     for(const move of soundMoves)move.anchor.after(move.element);
+   }
+ }
  const dock=document.createElement('section');
  dock.id='mobile-preview-dock';
  dock.className='mobile-preview-dock';
@@ -52,6 +75,7 @@
  document.addEventListener('change',e=>{if(e.target.closest('.v2-editor,.properties'))requestAnimationFrame(syncPreviewFrame)});
  function currentTab(value){
    active=tabs.includes(value)?value:'project';
+   placeSoundControls(active);
    document.body.dataset.mobileView=active;
    buttons.forEach(b=>{
      const selected=b.dataset.mobileTab===active;
@@ -89,7 +113,7 @@
  function mediaChanged(){
    positionPreview();
    if(query.matches){currentTab(active);syncPreviewFrame();}
-   else{document.body.removeAttribute('data-mobile-view');document.body.removeAttribute('data-preview-ratio');}
+   else{placeSoundControls('project');document.body.removeAttribute('data-mobile-view');document.body.removeAttribute('data-preview-ratio');}
  }
  query.addEventListener?.('change',mediaChanged);
  mediaChanged();
