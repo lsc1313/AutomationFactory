@@ -128,7 +128,7 @@ if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
  const id=await makeVoicePreview(b.voice,b.text);
  return json(res,200,{url:'/api/voice/sample/'+id+'.mp3'});
 }
-const sampleUrl=url.pathname.match(new RegExp('^/api/voice/sample/([0-9a-f]{32})\\.mp3;
+const sampleUrl=url.pathname.match(/^[/]api[/]voice[/]sample[/]([0-9a-f]{32})[.]mp3$/);
 if(req.method==='GET'&&sampleUrl){
  const filepath=path.join(voiceSampleDir,sampleUrl[1]+'.mp3');
  let bytes;try{bytes=await readFile(filepath)}catch{throw makeError(404,'음성 미리듣기가 아직 준비되지 않았습니다.')}
