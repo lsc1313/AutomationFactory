@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-test-'));
 process.env.STUDIO_DATA_DIR=dir;
-const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan}=await import('../server.mjs');
+const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan,imageFilter,synthesizeVoice}=await import('../server.mjs');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const a=makeAss({caption:'상품 {100%} 구매',captionStyle:'minimal',captionPosition:'top'},4);
 test('ASS subtitles escape syntax, show safe upper positioning',()=>{assert.match(a,/Style: Captions,Malgun Gothic,43/);assert.match(a,/100%/);assert.doesNotMatch(a,/\{100%\}/);assert.match(a,/4\.00/);});
@@ -30,4 +30,27 @@ test('AI voice defaults to Korean female and audio plan keeps selected music/voi
  assert.ok(VOICES.includes('ko-KR-SeoHyeonNeural'));
  const x=audioPlan({voice:'ko-KR-YuJinNeural',bgmId:'abc',bgmVolume:0.18});
  assert.deepEqual(x,{voice:'ko-KR-YuJinNeural',bgmId:'abc',bgmVolume:0.18});
+});
+
+test('scene motion applies distinct left/right transforms with 1.2x tempo',()=>{
+ const left=imageFilter('pan-left',72),right=imageFilter('pan-right',72),zoom=imageFilter('zoom-in',72);
+ assert.match(left,/zoompan/);
+ assert.match(left,/min\(1,on\/59\)/);
+ assert.match(left,/1\.20/);
+ assert.notEqual(left,right);
+ assert.match(left,/1-min/);
+ assert.match(right,/zoom\)\*min/);
+ assert.match(zoom,/0\.20\*min/);
+});
+test('voice renderer uses Edge CLI then Python module if PATH lacks script',async()=>{
+ const p=path.join(dir,'test-speech.mp3');
+ const attempts=[];
+ await synthesizeVoice('ko-KR-SunHiNeural','미리 듣기입니다',p,dir,async(exe,args)=>{
+  attempts.push(exe);
+  if(exe==='edge-tts')throw new Error('command not found');
+  assert.equal(exe,'python');
+  assert.deepEqual(args.slice(0,2),['-m','edge_tts']);
+  await writeFile(p,Buffer.alloc(1000,1));
+ });
+ assert.deepEqual(attempts,['edge-tts','python']);
 });
