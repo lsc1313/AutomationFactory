@@ -12,13 +12,6 @@ $node = if ($nodeCommand) { $nodeCommand.Source } else { Join-Path $env:ProgramF
 if (-not (Test-Path -LiteralPath $node)) { throw 'Node.js is required.' }
 $bin = Join-Path $root 'bin'
 $cloudflared = Join-Path $bin 'cloudflared.exe'
-if (-not (Test-Path -LiteralPath $cloudflared)) {
- New-Item -ItemType Directory -Path $bin -Force | Out-Null
- Write-Host 'Downloading official Cloudflare tunnel executable for temporary guest access...'
- [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
- Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile $cloudflared -TimeoutSec 120
- if ((Get-Item -LiteralPath $cloudflared).Length -lt 5000000) { throw 'cloudflared download is incomplete.' }
-}
 $bytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
 $token = -join ($bytes | ForEach-Object { $_.ToString('x2') })
@@ -57,6 +50,18 @@ $vars = @{
 }
 try {
  Set-GuestProgress 'starting' '지인 전용 서버를 준비하고 있습니다.'
+ if (-not (Test-Path -LiteralPath $cloudflared) -or (Get-Item -LiteralPath $cloudflared).Length -lt 5000000) {
+  Set-GuestProgress 'download' 'Cloudflare 외부 연결 프로그램을 내려받는 중입니다.'
+  New-Item -ItemType Directory -Path $bin -Force | Out-Null
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $partial = $cloudflared + '.part'
+  try {
+   Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile $partial -TimeoutSec 45 -ErrorAction Stop
+   if ((Get-Item -LiteralPath $partial).Length -lt 5000000) {throw 'Cloudflare download is incomplete'}
+   Move-Item -LiteralPath $partial -Destination $cloudflared -Force
+  } finally { Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue }
+ }
+ Set-GuestProgress 'starting' '지인 전용 서버를 준비하고 있습니다.'
  foreach ($key in $vars.Keys) {
   $old[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
   [Environment]::SetEnvironmentVariable($key,$vars[$key],'Process')
@@ -65,16 +70,24 @@ try {
  foreach ($key in $vars.Keys) { [Environment]::SetEnvironmentVariable($key,$old[$key],'Process') }
  Start-Sleep -Seconds 2
  if ($nodeProcess.HasExited) { throw 'Guest editor failed to start. Inspect: ' + $stderr }
+ try {
+  $response=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8060/app' -TimeoutSec 5 -ErrorAction Stop
+  if ($response.StatusCode -ne 200) { throw 'Guest server returned an unexpected HTTP status' }
+ } catch { throw 'Guest editor HTTP health check failed: ' + $_.Exception.Message }
+
  Set-GuestProgress 'tunnel' '외부 체험 연결을 생성하고 있습니다.'
  $tunnelProcess = Start-Process -FilePath $cloudflared -ArgumentList @('tunnel','--no-autoupdate','--url','http://127.0.0.1:8060') -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardError $tunnelLog -RedirectStandardOutput $tunnelOut
  $url = $null
  for($i=0;$i -lt 65;$i++){
   Start-Sleep -Seconds 1
   if ($tunnelProcess.HasExited) { throw 'Temporary tunnel stopped. Inspect: ' + $tunnelLog }
-  if(Test-Path -LiteralPath $tunnelLog){
-   $match = [regex]::Match((Get-Content -LiteralPath $tunnelLog -Raw), 'https://[a-z0-9-]+[.]trycloudflare[.]com')
-   if($match.Success){$url=$match.Value;break}
+  foreach($path in @($tunnelLog,$tunnelOut)){
+   if(Test-Path -LiteralPath $path){
+    $match = [regex]::Match((Get-Content -LiteralPath $path -Raw), 'https://[a-z0-9-]+[.]trycloudflare[.]com')
+    if($match.Success){$url=$match.Value;break}
+   }
   }
+  if($url){break}
  }
  if(-not $url){ throw 'Could not obtain a share URL. Inspect: ' + $tunnelLog }
  $invite = $url.TrimEnd('/') + '/invite/' + $token
@@ -106,7 +119,7 @@ try {
  }
 }catch{
  $reason = $_.Exception.Message
- $summary = if($reason -match 'cloudflared download|Downloading official|Invoke-WebRequest|download is incomplete'){'Cloudflare 연결 프로그램 다운로드에 실패했습니다. PC의 인터넷 연결과 보안 프로그램을 확인하세요.'} elseif($reason -match 'Guest editor failed|Guest editor|server-error'){'지인 전용 서버 실행에 실패했습니다. StudioEditor-GuestSessions 서버 오류 로그를 확인하세요.'} elseif($reason -match 'Temporary tunnel stopped|Could not obtain a share URL'){'Cloudflare 외부 연결을 만들지 못했습니다. PC의 방화벽 또는 인터넷 연결을 확인하세요.'}else{'체험 링크 연결 작업에 실패했습니다. PC의 private/guest-launch.log 파일을 확인하세요.'}
+ $summary = if($reason -match 'Cloudflare download|download is incomplete|github.com/cloudflare|WebException|name resolution|timed out'){'Cloudflare 연결 프로그램 다운로드에 실패했습니다. PC의 인터넷 연결과 보안 프로그램을 확인하세요.'} elseif($reason -match 'Guest editor failed|Guest editor HTTP|Guest editor|server-error'){'지인 전용 서버 실행에 실패했습니다. StudioEditor-GuestSessions 서버 오류 로그를 확인하세요.'} elseif($reason -match 'Temporary tunnel stopped|Could not obtain a share URL'){'Cloudflare 외부 연결을 만들지 못했습니다. PC의 방화벽 또는 인터넷 연결을 확인하세요.'}else{'체험 링크 연결 작업에 실패했습니다. PC의 private/guest-launch.log 파일을 확인하세요.'}
  Set-GuestProgress 'failed' $summary
  throw
 }finally{
