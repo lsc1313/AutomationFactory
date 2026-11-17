@@ -97,3 +97,8 @@
  .ai-controls button{min-height:42px}
  .mobile-navigation button{font-size:10px}
 }
+
+/* Owner-only guest invite control, same API on phone and desktop. */
+#guest-link-btn{background:#eff4ee;color:#3c6452;border:1px solid #c7d9ca}
+#guest-stop-btn{background:#fff5f4;color:#914f43;border:1px solid #dfb9b1}
+@media(max-width:900px){.topactions #guest-link-btn{grid-column:auto}.topactions #guest-stop-btn:not([hidden]){grid-column:auto}}

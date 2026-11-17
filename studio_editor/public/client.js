@@ -263,6 +263,23 @@ async function startExport(showFull=false){
 }
 $('export-btn').onclick=()=>startExport(false);
 $('preview-full').onclick=()=>startExport(true);
+$('guest-link-btn').onclick=async()=>{
+ try{
+  const x=await api('/api/guest/link');
+  if(!x.active){
+   alert('체험 링크가 아직 실행되지 않았습니다. PC에서 ZIP의 [02_지인체험_시작.cmd]를 실행하면 2시간 동안 쓸 체험 링크가 생성돼요.');
+   $('guest-stop-btn').hidden=true;return;
+  }
+  $('guest-stop-btn').hidden=false;
+  try{await navigator.clipboard.writeText(x.url);alert('지인 체험 링크를 복사했어요. 카카오톡에 붙여넣으면 됩니다.\n만료: '+new Date(x.expires).toLocaleString());}
+  catch{prompt('아래 링크를 복사해서 지인에게 보내세요.',x.url);}
+ }catch(e){alert('체험 링크 확인 실패: '+e.message)}
+};
+$('guest-stop-btn').onclick=async()=>{
+ if(!confirm('지인 체험 링크를 즉시 중지할까요? 테스트 중인 편집 작업에 접속할 수 없게 됩니다.'))return;
+ try{await api('/api/guest/stop','POST',{});$('guest-stop-btn').hidden=true;alert('지인 체험 링크가 중지됐습니다.');}
+ catch(e){alert('체험 중지 실패: '+e.message)}
+};
 void session();
 
 // AI-first workflow: vision-guided storyboard, user approval, then normal scene editor.
