@@ -347,3 +347,37 @@ body[data-guest-mode=true] #guest-link-btn,body[data-guest-mode=true] #guest-sto
  body[data-preview-ratio="landscape"] #studio>.mobile-preview-dock .phone-preview{width:min(90vw,calc(22dvh * 16 / 9))!important}
  body[data-preview-ratio="square"] #studio>.mobile-preview-dock .phone-preview{width:min(60vw,22dvh)!important}
 }
+
+/* v1.3.6: AI review is a normal full-page section; reserve the fixed tab bar's
+   entire height after the last accept/cancel actions. The layout (which is hidden
+   on the AI tab) cannot supply this bottom padding. */
+@media(max-width:900px){
+ body[data-mobile-view="ai"] #studio>.ai-workflow{
+   display:block!important;
+   position:relative;
+   flex:0 0 auto!important;
+   height:auto!important;max-height:none!important;
+   overflow:visible!important;
+   box-sizing:border-box;
+   padding:16px 14px calc(125px + env(safe-area-inset-bottom,0px))!important;
+   margin:8px 8px 0!important;
+   min-width:0;width:calc(100% - 16px);max-width:calc(100% - 16px);
+ }
+ body[data-mobile-view="ai"] #ai-draft-review{
+   overflow:visible;
+   max-height:none;
+   scroll-margin-top:16px;
+   scroll-margin-bottom:calc(110px + env(safe-area-inset-bottom,0px));
+ }
+ body[data-mobile-view="ai"] #ai-draft-review .ai-controls{
+   display:grid;
+   grid-template-columns:repeat(2,minmax(0,1fr));
+   gap:8px;
+   padding-bottom:8px;
+ }
+ body[data-mobile-view="ai"] #ai-draft-review .ai-controls button{
+   box-sizing:border-box;min-width:0;width:100%;
+   white-space:normal;overflow-wrap:anywhere;
+   min-height:46px;padding:9px 7px;
+ }
+}
