@@ -4,7 +4,7 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.3.12'
+$version = 'v1.3.13'
 $branch = if ($env:STUDIO_SOURCE_REF -and $env:STUDIO_SOURCE_REF -match '^[0-9a-f]{40}$') { $env:STUDIO_SOURCE_REF } else { 'feature/standalone-studio-editor-v0-1' }
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
@@ -66,7 +66,7 @@ try {
   & $node --check (Join-Path $stage 'public\mobile-ui.js')
   if ($LASTEXITCODE -ne 0) {throw 'Mobile editor syntax check failed; existing version unchanged.'}
   if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'guest-share-dialog' -Quiet)) {throw 'Wrong editor release downloaded: guest share UI missing.'}
-  if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'v1.3.12' -SimpleMatch -Quiet)) {throw 'Wrong editor release downloaded: version marker missing.'}
+  if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'v1.3.13' -SimpleMatch -Quiet)) {throw 'Wrong editor release downloaded: version marker missing.'}
   Note 'New files downloaded and validated'
   # Never stop or alter unrelated Node instances.
   $pidFile = Join-Path $private 'server-pid.txt'
@@ -170,7 +170,7 @@ try {
  $live = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8050/app' -TimeoutSec 10
  if ($live.StatusCode -ne 200 -or -not $live.Content.Contains($version) -or $live.Content -notmatch 'guest-share-dialog') {throw 'Update was installed but running editor is still an older version. Check server-pid.txt and port 8050 before sharing.'}
  Note "Verified running editor release $version at port 8050"
- Start-Process 'http://127.0.0.1:8050/app?build=1312'
+ Start-Process 'http://127.0.0.1:8050/app?build=1313'
  $hostFile = Join-Path $private 'mobile-host.txt'
  if (Test-Path $hostFile) {
   $dns = (Get-Content -LiteralPath $hostFile -Raw).Trim()
