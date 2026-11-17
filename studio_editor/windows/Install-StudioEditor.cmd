@@ -1,6 +1,7 @@
 @echo off
 setlocal
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $p=Join-Path $env:TEMP 'StudioEditor-oneclick.ps1';Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/lsc1313/AutomationFactory/feature/standalone-studio-editor-v0-1/studio_editor/windows/install-oneclick.ps1' -OutFile $p; & $p"
+REM Install the exact release included in this ZIP. Do not download a moving branch.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-oneclick.ps1"
 if errorlevel 1 (
  echo.
  echo Installation failed. Check %TEMP%\StudioEditor-install.log
