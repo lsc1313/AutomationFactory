@@ -131,7 +131,9 @@ test('separate phone UI retains desktop AI editing and mobile controls',async()=
  const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
  const mobile=await readFile(new URL('../public/mobile-ui.js',import.meta.url),'utf8');
  const css=await readFile(new URL('../public/mobile-ui.css',import.meta.url),'utf8');
- for(const id of ['mobile-navigation','mobile-clip-details','ai-workflow','v2-ratio'])assert.ok(html.includes(id)||mobile.includes(id),id);
+ for(const id of ['mobile-navigation','mobile-clip-details','ai-workflow'])assert.ok(html.includes(id)||mobile.includes(id),id);
+ const timelineUI=await readFile(new URL('../public/timeline-ui.js',import.meta.url),'utf8');
+ assert.ok(timelineUI.includes('v2-ratio'));
  for(const tab of ['edit','media','ai','captions','sound'])assert.ok(html.includes('data-mobile-tab="'+tab+'"'),tab);
  assert.match(css,/@media[(]max-width:900px[)]/);
  assert.match(css,/data-mobile-view="ai"/);
