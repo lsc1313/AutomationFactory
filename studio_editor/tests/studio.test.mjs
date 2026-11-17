@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,readFile,rm,stat} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import {spawn} from 'node:child_process';
+
+const dir=await mkdtemp(path.join(os.tmpdir(),'studio-test-'));
+process.env.STUDIO_DATA_DIR=dir;
+const {createStudioServer,makeAss}=await import('../server.mjs');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const a=makeAss({caption:'상품 {100%} 구매',captionStyle:'minimal',captionPosition:'top'},4);
+test('ASS subtitles escape syntax, show safe upper positioning',()=>{assert.match(a,/Style: Captions,Malgun Gothic,43/);assert.match(a,/100%/);assert.doesNotMatch(a,/\{100%\}/);assert.match(a,/4\.00/);});
+test('editor UI and localhost-only bootstrap',async t=>{
+ const s=createStudioServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${s.address().port}`;
+ t.after(async()=>{await new Promise(r=>s.close(r));await rm(dir,{recursive:true,force:true});});
+ let response=await fetch(base+'/app');assert.equal(response.status,200);assert.match(await response.text(),/Studio Editor/);
+ let x=await (await fetch(base+'/api/setup-state')).json();assert.equal(x.setupNeeded,true);
+ response=await fetch(base+'/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'secure_test_password_123'})});assert.equal(response.status,201);
+ response=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'secure_test_password_123'})});assert.equal(response.status,200);const cookie=response.headers.get('set-cookie').split(';')[0],user=await response.json();
+ const headers={'Content-Type':'application/json','X-CSRF-Token':user.csrf,Cookie:cookie};
+ response=await fetch(base+'/api/new',{method:'POST',headers,body:'{}'});assert.equal(response.status,201);const p=(await response.json()).project;
+ response=await fetch(base+'/api/projects',{method:'POST',headers,body:JSON.stringify({...p,title:'안전한 프로젝트'})});assert.equal(response.status,200);
+ response=await fetch(base+'/api/library',{headers:{Cookie:cookie}});x=await response.json();assert.equal(x.projects[0].title,'안전한 프로젝트');
+ response=await fetch(base+'/api/new',{method:'POST',headers:{Cookie:cookie},body:'{}'});assert.equal(response.status,403);
+});
