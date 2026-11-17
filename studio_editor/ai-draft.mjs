@@ -13,7 +13,7 @@ export function preferredModels(list=[],override=process.env.STUDIO_GEMINI_MODEL
  const safe=offered.filter(x=>!STALE_MODELS.test(x));
  const ordered=[...DEFAULT_MODELS,...safe.filter(x=>/gemini-3\.(5|6|7|8)-flash/.test(x))];
  // A custom override is eligible only if the list explicitly supports it.
- if(override&&offered.includes(modelName(override)))ordered.unshift(modelName(override));
+ if(override&&offered.includes(modelName(override))&&!STALE_MODELS.test(modelName(override)))ordered.unshift(modelName(override));
  return [...new Set(ordered)].filter(x=>!offered.length||offered.includes(x)).slice(0,6);
 }
 const API='https://generativelanguage.googleapis.com/v1beta/models/';
