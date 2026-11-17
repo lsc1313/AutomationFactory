@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,readFile,rm,stat} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,stat} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {spawn} from 'node:child_process';
@@ -22,6 +22,26 @@ test('editor UI and localhost-only bootstrap',async t=>{
  response=await fetch(base+'/api/new',{method:'POST',headers,body:'{}'});assert.equal(response.status,201);const p=(await response.json()).project;
  response=await fetch(base+'/api/projects',{method:'POST',headers,body:JSON.stringify({...p,title:'안전한 프로젝트'})});assert.equal(response.status,200);
  response=await fetch(base+'/api/library',{headers:{Cookie:cookie}});x=await response.json();assert.equal(x.projects[0].title,'안전한 프로젝트');
+ // Test media removal with a real persisted upload entry, linked scenes and archival.
+ const mediaId='ab'.repeat(12),mediaPath=path.join(dir,'media',mediaId+'.jpg');
+ await mkdir(path.join(dir,'media'),{recursive:true});
+ await writeFile(mediaPath,Buffer.alloc(1800,3));
+ await writeFile(path.join(dir,'media.json'),JSON.stringify([{id:mediaId,name:'실수로 올린 사진',group:'image',ext:'jpg',bytes:1800}]));
+ const scene={id:'cd'.repeat(12),mediaId,duration:3,caption:'테스트',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'};
+ response=await fetch(base+'/api/projects',{method:'POST',headers,body:JSON.stringify({...p,scenes:[scene]})});
+ assert.equal(response.status,200);
+ response=await fetch(base+'/api/media/remove',{method:'POST',headers,body:JSON.stringify({mediaId,projectId:p.id,confirm:false})});
+ assert.equal(response.status,400);
+ response=await fetch(base+'/api/media/remove',{method:'POST',headers,body:JSON.stringify({mediaId,projectId:p.id,confirm:true})});
+ assert.equal(response.status,200);
+ const removal=await response.json();
+ assert.equal(removal.removedScenes,1);
+ assert.equal(removal.project.scenes.length,0);
+ const archived=await stat(path.join(dir,'trash',mediaId+'.jpg'));assert.equal(archived.size,1800);
+ response=await fetch(base+'/api/library',{headers:{Cookie:cookie}});
+ const after=await response.json();
+ assert.equal(after.media.length,0);
+ assert.equal(after.projects[0].scenes.length,0);
  response=await fetch(base+'/api/new',{method:'POST',headers:{Cookie:cookie},body:'{}'});assert.equal(response.status,403);
 });
 test('AI voice defaults to Korean female and audio plan keeps selected music/voice',()=>{
@@ -96,4 +116,13 @@ test('mobile editing steps and complete video playback controls are present',asy
  assert.match(client,/startExport\(true\)/);
  assert.match(client,/preview\.after\(props\)/);
  assert.match(client,/ai\.before\(mediaPanel\)|ai\.previousElementSibling!==mediaPanel/);
+});
+
+test('uploaded thumbnail selection is side-effect-free; explicit buttons are present',async()=>{
+ const js=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
+ const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+ assert.match(js,/b\.onclick=\(\)=>\{selectedMediaId=f\.id;renderSelectedMedia\(\);\}/);
+ assert.match(html,/id="delete-selected-media"/);
+ assert.match(html,/id="add-selected-scene"/);
+ assert.match(html,/id="selected-media-preview"/);
 });
