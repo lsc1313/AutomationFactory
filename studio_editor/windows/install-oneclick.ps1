@@ -4,7 +4,7 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.3.1'
+$version = 'v1.3.8'
 $branch = if ($env:STUDIO_SOURCE_REF -and $env:STUDIO_SOURCE_REF -match '^[0-9a-f]{40}$') { $env:STUDIO_SOURCE_REF } else { 'feature/standalone-studio-editor-v0-1' }
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
@@ -63,6 +63,10 @@ try {
   if ($LASTEXITCODE -ne 0) {throw 'Editor server syntax check failed; existing version unchanged.'}
   & $node --check (Join-Path $stage 'public\client.js')
   if ($LASTEXITCODE -ne 0) {throw 'Editor UI syntax check failed; existing version unchanged.'}
+  & $node --check (Join-Path $stage 'public\mobile-ui.js')
+  if ($LASTEXITCODE -ne 0) {throw 'Mobile editor syntax check failed; existing version unchanged.'}
+  if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'guest-share-dialog' -Quiet)) {throw 'Wrong editor release downloaded: guest share UI missing.'}
+  if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'v1.3.8' -SimpleMatch -Quiet)) {throw 'Wrong editor release downloaded: version marker missing.'}
   Note 'New files downloaded and validated'
   # Never stop or alter unrelated Node instances.
   $pidFile = Join-Path $private 'server-pid.txt'
@@ -86,6 +90,7 @@ try {
   }
   Set-Content -LiteralPath (Join-Path $dest 'installed-version.txt') -Value $version -Encoding ascii
   Note 'Editor installed. Previous projects and uploaded media are preserved.'
+  Note "Installed release $version into $dest; verify version marker on Project tab."
  } finally {Remove-Item -LiteralPath $stage -Force -Recurse -ErrorAction SilentlyContinue}
  # Create a familiar desktop shortcut; no admin/elevation needed.
  $desktop = [Environment]::GetFolderPath('Desktop')
@@ -162,7 +167,10 @@ try {
  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dest 'windows\start-hidden.ps1')
  if ($LASTEXITCODE -ne 0) {throw 'Studio Editor start failed; inspect private/server-error.log.'}
  Start-Sleep -Milliseconds 1100
- Start-Process 'http://127.0.0.1:8050/app'
+ $live = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8050/app' -TimeoutSec 10
+ if ($live.StatusCode -ne 200 -or $live.Content -notmatch 'v1[.]3[.]8' -or $live.Content -notmatch 'guest-share-dialog') {throw 'Update was installed but running editor is still an older version. Check server-pid.txt and port 8050 before sharing.'}
+ Note "Verified running editor release $version at port 8050"
+ Start-Process 'http://127.0.0.1:8050/app?build=138'
  $hostFile = Join-Path $private 'mobile-host.txt'
  if (Test-Path $hostFile) {
   $dns = (Get-Content -LiteralPath $hostFile -Raw).Trim()
