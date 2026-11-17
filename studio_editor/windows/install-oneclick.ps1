@@ -4,7 +4,7 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v0.4.0'
+$version = 'v0.4.1'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
