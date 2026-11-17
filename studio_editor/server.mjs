@@ -109,7 +109,7 @@ if(req.method==='POST'&&url.pathname==='/api/ai/draft'){
  if(bgmId&&!files.some(f=>f.id===bgmId&&f.group==='music'))throw makeError(400,'등록된 배경음악만 선택할 수 있습니다.');
  const bgmVolume=Math.max(0,Math.min(1,Number(b.bgmVolume??0.16)||0));
  draftJob={status:'running',step:'사진 확인 준비',error:null,projectId:project.id,draft:null};
- void generateAiDraft({key,media,requirements:b.requirements,productFacts:b.productFacts,style:b.style,
+ void generateAiDraft({key,media,requirements:b.requirements,productFacts:b.productFacts,style:[b.style,'선택 음성 '+voice,'선택 음악 '+(files.find(f=>f.id===bgmId)?.name||'없음')].join(' / '),
   mediaPath:f=>path.join(mediaDir,f.id+'.'+f.ext),onStep:step=>{draftJob.step=step}}).then(draft=>{
   draftJob={status:'done',step:'수정 가능한 영상 초안 생성 완료',error:null,projectId:project.id,draft:{...draft,voice,bgmId,bgmVolume}};
  }).catch(e=>{draftJob={status:'failed',step:'실패',error:String(e.message).slice(0,360),projectId:project.id,draft:null}});
