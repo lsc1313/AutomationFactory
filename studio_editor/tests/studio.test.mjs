@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-test-'));
 process.env.STUDIO_DATA_DIR=dir;
-const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan,imageFilter,synthesizeVoice}=await import('../server.mjs');
+const {createStudioServer,makeAss,DEFAULT_VOICE,VOICES,audioPlan,imageFilter,videoFilter,synthesizeVoice}=await import('../server.mjs');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const a=makeAss({caption:'상품 {100%} 구매',captionStyle:'minimal',captionPosition:'top'},4);
 test('ASS subtitles escape syntax, show safe upper positioning',()=>{assert.match(a,/Style: Captions,Malgun Gothic,43/);assert.match(a,/100%/);assert.doesNotMatch(a,/\{100%\}/);assert.match(a,/4\.00/);});
@@ -55,4 +55,12 @@ test('voice renderer uses Edge CLI then Python module if PATH lacks script',asyn
  });
  assert.deepEqual(attempts,['edge-tts','python']);
  await rm(tmp,{recursive:true,force:true});
+});
+
+test('video footage gets same zoom/pan effects as photo scenes',()=>{
+ const p=videoFilter('pan-left',72),z=videoFilter('zoom-in',72);
+ assert.match(p,/fps=24,split=2/);
+ assert.match(p,/zoompan/);
+ assert.match(p,/1\.20/);
+ assert.notEqual(p,z);
 });
