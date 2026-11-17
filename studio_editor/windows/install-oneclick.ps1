@@ -4,7 +4,7 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.0.1'
+$version = 'v1.1.0'
 $branch = 'feature/standalone-studio-editor-v0-1'
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
@@ -53,8 +53,12 @@ try {
   foreach ($relative in $files) {
    $output = Join-Path $stage ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))
    New-Item -ItemType Directory -Path (Split-Path -Parent $output) -Force | Out-Null
-   Download "$repoBase/$relative" $output
+   Download "$repoBase/$relative`?v=$version" $output
   }
+  & $node --check (Join-Path $stage 'timeline-v2.mjs')
+  if ($LASTEXITCODE -ne 0) {throw 'Timeline engine syntax check failed; existing version unchanged.'}
+  & $node --check (Join-Path $stage 'public\timeline-ui.js')
+  if ($LASTEXITCODE -ne 0) {throw 'Precision editor UI syntax check failed; existing version unchanged.'}
   & $node --check (Join-Path $stage 'server.mjs')
   if ($LASTEXITCODE -ne 0) {throw 'Editor server syntax check failed; existing version unchanged.'}
   & $node --check (Join-Path $stage 'public\client.js')
