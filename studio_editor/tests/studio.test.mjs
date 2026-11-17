@@ -154,7 +154,7 @@ test('guest invite is fully selectable and clipboard errors cannot fake success'
  assert.match(client,/navigator\.clipboard\?\.writeText/);
  assert.match(client,/field\.select\(\)/);
  assert.match(client,/document\.execCommand\?\.\('copy'\)/);
- assert.match(client,/dialog\.showModal\(\)/);
+ assert.match(client,/d\.showModal\(\)/);
  assert.doesNotMatch(client,/prompt\('아래 링크를 복사해서 지인에게 보내세요/);
 });
 
