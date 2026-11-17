@@ -64,3 +64,12 @@ test('video footage gets same zoom/pan effects as photo scenes',()=>{
  assert.match(p,/1\.20/);
  assert.notEqual(p,z);
 });
+
+test('all exported subtitle variants use transparent backgrounds with readable outline',()=>{
+ for(const captionStyle of ['impact','minimal','boxed','clean']){
+  const ass=makeAss({caption:'자막만',captionStyle,captionPosition:'top'},3);
+  assert.match(ass,/&HFF000000,/);
+  assert.match(ass,/Style: Captions,Malgun Gothic/);
+  assert.doesNotMatch(ass,/&H64000000,/);
+ }
+});
