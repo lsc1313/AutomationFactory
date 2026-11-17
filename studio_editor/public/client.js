@@ -1,5 +1,5 @@
 'use strict';
-let csrf='',library=[],projects=[],project=null,selected=0,dirty=false,poll=null,aiPoll=null,aiDraft=null,previewAnimation=null;
+let csrf='',library=[],projects=[],project=null,selected=0,dirty=false,poll=null,aiPoll=null,aiDraft=null,previewAnimation=null,openFullAfterRender=false,renderedProjectId=null;
 const $=id=>document.getElementById(id);
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 const rand=()=>[...crypto.getRandomValues(new Uint8Array(12))].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -7,10 +7,15 @@ async function api(url,method='GET',body){const opt={method,credentials:'same-or
 async function session(){try{const x=await api('/api/me');csrf=x.csrf;$('gate').hidden=true;$('studio').hidden=false;await reload();}catch{const setup=await api('/api/setup-state').catch(()=>({setupNeeded:false}));$('gate').hidden=false;$('studio').hidden=true;$('access-note').textContent=setup.setupNeeded?'처음 실행입니다. 이 PC에서 12자 이상 관리자 비밀번호를 만들어 주세요.':'설정한 비밀번호로 로그인하세요.';$('login-btn').textContent=setup.setupNeeded?'첫 계정 생성':'로그인';$('access').dataset.setup=setup.setupNeeded?'yes':'no';}}
 $('access').onsubmit=async e=>{e.preventDefault();const pass=$('password').value;try{if(e.target.dataset.setup==='yes')await api('/api/setup','POST',{password:pass});const x=await api('/api/login','POST',{password:pass});csrf=x.csrf;await session();}catch(err){$('access-note').textContent='오류: '+err.message;}};
 $('logout').onclick=async()=>{await api('/api/logout','POST',{}).catch(()=>{});csrf='';await session();};
-async function reload(){const result=await api('/api/library');library=result.media;projects=result.projects;const last=project?.id;project=projects.find(p=>p.id===last)||projects[0]||null;if(!project){const r=await api('/api/new','POST',{});project=r.project;projects.push(project)}selected=Math.min(selected,Math.max(0,project.scenes.length-1));render();await updateAiStatus();}
+async function reload(){const result=await api('/api/library');library=result.media;projects=result.projects;const last=project?.id;project=projects.find(p=>p.id===last)||projects[0]||null;if(!project){const r=await api('/api/new','POST',{});project=r.project;projects.push(project)}selected=Math.min(selected,Math.max(0,project.scenes.length-1));renderedProjectId=null;$('full-review').hidden=true;render();await updateAiStatus();}
 function isAudio(m){return m.group==='music'}
 function previewMedia(media,target){const src='/api/media/'+media.id;const e=node(media.group==='video'?'video':'img');e.src=src;if(media.group==='video'){e.muted=true;e.playsInline=true;e.loop=true;e.preload='metadata'}target.append(e);return e;}
-function setDirty(){dirty=true;$('save-state').textContent='저장되지 않은 변경';}
+function setDirty(){
+ dirty=true;renderedProjectId=null;
+ $('full-review').hidden=true;
+ $('full-video').pause();$('full-video').removeAttribute('src');
+ $('save-state').textContent='저장되지 않은 변경';
+}
 const scenePreviewAudio=()=> $('voice-audio');
 let previewRun=0;
 function stopPreview(){
@@ -61,9 +66,21 @@ function animateCurrentScene(){
 function positionEditorTools(){
  const props=document.querySelector('.properties');
  const main=document.querySelector('.editor-main');
+ const mediaPanel=document.querySelector('.media-panel');
+ const layout=document.querySelector('.layout');
+ const ai=$('ai-workflow'),settings=$('project-settings');
  const mobile=window.matchMedia('(max-width: 900px)').matches;
- if(mobile){const preview=main.querySelector('.preview-wrap');if(preview.nextElementSibling!==props)preview.after(props);}
- else {document.querySelector('.layout').append(props);}
+ if(mobile){
+  if(ai.previousElementSibling!==mediaPanel)ai.before(mediaPanel);
+  const preview=main.querySelector('.preview-wrap');
+  if(preview.nextElementSibling!==props)preview.after(props);
+  const timeline=main.querySelector('.timeline-wrap');
+  if(timeline.nextElementSibling!==settings)timeline.after(settings);
+ }else{
+  if(mediaPanel.parentElement!==layout)layout.prepend(mediaPanel);
+  if(settings.parentElement!==mediaPanel)mediaPanel.append(settings);
+  if(props.parentElement!==layout)layout.append(props);
+ }
 }
 window.addEventListener('resize',positionEditorTools);
 
@@ -87,8 +104,8 @@ for(const [name,key] of [['scene-duration','duration'],['scene-narration','narra
 $('scene-voice-media').onchange=e=>{if(!project.scenes[selected])return;project.scenes[selected].voiceMediaId=e.target.value||null;setDirty();};
 function renderPreview(){stopPreview();$('preview-caption').textContent=project.scenes[selected]?.caption||'';$('preview-caption').className='caption '+(project.scenes[selected]?.captionStyle||'impact')+' '+(project.scenes[selected]?.captionPosition||'bottom');$('total-time').textContent=fmt(safeDuration());}
 $('project-title').oninput=e=>{project.title=e.target.value;setDirty()};$('voice').onchange=e=>{project.voice=e.target.value;$('ai-voice').value=e.target.value;setDirty()};$('ai-voice').onchange=e=>{project.voice=e.target.value;$('voice').value=e.target.value;setDirty()};$('ai-bgm').onchange=e=>{project.bgmId=e.target.value||null;$('bgm').value=project.bgmId||'';setDirty();render()};$('bgm').onchange=e=>{project.bgmId=e.target.value||null;setDirty();render()};$('bgm-volume').oninput=e=>{project.bgmVolume=Number(e.target.value)/100;$('volume-label').textContent=e.target.value+'%';setDirty()};
-$('project-picker').onchange=e=>{if(dirty&&!confirm('저장되지 않은 변경이 있습니다. 다른 프로젝트로 이동할까요?')){e.target.value=project.id;return;}project=projects.find(p=>p.id===e.target.value);selected=0;dirty=false;render()};
-$('create-project').onclick=async()=>{if(dirty)await save();const r=await api('/api/new','POST',{});projects.push(r.project);project=r.project;selected=0;dirty=false;render();};
+$('project-picker').onchange=e=>{if(dirty&&!confirm('저장되지 않은 변경이 있습니다. 다른 프로젝트로 이동할까요?')){e.target.value=project.id;return;}project=projects.find(p=>p.id===e.target.value);selected=0;dirty=false;renderedProjectId=null;$('full-review').hidden=true;render()};
+$('create-project').onclick=async()=>{if(dirty)await save();const r=await api('/api/new','POST',{});projects.push(r.project);project=r.project;selected=0;dirty=false;renderedProjectId=null;$('full-review').hidden=true;render();};
 async function save(){const r=await api('/api/projects','POST',project);project=r.project;projects=projects.map(p=>p.id===project.id?project:p);dirty=false;$('save-state').textContent='저장됨';render();}
 $('save-project').onclick=()=>save().catch(e=>alert(e.message));
 function reorder(step){const i=selected,to=i+step;if(to<0||to>=project.scenes.length)return;[project.scenes[to],project.scenes[i]]=[project.scenes[i],project.scenes[to]];selected=to;setDirty();render()}
@@ -112,8 +129,63 @@ $('ai-voice').addEventListener('change',()=>{stopPreview();void previewVoice(und
 $('voice').addEventListener('change',()=>{stopPreview();void previewVoice(undefined,$('voice').value)});
 
 $('upload-files').onchange=async e=>{const files=[...e.target.files],label=$('save-state');for(const file of files){try{label.textContent='업로드 중: '+file.name;const res=await fetch('/api/upload?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/octet-stream'},body:file});const result=await res.json();if(!res.ok)throw Error(result.error);library.push(result.media);if(result.media.group!=='music'){project.scenes.push({id:rand(),mediaId:result.media.id,duration:4,caption:'',narration:'',voiceMediaId:null,effect:'zoom-in',captionPosition:'bottom',captionStyle:'impact'});selected=project.scenes.length-1;setDirty()}}catch(err){alert(file.name+': '+err.message)}}render();e.target.value='';};
-async function checkExport(){try{const state=await api('/api/export/status');$('export-status').textContent=state.status==='running'?'제작 중: '+state.step:state.status==='done'?'제작 완료':state.status==='failed'?'제작 실패: '+state.error:'내보내기 대기';$('download-result').hidden=state.status!=='done';if(state.status==='done'){$('download-result').href='/api/export/'+state.filename;$('download-result').download='StudioEditor.mp4'}if(state.status!=='running'&&poll){clearInterval(poll);poll=null}}catch{}}
-$('export-btn').onclick=async()=>{try{await save();const r=await api('/api/export','POST',{projectId:project.id});$('export-status').textContent='제작 대기열에 등록';$('download-result').hidden=true;if(poll)clearInterval(poll);poll=setInterval(checkExport,2000);await checkExport()}catch(e){alert('제작 요청 실패: '+e.message)}};
+async function checkExport(){
+ try{
+  const state=await api('/api/export/status');
+  $('export-status').textContent=state.status==='running'?'제작 중: '+state.step:state.status==='done'?'제작 완료 · 전체 영상 보기 또는 다운로드':state.status==='failed'?'제작 실패: '+state.error:'내보내기 대기';
+  $('download-result').hidden=state.status!=='done';
+  if(state.status==='done'){
+   const url='/api/export/'+state.filename;
+   $('download-result').href=url+'?download=1';
+   $('download-result').download='StudioEditor.mp4';
+   if(state.projectId===project.id&&!dirty){
+    renderedProjectId=project.id;
+    $('full-review').hidden=false;
+    $('full-review-note').textContent='완성 영상 '+Math.round(state.duration||0)+'초 · '+Math.round((state.bytes||0)/1024)+'KB';
+    const video=$('full-video');
+    if(!video.src.endsWith(url))video.src=url;
+    $('full-download').href=url+'?download=1';
+    if(openFullAfterRender){
+     $('full-review').scrollIntoView({block:'start',behavior:'smooth'});
+     video.play().catch(()=>{$('full-review-note').textContent+=' · 휴대폰 재생 버튼을 눌러주세요.'});
+    }
+   }
+   openFullAfterRender=false;
+  }
+  if(state.status==='failed'){
+   $('full-review').hidden=false;
+   $('full-review-note').textContent='MP4 제작 실패: '+state.error;
+   $('full-video').removeAttribute('src');
+   $('full-download').hidden=true;
+   openFullAfterRender=false;
+  }else if(state.status==='done')$('full-download').hidden=false;
+  if(state.status!=='running'&&poll){clearInterval(poll);poll=null}
+ }catch(e){$('export-status').textContent='영상 제작 상태 확인 실패: '+e.message;}
+}
+async function startExport(showFull=false){
+ try{
+  if(showFull&&renderedProjectId===project.id&&!dirty&&!$('full-review').hidden){
+   $('full-review').scrollIntoView({block:'start',behavior:'smooth'});
+   $('full-video').play().catch(()=>{});return;
+  }
+  await save();
+  openFullAfterRender=showFull;
+  await api('/api/export','POST',{projectId:project.id});
+  $('export-status').textContent='MP4 제작 시작 · 장면 렌더링 중';
+  $('full-review').hidden=false;
+  $('full-download').hidden=true;
+  $('full-review-note').textContent='음성과 장면을 합성하고 있습니다. 완료되면 여기서 재생할 수 있어요.';
+  $('download-result').hidden=true;
+  if(poll)clearInterval(poll);
+  poll=setInterval(checkExport,2000);await checkExport();
+ }catch(e){
+  $('export-status').textContent='제작 요청 실패: '+e.message;
+  $('full-review').hidden=false;
+  $('full-review-note').textContent='제작 요청 실패: '+e.message;
+ }
+}
+$('export-btn').onclick=()=>startExport(false);
+$('preview-full').onclick=()=>startExport(true);
 void session();
 
 // AI-first workflow: vision-guided storyboard, user approval, then normal scene editor.
