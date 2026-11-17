@@ -88,8 +88,10 @@ try{
  assert.equal(await evaluate('getComputedStyle(document.getElementById("project-settings")).display!=="none"'),true);
  await evaluate('document.querySelector("[data-mobile-tab=edit]").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".properties")).display'),"none");
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-clip-settings")).display'),"none");
  await evaluate('document.getElementById("mobile-clip-details").click()');
  assert.equal(await evaluate('getComputedStyle(document.querySelector(".properties")).display!=="none"'),true);
+ assert.equal(await evaluate('getComputedStyle(document.querySelector(".v2-clip-settings")).display!=="none"'),true);
  assert.equal(await evaluate('window.__studioErrors.length'),0);
  console.log('PASS Chrome: desktop AI and editor; full MP4; five phone tabs, detailed controls and 390px layout.');
 }finally{
