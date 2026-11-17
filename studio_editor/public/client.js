@@ -270,16 +270,31 @@ async function startExport(showFull=false){
 $('export-btn').onclick=()=>startExport(false);
 $('preview-full').onclick=()=>startExport(true);
 $('guest-link-btn').onclick=async()=>{
+ const button=$('guest-link-btn'),original=button.textContent;
+ button.disabled=true;
  try{
-  const x=await api('/api/guest/link');
+  let x=await api('/api/guest/link');
   if(!x.active){
-   alert('체험 링크가 아직 실행되지 않았습니다. PC에서 ZIP의 [02_지인체험_시작.cmd]를 실행하면 2시간 동안 쓸 체험 링크가 생성돼요.');
-   $('guest-stop-btn').hidden=true;return;
+   if(!confirm('지인이 Tailscale 없이 체험할 2시간짜리 비공개 링크를 만들까요? 지인은 테스트용 분리 공간만 사용합니다.'))return;
+   button.textContent='체험 링크 생성 중…';
+   await api('/api/guest/start','POST',{});
+   for(let i=0;i<60;i++){
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    x=await api('/api/guest/link');
+    if(x.active)break;
+   }
   }
+  if(!x.active)throw Error('PC에서 외부 접속 링크를 만들지 못했습니다. PC의 StudioEditor/private/guest-launch.log 로그를 확인해 주세요.');
   $('guest-stop-btn').hidden=false;
-  try{await navigator.clipboard.writeText(x.url);alert('지인 체험 링크를 복사했어요. 카카오톡에 붙여넣으면 됩니다.\n만료: '+new Date(x.expires).toLocaleString());}
-  catch{prompt('아래 링크를 복사해서 지인에게 보내세요.',x.url);}
- }catch(e){alert('체험 링크 확인 실패: '+e.message)}
+  button.textContent='🔗 체험 링크';
+  try{
+   await navigator.clipboard.writeText(x.url);
+   alert('지인 휴대폰 체험 링크를 복사했어요. 카카오톡에 붙여넣으면 됩니다.\\n만료: '+new Date(x.expires).toLocaleString());
+  }catch{
+   prompt('아래 링크를 복사해서 지인에게 보내세요.',x.url);
+  }
+ }catch(e){alert('체험 링크 생성 실패: '+e.message);}
+ finally{button.disabled=false;button.textContent=original;}
 };
 $('guest-stop-btn').onclick=async()=>{
  if(!confirm('지인 체험 링크를 즉시 중지할까요? 테스트 중인 편집 작업에 접속할 수 없게 됩니다.'))return;
