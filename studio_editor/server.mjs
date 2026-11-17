@@ -231,8 +231,9 @@ const session=auth(req);if(!session||session.expires<Date.now())throw makeError(
 if(req.method==='GET'&&url.pathname==='/api/guest/status'){
  if(GUEST)throw makeError(403,'관리자 전용입니다.');
  const p=await loadJson(path.join(STATE,'guest-progress.json'),null);
- if(!p||!['starting','tunnel','ready','failed'].includes(p.phase)||!Number.isFinite(p.at)||Math.abs(Date.now()-p.at)>10*60*1000)return json(res,200,{phase:'idle',message:'연결 상태를 확인 중입니다.'});
+ if(!p||!['download','starting','tunnel','ready','failed'].includes(p.phase)||!Number.isFinite(p.at)||Math.abs(Date.now()-p.at)>10*60*1000)return json(res,200,{phase:'idle',message:'연결 상태를 확인 중입니다.'});
  const messages={
+  download:'Cloudflare 연결 프로그램을 다운로드하고 있습니다.',
   starting:'지인 전용 서버를 준비하고 있습니다.',
   tunnel:'Cloudflare 외부 연결을 생성하고 있습니다.',
   ready:'체험 링크가 준비되었습니다.'
@@ -256,7 +257,16 @@ if(req.method==='POST'&&url.pathname==='/api/guest/start'){
  try{
   const child=spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',file],
    {cwd:ROOT,windowsHide:true,detached:true,stdio:['ignore',log,log]});
-  child.once('error',()=>{guestLaunchAt=0;});
+  child.once('error',async()=>{
+   guestLaunchAt=0;
+   await saveJson(path.join(STATE,'guest-progress.json'),{phase:'failed',message:'체험 링크 실행 도구를 시작하지 못했습니다. Node와 PowerShell 실행 설정을 확인하세요.',at:Date.now()}).catch(()=>{});
+  });
+  child.once('exit',async(code)=>{
+   if(code===0)return;
+   const progress=await loadJson(path.join(STATE,'guest-progress.json'),null).catch(()=>null);
+   if(progress?.phase==='failed'||progress?.phase==='ready')return;
+   await saveJson(path.join(STATE,'guest-progress.json'),{phase:'failed',message:'체험 서버 또는 외부 연결 프로그램이 종료되었습니다. PC의 guest-launch.log를 확인하세요.',at:Date.now()}).catch(()=>{});
+  });
   child.unref();
   guestLaunchAt=Date.now();
  }finally{closeSync(log);}
