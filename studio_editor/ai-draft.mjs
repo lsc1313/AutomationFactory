@@ -28,8 +28,8 @@ export async function findExistingGeminiKey(){
  for(const filename of candidates.filter(Boolean))try{const key=parseKeyFile(await readFile(filename,'utf8'));if(key)return key;}catch{}
  return null;
 }
-async function sampleImage(filename,isVideo){
- const args=['-hide_banner','-loglevel','error',...(isVideo?['-ss','0.5']:[]),'-i',filename,'-vf','scale=640:640:force_original_aspect_ratio=decrease','-frames:v','1','-f','image2','-vcodec','mjpeg','-q:v','6','pipe:1'];
+async function sampleImage(filename,isVideo,second=0.5){
+ const args=['-hide_banner','-loglevel','error',...(isVideo?['-ss',String(Math.max(0.1,second))]:[]),'-i',filename,'-vf','scale=640:640:force_original_aspect_ratio=decrease','-frames:v','1','-f','image2','-vcodec','mjpeg','-q:v','6','pipe:1'];
  return new Promise((resolve,reject)=>{
   const p=spawn('ffmpeg',args,{windowsHide:true,stdio:['ignore','pipe','pipe']});let chunks=[],bytes=0,stderr='';
   const timer=setTimeout(()=>p.kill(),30000);p.stdout.on('data',b=>{bytes+=b.length;if(bytes>1_000_000){p.kill();return;}chunks.push(b)});
@@ -39,13 +39,17 @@ async function sampleImage(filename,isVideo){
 }
 export function normalizeDraft(raw,media){
  const obj=raw?.storyboard||raw;
- if(!obj||!Array.isArray(obj.scenes)||obj.scenes.length<2||obj.scenes.length>12)throw new Error('AI가 올바른 장면 초안을 반환하지 않았습니다.');
+ if(!obj||!Array.isArray(obj.scenes)||obj.scenes.length<1||obj.scenes.length>20)throw new Error('AI가 올바른 장면 초안을 반환하지 않았습니다.');
  const scenes=obj.scenes.map((scene,i)=>{
   const ix=Number(scene.mediaIndex),duration=Number(scene.duration);
   if(!Number.isInteger(ix)||ix<0||ix>=media.length)throw new Error(`AI 장면 ${i+1}의 사진/영상 연결이 잘못됐습니다.`);
   const narration=safe(scene.narration||scene.voice).slice(0,350),caption=safe(scene.caption||scene.subtitle).slice(0,130);
-  if(!narration||!caption)throw new Error(`AI 장면 ${i+1}에 대사 또는 자막이 없습니다.`);
-  return {mediaId:media[ix].id,duration:Math.min(12,Math.max(2,Number.isFinite(duration)?duration:4)),narration,caption,
+  if(!narration&&!caption)throw new Error(`AI 장면 ${i+1}의 대사와 자막이 모두 비어 있습니다.`);
+  const file=media[ix],sourceIn=Number(scene.sourceIn),sourceOut=Number(scene.sourceOut);
+  const hasRange=file.group==='video'&&Number.isFinite(sourceIn)&&Number.isFinite(sourceOut)&&sourceOut>sourceIn;
+  return {mediaId:media[ix].id,duration:Math.min(90,Math.max(1,Number.isFinite(duration)?duration:4)),
+   ...(hasRange?{sourceIn:Math.max(0,sourceIn),sourceOut:file.duration?Math.min(file.duration,sourceOut):sourceOut}:{}) ,
+   narration,caption,
    captionStyle:['impact','minimal','boxed','clean'].includes(scene.captionStyle)?scene.captionStyle:(i===0?'impact':'clean'),
    captionPosition:['top','middle','bottom'].includes(scene.captionPosition)?scene.captionPosition:(i%3===0?'top':'bottom'),
    effect:['zoom-in','zoom-out','pan-left','pan-right','none'].includes(scene.effect)?scene.effect:['zoom-in','pan-right','zoom-out','pan-left'][i%4]};
@@ -60,22 +64,31 @@ export async function generateAiDraft({key,media,requirements,productFacts='',st
  if(instruction.length<5)throw new Error('만들고 싶은 영상의 요구사항을 5자 이상 입력하세요.');
  const vision=[];
  for(let i=0;i<media.length;i++){
-  const file=media[i];onStep(`사진·영상 ${i+1}/${media.length} 확인`);
-  const b64=await sampler(mediaPath(file),file.group==='video');
-  vision.push({text:`자료 ${i}: 파일명 ${safe(file.name).slice(0,90)}, 형식 ${file.group}. 이 실제 자료의 내용만 근거로 사용하세요.`});
-  vision.push({inline_data:{mime_type:'image/jpeg',data:b64}});
+  const file=media[i],video=file.group==='video';
+  onStep('사진·영상 '+(i+1)+'/'+media.length+' 확인');
+  const seconds=video&&file.duration&&media.length<=4
+   ?[.5,Math.max(.5,file.duration*.5),Math.max(.5,file.duration-.5)]
+   :[.5];
+  vision.push({text:'자료 '+i+': 파일명 '+safe(file.name).slice(0,90)+', 형식 '+file.group+
+   (video?', 길이 '+Number(file.duration||0).toFixed(1)+'초, 대표 프레임 시간 '+seconds.map(x=>x.toFixed(1)).join('/')+'초':'')+
+   '. 확인되지 않은 소리와 장면은 추측하지 마세요.'});
+  for(const second of seconds){
+   const base64=await sampler(mediaPath(file),video,second);
+   vision.push({text:video?'이 프레임의 영상 시점: '+second.toFixed(1)+'초':'사진 전체'});
+   vision.push({inline_data:{mime_type:'image/jpeg',data:base64}});
+  }
  }
  onStep('AI 대본과 자막 기획');
  const prompt=[
  '당신은 제공받은 영상/사진을 편집해 숏폼 초안을 설계하는 전문 편집 감독입니다. 새로운 AI 영상이나 가상 이미지를 만들지 않습니다.',
- '현재 첨부된 이미지 및 영상 첫 프레임을 실제로 보세요. 영상 전체의 행동·음성은 제공되지 않았으므로 첫 프레임에서 보이지 않는 내용은 단정하지 마세요.',
+ '현재 첨부된 이미지와 영상의 대표 프레임을 실제로 확인하세요. 프레임에 없는 장면과 영상의 실제 음성·효과음은 확인되지 않았으므로 단정하지 마세요.',
  '사용자 요구사항과 확인된 화면을 연결하고 자연스러운 한국어 대사를 작성하세요. 제품 광고라면 입증되지 않은 효능, 가격, 할인, 후기, 재료, 수상, 배송 조건을 창작하지 마세요.',
  '사용자가 작성한 정보는 주장으로 간주하지 말고 주어진 사실로서만 활용하되 사진과 충돌하면 notes에서 검토 필요를 알리세요.',
- '전달력이 있는 3~8개 장면, 한 장면당 대사 1~2문장, 2~8초. 후킹, 본문, 마무리의 흐름을 구성하고 이미지와 대사를 일치시키세요.',
+ '요청된 분량과 목적에 맞춰 1~20개의 장면을 계획하세요. 광고는 후킹-본문-마무리로 구성하되 ASMR·영상 편집처럼 대사가 불필요한 상황에서는 짧은 화면 자막만 제안하세요. 긴 동영상의 일부만 사용할 때는 원본 길이를 넘지 않는 sourceIn/sourceOut(초)을 제안하고, 지정한 부분에 보이는 내용만 설명하세요.',
  '한 장면에 사진 또는 영상 하나를 선택합니다. 파일당 여러 장면 사용 가능. 장면별 사진이 명확히 맞아야 하며 필요 없는 사진은 사용하지 않아도 됩니다.',
  '영상의 분위기에 맞춰 자막 위치·스타일·카메라 움직임을 다양하게 선택하세요. 자막은 대사 핵심을 35자 이내로 줄이세요.',
  '모호한 물체나 텍스트는 추측하지 마세요. 출력은 JSON 객체만 반환합니다.',
- '출력 형식 {"title":"영상 제목","notes":"사용자 검토가 필요한 사실이나 이미지 내용이 있으면 작성","scenes":[{"mediaIndex":0,"duration":4,"narration":"대사","caption":"자막","captionStyle":"impact|minimal|boxed|clean","captionPosition":"top|middle|bottom","effect":"zoom-in|zoom-out|pan-left|pan-right|none"}]}',
+ '출력 형식 {"title":"영상 제목","notes":"사용자 검토가 필요한 사실","scenes":[{"mediaIndex":0,"duration":4,"sourceIn":0,"sourceOut":4,"narration":"대사(불필요하면 빈 문자열)","caption":"자막","captionStyle":"impact|minimal|boxed|clean","captionPosition":"top|middle|bottom","effect":"zoom-in|zoom-out|pan-left|pan-right|none"}]}',
  '스타일: '+style,'사용자의 영상 제작 요구사항: '+instruction,'사용자가 제공한 설명·특징: '+facts
  ].join('\n');
  // Ask Gemini which generateContent models this exact API key can use.
