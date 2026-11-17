@@ -329,7 +329,10 @@ $('guest-link-btn').onclick=async()=>{
     await new Promise(resolve=>setTimeout(resolve,1500));
     x=await api('/api/guest/link');
     if(x.active)break;
-    if(i%6===5)guestShareStatus('체험 링크 연결 확인 중… ('+Math.round((i+1)*1.5)+'초 경과)');
+    const state=await api('/api/guest/status').catch(()=>({phase:'idle'}));
+    if(state.phase==='failed')throw Error(state.message||'외부 연결에 실패했습니다.');
+    const phaseLabel=state.phase==='tunnel'?'외부 체험 연결 생성 중':state.phase==='starting'?'지인 전용 서버 준비 중':'체험 링크 연결 확인 중';
+    if(i%3===2)guestShareStatus(phaseLabel+'… ('+Math.round((i+1)*1.5)+'초 경과)');
    }
   }
   if(!x.active)throw Error('체험 링크 생성이 완료되지 않았습니다. PC의 StudioEditor/private/guest-launch.log 파일을 확인하세요.');
