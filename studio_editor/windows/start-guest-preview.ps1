@@ -6,10 +6,6 @@ param()
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $local = $env:LOCALAPPDATA
-if (-not $local -or -not (Test-Path -LiteralPath (Join-Path $root 'server.mjs'))) { throw 'Studio Editor v1.3 must be installed first.' }
-$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
-$node = if ($nodeCommand) { $nodeCommand.Source } else { Join-Path $env:ProgramFiles 'nodejs\node.exe' }
-if (-not (Test-Path -LiteralPath $node)) { throw 'Node.js is required.' }
 $bin = Join-Path $root 'bin'
 $cloudflared = Join-Path $bin 'cloudflared.exe'
 $bytes = New-Object byte[] 32
@@ -50,6 +46,10 @@ $vars = @{
 }
 try {
  Set-GuestProgress 'starting' '지인 전용 서버를 준비하고 있습니다.'
+ if (-not $local -or -not (Test-Path -LiteralPath (Join-Path $root 'server.mjs'))) { throw 'Studio Editor installation path is not available.' }
+ $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+ $node = if ($nodeCommand) { $nodeCommand.Source } else { Join-Path $env:ProgramFiles 'nodejs\node.exe' }
+ if (-not (Test-Path -LiteralPath $node)) { throw 'Node.js is required.' }
  if (-not (Test-Path -LiteralPath $cloudflared) -or (Get-Item -LiteralPath $cloudflared).Length -lt 5000000) {
   Set-GuestProgress 'download' 'Cloudflare 외부 연결 프로그램을 내려받는 중입니다.'
   New-Item -ItemType Directory -Path $bin -Force | Out-Null
