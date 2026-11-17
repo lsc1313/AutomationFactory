@@ -65,12 +65,12 @@ jobs:
         if: github.event_name == 'push'
         run: |
           cd studio_editor
-          zip -q -r ../StudioEditor-v1.3.10-Guest-Status-Fix.zip . \
+          zip -q -r ../StudioEditor-v1.3.11-Installer-Check-Fix.zip . \
             -x 'private/*' 'private/**' '__pycache__/*' '*.pyc' 'node_modules/*' 'node_modules/**'
       - name: Upload Windows editor ZIP
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: StudioEditor-v1.3.10-Guest-Status-Fix
-          path: StudioEditor-v1.3.10-Guest-Status-Fix.zip
+          name: StudioEditor-v1.3.11-Installer-Check-Fix
+          path: StudioEditor-v1.3.11-Installer-Check-Fix.zip
           retention-days: 14
