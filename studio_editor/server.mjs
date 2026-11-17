@@ -79,7 +79,12 @@ let exportJob={status:'idle',error:null,filename:null,projectId:null,step:null};
 let draftJob={status:'idle',error:null,step:null,projectId:null,draft:null};
 let sttJob={status:'idle',error:null,step:null,projectId:null,clipId:null,segments:null};
 const keyPath=path.join(STATE,'ai-config.json');
-async function aiKey(){const cfg=await loadJson(keyPath,{});return cfg.geminiKey||await findExistingGeminiKey();}
+async function aiKey(){
+ const cfg=await loadJson(keyPath,{});
+ const guestConfig=GUEST&&process.env.STUDIO_GUEST_AI_CONFIG_PATH?
+  await loadJson(process.env.STUDIO_GUEST_AI_CONFIG_PATH,{}):{};
+ return cfg.geminiKey||guestConfig.geminiKey||await findExistingGeminiKey();
+}
 async function loadJson(filename,fallback){try{return JSON.parse(await readFile(filename,'utf8'));}catch(e){if(e.code==='ENOENT')return fallback;throw e;}}
 async function saveJson(filename,value){await mkdir(path.dirname(filename),{recursive:true});const tmp=filename+'.'+hex()+'.tmp';await writeFile(tmp,JSON.stringify(value,null,2),{mode:0o600});await (await import('node:fs/promises')).rename(tmp,filename);}
 async function body(req,max=1_000_000){let size=0,parts=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw makeError(413,'요청 용량을 초과했습니다.');parts.push(chunk);}return Buffer.concat(parts);}

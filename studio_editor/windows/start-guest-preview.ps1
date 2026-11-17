@@ -43,6 +43,7 @@ $vars = @{
  STUDIO_GUEST_TOKEN_HASH=$hash
  STUDIO_GUEST_EXPIRES_AT=[string]$end.ToUnixTimeMilliseconds()
  STUDIO_GUEST_STOP_FILE=$revokedFile
+ STUDIO_GUEST_AI_CONFIG_PATH=(Join-Path $ownerPrivate 'ai-config.json')
  STUDIO_TRUST_PROXY='1'
  STUDIO_DATA_DIR=$guestDir
  STUDIO_PORT='8060'
@@ -69,7 +70,7 @@ try {
  if(-not $url){ throw 'Could not obtain a share URL. Inspect: ' + $tunnelLog }
  $invite = $url.TrimEnd('/') + '/invite/' + $token
  $info = @{url=$invite;expires=$end.ToUnixTimeMilliseconds();guestId=$guestId;startedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}
- $info | ConvertTo-Json -Compress | Set-Content -LiteralPath $statusPath -Encoding UTF8
+ [IO.File]::WriteAllText($statusPath,($info | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
  try { Set-Clipboard -Value $invite -ErrorAction Stop }catch{}
  Write-Host ''
  Write-Host '========================================================'
