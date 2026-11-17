@@ -331,7 +331,7 @@ $('guest-link-btn').onclick=async()=>{
     if(x.active)break;
     const state=await api('/api/guest/status').catch(()=>({phase:'idle'}));
     if(state.phase==='failed')throw Error(state.message||'외부 연결에 실패했습니다.');
-    const phaseLabel=state.phase==='download'?'Cloudflare 연결 프로그램 다운로드 중':state.phase==='tunnel'?'외부 체험 연결 생성 중':state.phase==='starting'?'지인 전용 서버 준비 중':'체험 링크 연결 확인 중';
+    const phaseLabel=state.phase==='download'?'Cloudflare 연결 프로그램 다운로드 중':state.phase==='tunnel'?'외부 체험 연결 생성 중':state.phase==='starting'?'지인 전용 서버 준비 중':state.phase==='launching'?'Windows 체험 서버 실행 중':'체험 링크 연결 확인 중';
     if(i%3===2)guestShareStatus(phaseLabel+'… ('+Math.round((i+1)*1.5)+'초 경과)');
    }
   }
