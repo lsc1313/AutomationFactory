@@ -161,7 +161,7 @@ test('guest invite is fully selectable and clipboard errors cannot fake success'
 test('one-click update identifies release and verifies the live service before claiming success',async()=>{
  const installer=await readFile(new URL('../windows/install-oneclick.ps1',import.meta.url),'utf8');
  const page=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
- assert.match(installer,/\$version = 'v1\.3\.12'/);
+ assert.match(installer,/\$version = 'v1\.3\.13'/);
  assert.match(installer,/Verified running editor release/);
  assert.match(installer,/\$live\.Content\.Contains\(\$version\)/);
  assert.doesNotMatch(installer,/v1\[\.\]3\[\.\]8/);
@@ -192,4 +192,16 @@ test('guest downloader reports its progress before network access and both tunne
  assert.match(launcher,/@\(\$tunnelLog,\$tunnelOut\)/);
  assert.match(server,/download:'Cloudflare/);
  assert.match(client,/state\.phase==='download'/);
+});
+
+test('guest launcher establishes a status before spawning and reports an unresponsive Windows child',async()=>{
+ const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+ const launcher=await readFile(new URL('../windows/start-guest-preview.ps1',import.meta.url),'utf8');
+ const client=await readFile(new URL('../public/client.js',import.meta.url),'utf8');
+ assert.match(server,/phase:'launching'/);
+ assert.match(server,/p\.phase==='launching'&&Date\.now\(\)-p\.at>15000/);
+ assert.ok(server.indexOf("phase:'launching'")<server.indexOf("const child=spawn('powershell.exe'"));
+ assert.match(server,/NonInteractive/);
+ assert.ok(launcher.indexOf("Set-GuestProgress 'starting'")<launcher.indexOf("Node.js is required"));
+ assert.match(client,/state\.phase==='launching'/);
 });
