@@ -5,14 +5,40 @@ const $=id=>document.getElementById(id);
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 const rand=()=>[...crypto.getRandomValues(new Uint8Array(12))].map(x=>x.toString(16).padStart(2,'0')).join('');
 async function api(url,method='GET',body){const opt={method,credentials:'same-origin',headers:{}};if(body!==undefined){opt.headers['Content-Type']='application/json';opt.headers['X-CSRF-Token']=csrf;opt.body=JSON.stringify(body);}const res=await fetch(url,opt);const obj=await res.json();if(!res.ok)throw Error(obj.error||'오류');return obj;}
-async function session(){try{const x=await api('/api/me');csrf=x.csrf;$('gate').hidden=true;$('studio').hidden=false;
- document.body.dataset.guestMode=x.guest?'true':'false';
- $('guest-link-btn').hidden=Boolean(x.guest);
- $('guest-stop-btn').hidden=true;
- $('ai-key-btn').hidden=Boolean(x.guest);
- $('guest-notice').hidden=!x.guest;
- await reload();}catch{const setup=await api('/api/setup-state').catch(()=>({setupNeeded:false}));$('gate').hidden=false;$('studio').hidden=true;$('access-note').textContent=setup.setupNeeded?'처음 실행입니다. 이 PC에서 12자 이상 관리자 비밀번호를 만들어 주세요.':'설정한 비밀번호로 로그인하세요.';$('login-btn').textContent=setup.setupNeeded?'첫 계정 생성':'로그인';$('access').dataset.setup=setup.setupNeeded?'yes':'no';}}
-$('access').onsubmit=async e=>{e.preventDefault();const pass=$('password').value;try{if(e.target.dataset.setup==='yes')await api('/api/setup','POST',{password:pass});const x=await api('/api/login','POST',{password:pass});csrf=x.csrf;await session();}catch(err){$('access-note').textContent='오류: '+err.message;}};
+let signupMode=false;
+function setSignupMode(mode){
+ signupMode=Boolean(mode);
+ $('login-btn').textContent=signupMode?'회원가입하고 시작':'로그인';
+ $('signup-toggle').textContent=signupMode?'로그인으로 돌아가기':'회원가입';
+ $('email').required=signupMode;
+ $('password').setAttribute('autocomplete',signupMode?'new-password':'current-password');
+ $('access-note').textContent=signupMode?'이메일과 12자 이상의 비밀번호로 계정을 만드세요.':'기존 사용자는 이메일 대신 owner를 입력하거나 비워두고 기존 비밀번호로 로그인하세요.';
+}
+$('signup-toggle').onclick=()=>setSignupMode(!signupMode);
+async function session(){
+ try{
+  const x=await api('/api/me');
+  csrf=x.csrf;
+  $('gate').hidden=true;
+  $('studio').hidden=false;
+  document.body.dataset.guestMode='false';
+  $('studio-user-email').textContent=x.email==='owner'?'기존 관리자 계정':x.email||'로그인됨';
+  await reload();
+ }catch{
+  $('gate').hidden=false;$('studio').hidden=true;
+  setSignupMode(false);
+ }
+}
+$('access').onsubmit=async e=>{
+ e.preventDefault();
+ const password=$('password').value,email=$('email').value.trim();
+ try{
+  const result=await api(signupMode?'/api/register':'/api/login','POST',{email,password});
+  csrf=result.csrf;
+  $('password').value='';
+  await session();
+ }catch(err){$('access-note').textContent='오류: '+err.message;}
+};
 $('logout').onclick=async()=>{await api('/api/logout','POST',{}).catch(()=>{});csrf='';await session();};
 async function reload(){const result=await api('/api/library');library=result.media;projects=result.projects;const last=project?.id;project=projects.find(p=>p.id===last)||projects[0]||null;if(!project){const r=await api('/api/new','POST',{});project=r.project;projects.push(project)}selected=Math.min(selected,Math.max(0,project.scenes.length-1));renderedProjectId=null;$('full-review').hidden=true;render();await updateAiStatus();}
 function isAudio(m){return m.group==='music'}
@@ -270,87 +296,6 @@ async function startExport(showFull=false){
 }
 $('export-btn').onclick=()=>startExport(false);
 $('preview-full').onclick=()=>startExport(true);
-// Clipboard APIs may be blocked on an HTTP Tailscale address (non-secure context).
-// Never report success unless the clipboard operation succeeds. Always expose the
-// complete validated link in a selectable field as a reliable manual fallback.
-async function copyGuestLink(){
- const field=$('guest-share-url');
- const value=field.value;
- if(!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/invite\/[a-f0-9]{64}$/.test(value)){
-  $('guest-share-status').textContent='유효한 체험 링크가 없습니다. 다시 생성해 주세요.';
-  return;
- }
- let copied=false;
- if(navigator.clipboard?.writeText){
-  try{await navigator.clipboard.writeText(value);copied=true;}catch{}
- }
- if(!copied){
-  field.focus();field.select();field.setSelectionRange(0,field.value.length);
-  try{copied=Boolean(document.execCommand?.('copy'));}catch{}
- }
- if(copied){
-  $('guest-share-status').textContent='전체 링크 복사 완료. 카카오톡에 붙여넣으세요.';
- }else{
-  field.focus();field.select();field.setSelectionRange(0,field.value.length);
-  $('guest-share-status').textContent='자동 복사가 차단됐어요. 선택된 주소를 길게 눌러 “복사”를 선택하세요.';
- }
-}
-$('guest-copy-btn').onclick=copyGuestLink;
-$('guest-close-btn').onclick=()=>$('guest-share-dialog').close();
-function openGuestShareDialog(){
- const d=$('guest-share-dialog');
- if(!d)return null;
- d.hidden=false;
- if(!d.open){
-  try{d.showModal()}catch{d.setAttribute('open','')}
- }
- return d;
-}
-function guestShareStatus(message){
- const target=$('guest-share-status');
- if(target)target.textContent=message;
-}
-$('guest-link-btn').onclick=async()=>{
- const button=$('guest-link-btn');
- // Display progress before the first request: HTTPS prompts/clipboard dialogs
- // are not dependable on Android and the tunnel may take some time to start.
- openGuestShareDialog();
- $('guest-share-url').value='';
- $('guest-copy-btn').disabled=true;
- guestShareStatus('기존 체험 링크를 확인 중입니다…');
- button.disabled=true;
- try{
-  let x=await api('/api/guest/link');
-  if(!x.active){
-   guestShareStatus('지인용 별도 서버와 외부 연결을 시작하고 있습니다. 연결에 문제가 생기면 이 창에 오류가 표시됩니다.');
-   const started=await api('/api/guest/start','POST',{});
-   if(!started?.started)throw Error('체험 서버가 시작되지 않았습니다.');
-   for(let i=0;i<90;i++){
-    await new Promise(resolve=>setTimeout(resolve,1500));
-    x=await api('/api/guest/link');
-    if(x.active)break;
-    const state=await api('/api/guest/status').catch(()=>({phase:'idle'}));
-    if(state.phase==='failed')throw Error(state.message||'외부 연결에 실패했습니다.');
-    const phaseLabel=state.phase==='download'?'Cloudflare 연결 프로그램 다운로드 중':state.phase==='tunnel'?'외부 체험 연결 생성 중':state.phase==='starting'?'지인 전용 서버 준비 중':state.phase==='launching'?'Windows 체험 서버 실행 중':'체험 링크 연결 확인 중';
-    if(i%3===2)guestShareStatus(phaseLabel+'… ('+Math.round((i+1)*1.5)+'초 경과)');
-   }
-  }
-  if(!x.active)throw Error('체험 링크 생성에 실패했거나 연결 확인 시간이 초과되었습니다. PC의 StudioEditor/private/guest-launch.log 파일을 확인하세요.');
-  if(typeof x.url!=='string'||!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/invite\/[a-f0-9]{64}$/.test(x.url))
-   throw Error('체험 링크 주소 검증에 실패했습니다.');
-  $('guest-share-url').value=x.url;
-  $('guest-copy-btn').disabled=false;
-  $('guest-stop-btn').hidden=false;
-  guestShareStatus('체험 링크 생성 완료. 아래 주소 전체를 복사해 지인에게 보내세요. (자동 복사가 안 되면 길게 눌러 복사)');
- }catch(e){
-  guestShareStatus('체험 링크 생성 실패: '+(e?.message||'알 수 없는 오류')+' — PC에서 실행 중인 편집기와 guest-launch.log를 확인하세요.');
- }finally{button.disabled=false;}
-};
-$('guest-stop-btn').onclick=async()=>{
- if(!confirm('지인 체험 링크를 즉시 중지할까요? 테스트 중인 편집 작업에 접속할 수 없게 됩니다.'))return;
- try{await api('/api/guest/stop','POST',{});$('guest-stop-btn').hidden=true;alert('지인 체험 링크가 중지됐습니다.');}
- catch(e){alert('체험 중지 실패: '+e.message)}
-};
 void session();
 
 // AI-first workflow: vision-guided storyboard, user approval, then normal scene editor.
