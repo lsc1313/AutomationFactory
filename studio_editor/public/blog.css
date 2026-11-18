@@ -76,3 +76,9 @@ body[data-workspace="blog"] #export-btn{display:none!important}
  .blog-meta-row{grid-template-columns:minmax(0,1fr) 125px}
  .blog-toolbar-actions button{flex-grow:1}
 }
+
+/* Override mobile-ui.css's stronger #studio:not([hidden]) + .mobile-navigation
+   selector. Blog has its own scrolling editor, not the six video tabs. */
+body[data-workspace="blog"] #studio:not([hidden]) + #mobile-navigation{display:none!important}
+body[data-workspace="blog"] #studio>.mobile-preview-dock{display:none!important}
+@media(max-width:900px){body[data-workspace="blog"]{padding-bottom:0!important}}
