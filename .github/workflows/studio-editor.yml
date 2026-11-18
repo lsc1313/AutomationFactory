@@ -32,6 +32,7 @@ jobs:
         run: |
           node --check studio_editor/server.mjs
           node --check studio_editor/blog-engine.mjs
+          node --check studio_editor/blog-writing-style.mjs
           node --check studio_editor/public/blog.js
           node --check studio_editor/timeline-v2.mjs
           node --check studio_editor/stt-server.mjs
@@ -67,12 +68,12 @@ jobs:
         if: github.event_name == 'push'
         run: |
           cd studio_editor
-          zip -q -r ../StudioEditor-v1.5.3-Naver-Transfer.zip . \
+          zip -q -r ../StudioEditor-v1.5.4-Personal-Writing-Style.zip . \
             -x 'private/*' 'private/**' '__pycache__/*' '*.pyc' 'node_modules/*' 'node_modules/**'
       - name: Upload Windows editor ZIP
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: StudioEditor-v1.5.3-Naver-Transfer
-          path: StudioEditor-v1.5.3-Naver-Transfer.zip
+          name: StudioEditor-v1.5.4-Personal-Writing-Style
+          path: StudioEditor-v1.5.4-Personal-Writing-Style.zip
           retention-days: 14
