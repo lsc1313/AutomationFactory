@@ -20,11 +20,24 @@
   <div class="blog-metadata"><label>제목<input id="blog-title" maxlength="140" placeholder="독자가 클릭하고 싶은 글 제목"></label><div class="blog-meta-row"><label>카테고리<input id="blog-category" maxlength="60" placeholder="예: 여행, 일상, 리뷰"></label><label>상태<select id="blog-state"><option value="draft">작성 중</option><option value="ready">완료</option></select></label></div><label>글 소개<textarea id="blog-summary" rows="2" maxlength="350" placeholder="글에서 다룰 내용을 1~2문장으로 정리해 보세요."></textarea></label><label>태그<input id="blog-tags" placeholder="쉼표로 구분 · 예: 제주도, 여행팁, 가을"></label></div>
   <div class="blog-toolbar"><strong>본문 구성</strong><div class="blog-toolbar-actions"><button type="button" data-blog-add="heading">+ 제목</button><button type="button" data-blog-add="subheading">+ 소제목</button><button type="button" data-blog-add="paragraph">+ 글</button><button type="button" data-blog-add="image">+ 사진</button><button type="button" data-blog-add="list">+ 목록</button><button type="button" data-blog-add="quote">+ 인용</button><button type="button" data-blog-add="divider">+ 구분선</button></div></div>
   <div id="blog-blocks" class="blog-blocks"></div>
-  <div class="blog-bottom-actions"><button id="blog-preview-toggle" type="button">미리보기</button><button id="blog-export-html" type="button">HTML 내보내기</button><button id="blog-export-md" type="button">Markdown 내보내기</button><button id="blog-delete" class="danger" type="button">글 삭제</button></div>
+  <div class="blog-bottom-actions"><button id="blog-preview-toggle" type="button">미리보기</button><button id="blog-naver-open" type="button" class="blog-naver-primary">네이버 블로그로 옮기기</button><button id="blog-export-html" type="button">HTML 내보내기</button><button id="blog-export-md" type="button">Markdown 내보내기</button><button id="blog-delete" class="danger" type="button">글 삭제</button></div>
   <p id="blog-status" class="blog-status" role="status">새 글을 작성할 수 있습니다.</p>
  </section>
  <aside id="blog-preview-panel" class="blog-panel blog-preview-panel"><h2>글 미리보기</h2><p class="blog-help">작성 화면과 실제 글 모양을 함께 확인해 보세요.</p><article id="blog-preview" class="blog-preview"></article></aside>
  </div>
+ <dialog id="blog-naver-dialog" aria-labelledby="blog-naver-title"><div class="blog-naver-modal">
+  <div class="blog-naver-head"><div><h2 id="blog-naver-title">네이버 블로그로 옮기기</h2><p>제목·본문·사진·태그를 작성한 순서대로 옮기는 게시 도우미입니다.</p></div><button id="blog-naver-close" type="button" aria-label="닫기">닫기</button></div>
+  <p class="blog-naver-warning">네이버 블로그에는 HTML 파일을 그대로 가져올 수 없습니다. 아래에서 글을 복사하고 사진은 내려받아 스마트에디터 ONE의 <b>사진</b> 버튼으로 첨부하세요. 글꼴·색상 등은 네이버 편집기에서 다시 조정해야 할 수 있습니다.</p>
+  <div class="blog-naver-quick">
+    <button id="blog-naver-title-copy" type="button">제목 복사</button>
+    <button id="blog-naver-all-copy" type="button">본문 전체 복사 (사진 위치 표시)</button>
+    <button id="blog-naver-tags-copy" type="button">태그 복사</button>
+    <a href="https://blog.naver.com/" target="_blank" rel="noopener noreferrer">네이버 블로그 열기</a>
+  </div>
+  <p class="blog-naver-notice">본문 전체 복사는 빠른 작성용입니다. 사진 사이에 글을 정확히 배치하려면 아래 순서대로 <b>문단 복사 → 사진 첨부 → 다음 문단 복사</b>를 반복하세요.</p>
+  <div id="blog-naver-steps" class="blog-naver-steps"></div>
+  <p id="blog-naver-status" class="blog-naver-status" role="status">복사할 내용을 선택하세요.</p>
+ </div></dialog>
  <dialog id="blog-image-dialog"><div class="blog-image-modal"><h3>블로그 사진 선택</h3><p class="blog-help">이 계정에 업로드된 사진을 사용합니다.</p><div id="blog-image-list" class="blog-image-list"></div><label class="blog-upload-btn">+ 새 사진 업로드<input id="blog-upload" type="file" accept="image/jpeg,image/png,image/webp" hidden></label><button id="blog-image-close" type="button">닫기</button></div></dialog>
 </section>
 <section id="ai-workflow" class="ai-workflow"><div class="ai-header"><div><h2>2. AI 영상 초안 만들기</h2><p>사진·영상 업로드 → 원하는 영상 설명 → AI 대본·자막·장면 구성 → 직접 수정</p></div><span class="ai-pill">영상 생성 GPU 불필요</span></div>
