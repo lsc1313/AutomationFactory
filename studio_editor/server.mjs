@@ -227,7 +227,7 @@ if(!local){
  if(!(trustedGuest||(HOST&&host===HOST))||!TRUST||req.headers['x-forwarded-proto']!=='https'||!addrLocal(req))throw makeError(403,'승인되지 않은 호스트입니다.');
 }
 if(!['GET','POST'].includes(req.method))throw makeError(405,'지원하지 않는 요청');if(req.method==='POST'){const origin=req.headers.origin;if(origin&&new URL(origin).host.toLowerCase()!==hostRaw.toLowerCase())throw makeError(403,'외부 출처 차단');}
-if(req.method==='GET'&&['/','/app','/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css'].includes(url.pathname)){const asset=['/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css'].includes(url.pathname)?url.pathname.slice(1):'index.html';const p=path.join(ROOT,'public',asset);res.writeHead(200,{...APP_HEADER,'Content-Type':mime(path.extname(p))});res.end(await readFile(p));return;}
+if(req.method==='GET'&&['/','/app','/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css','/blog.js','/blog.css'].includes(url.pathname)){const asset=['/client.js','/styles.css','/timeline-ui.js','/timeline-ui.css','/mobile-ui.js','/mobile-ui.css','/blog.js','/blog.css'].includes(url.pathname)?url.pathname.slice(1):'index.html';const p=path.join(ROOT,'public',asset);res.writeHead(200,{...APP_HEADER,'Content-Type':mime(path.extname(p))});res.end(await readFile(p));return;}
 if(req.method==='GET'&&url.pathname==='/api/setup-state'){
  const legacy=await loadJson(cfgPath,null);
  const accounts=await loadJson(accountsPath,[]);
