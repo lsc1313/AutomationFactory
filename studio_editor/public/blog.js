@@ -254,6 +254,96 @@ async function imageData(id){
  const blob=await res.blob();
  return await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(blob);});
 }
+// Naver SmartEditor ONE transfer: no HTML injection and no automated publishing.
+// Each text/photo stays in the author's original order; the user posts in Naver.
+function naverSegments(){
+ capture();
+ const segments=[];
+ if(post.summary?.trim())segments.push({kind:'text',label:'글 소개',body:post.summary.trim()});
+ let photoNo=0;
+ for(const block of post.blocks){
+  if(block.type==='image'){
+   if(block.mediaId)segments.push({kind:'image',label:'사진 '+(++photoNo),mediaId:block.mediaId,caption:block.caption||'',alt:block.alt||'',layout:imageLayout(block)});
+  }else if(block.type==='divider')segments.push({kind:'text',label:'구분선',body:'──────────'});
+  else if(block.text?.trim())segments.push({kind:'text',label:types[block.type]||'본문',body:block.type==='list'?block.text.split('\n').map(x=>x.trim()).filter(Boolean).map(x=>'• '+x).join('\n'):block.text.trim()});
+ }
+ return segments;
+}
+async function naverCopy(value,source){
+ const contents=String(value||'');
+ if(!contents)throw Error('복사할 내용이 없습니다.');
+ try{
+  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(contents);return;}
+ }catch{}
+ const helper=document.createElement('textarea');
+ helper.value=contents;helper.setAttribute('readonly','');helper.style.position='fixed';helper.style.left='-9999px';
+ document.body.append(helper);helper.select();helper.setSelectionRange(0,contents.length);
+ let done=false;try{done=document.execCommand('copy');}catch{}
+ helper.remove();
+ if(done)return;
+ const field=$('blog-naver-manual');
+ if(field){field.hidden=false;field.value=contents;field.focus();field.select();}
+ throw Error('자동 복사가 제한됐습니다. 아래에 나타난 내용을 길게 누르거나 Ctrl+C로 복사하세요.');
+}
+function naverStatus(message,error=false){
+ const label=$('blog-naver-status');label.textContent=message;label.dataset.error=error?'true':'false';
+}
+async function naverPhotoDownload(segment,number){
+ const res=await fetch('/api/media/'+encodeURIComponent(segment.mediaId),{credentials:'same-origin'});
+ if(!res.ok)throw Error('사진 다운로드 실패 (HTTP '+res.status+')');
+ const blob=await res.blob();
+ const mime=(blob.type||'').toLowerCase();
+ const extension=mime.includes('png')?'png':mime.includes('webp')?'webp':mime.includes('jpeg')?'jpg':'jpg';
+ const name='naver-photo-'+String(number).padStart(2,'0')+'.'+extension;
+ const url=URL.createObjectURL(blob);
+ try{
+  const link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();
+ }finally{setTimeout(()=>URL.revokeObjectURL(url),5000);}
+ naverStatus(name+' 다운로드를 시작했습니다. 네이버 글쓰기의 사진 버튼으로 첨부하세요.');
+}
+function naverWholeText(segments){
+ return segments.map(s=>s.kind==='image'?'[사진 '+s.label.replace('사진 ','')+' 첨부 위치'+(s.caption?' · '+s.caption:'')+']':s.body).join('\n\n');
+}
+function openNaverTransfer(){
+ capture();
+ const dialog=$('blog-naver-dialog');
+ const segments=naverSegments();
+ const list=$('blog-naver-steps');
+ list.replaceChildren();
+ const manual=$('blog-naver-manual');if(manual){manual.hidden=true;manual.value='';}
+ $('blog-naver-title-copy').onclick=()=>naverCopy(post.title,'title').then(()=>naverStatus('제목을 복사했어요. 네이버 제목 칸에 붙여넣으세요.')).catch(e=>naverStatus(e.message,true));
+ $('blog-naver-all-copy').onclick=()=>naverCopy(naverWholeText(segments),'all').then(()=>naverStatus('본문을 복사했습니다. 사진 위치 표시를 기준으로 사진을 별도 첨부하세요.')).catch(e=>naverStatus(e.message,true));
+ $('blog-naver-tags-copy').onclick=()=>naverCopy((post.tags||[]).join(', '),'tags').then(()=>naverStatus('태그를 복사했습니다. 네이버 태그 입력란에 붙여넣으세요.')).catch(e=>naverStatus(e.message,true));
+ let imageNumber=0;
+ segments.forEach((segment,i)=>{
+  const item=text('section',undefined,'blog-naver-step');
+  const heading=text('div',undefined,'blog-naver-step-head');
+  heading.append(text('strong',String(i+1)+'. '+segment.label));
+  const check=text('label',undefined,'blog-naver-check');
+  const done=text('input');done.type='checkbox';done.setAttribute('aria-label',String(i+1)+'번째 항목 완료');
+  check.append(done,text('span','옮김'));heading.append(check);item.append(heading);
+  if(segment.kind==='text'){
+   const preview=text('pre',segment.body,'blog-naver-content');
+   const copy=text('button','이 글 복사');copy.type='button';copy.className='blog-naver-copy';
+   copy.onclick=()=>naverCopy(segment.body,'step').then(()=>naverStatus(String(i+1)+'번째 글을 복사했습니다. 네이버 본문에 붙여넣으세요.')).catch(e=>naverStatus(e.message,true));
+   item.append(preview,copy);
+  }else{
+   const n=++imageNumber;
+   const row=text('div',undefined,'blog-naver-photo-row');
+   row.append(photo(segment.mediaId,segment.alt||segment.label));
+   const info=text('div',undefined,'blog-naver-photo-info');
+   info.append(text('p','원고 배치: '+segment.layout.width+'% · '+({left:'왼쪽',center:'가운데',right:'오른쪽'}[segment.layout.align])));
+   if(segment.caption)info.append(text('p','설명: '+segment.caption));
+   const get=text('button','사진 '+n+' 다운로드');get.type='button';get.className='blog-naver-download';
+   get.onclick=()=>naverPhotoDownload(segment,n).catch(e=>naverStatus(e.message,true));
+   info.append(get);row.append(info);item.append(row);
+  }
+  list.append(item);
+ });
+ if(!segments.length)list.append(text('p','작성된 본문이 없습니다. 블로그 편집기에서 내용을 입력해 주세요.','blog-help'));
+ naverStatus('네이버 블로그에 로그인한 뒤 제목부터 순서대로 옮겨주세요. 발행은 네이버에서 직접 진행합니다.');
+ if(!dialog.open)dialog.showModal();
+}
 async function exportArticle(format){
  capture();
  if(!post.title.trim())throw Error('제목을 먼저 작성하세요.');
@@ -323,6 +413,8 @@ function setup(){
  };
  $('blog-ai-generate').onclick=aiDraft;
  $('blog-preview-toggle').onclick=()=>{previewVisible=!previewVisible;$('blog-preview-panel').hidden=!previewVisible;$('blog-preview-toggle').textContent=previewVisible?'미리보기 숨기기':'미리보기';};
+ $('blog-naver-open').onclick=openNaverTransfer;
+ $('blog-naver-close').onclick=()=>$('blog-naver-dialog').close();
  $('blog-export-html').onclick=()=>exportArticle('html').catch(e=>notify(e.message,true));
  $('blog-export-md').onclick=()=>exportArticle('md').catch(e=>notify(e.message,true));
  $('blog-image-close').onclick=()=>$('blog-image-dialog').close();
