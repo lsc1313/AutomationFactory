@@ -211,7 +211,7 @@ function setup(){
  $('blog-delete').onclick=async()=>{
   if(!post.id){openPost(blank());return;}
   if(!confirm('이 블로그 글을 정말 삭제할까요?'))return;
-  try{await api('/api/blog/posts/'+post.id,'DELETE',{});openPost(blank());await loadList();notify('글을 삭제했습니다.');}catch(e){notify(e.message,true);}
+  try{await api('/api/blog/posts/'+post.id+'/delete','POST',{});openPost(blank());await loadList();notify('글을 삭제했습니다.');}catch(e){notify(e.message,true);}
  };
  $('blog-ai-generate').onclick=aiDraft;
  $('blog-preview-toggle').onclick=()=>{previewVisible=!previewVisible;$('blog-preview-panel').hidden=!previewVisible;$('blog-preview-toggle').textContent=previewVisible?'미리보기 숨기기':'미리보기';};
