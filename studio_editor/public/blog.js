@@ -333,7 +333,12 @@ function openNaverTransfer(){
    row.append(photo(segment.mediaId,segment.alt||segment.label));
    const info=text('div',undefined,'blog-naver-photo-info');
    info.append(text('p','원고 배치: '+segment.layout.width+'% · '+({left:'왼쪽',center:'가운데',right:'오른쪽'}[segment.layout.align])));
-   if(segment.caption)info.append(text('p','설명: '+segment.caption));
+   if(segment.caption){
+    info.append(text('p','설명: '+segment.caption));
+    const copyCaption=text('button','사진 설명 복사');copyCaption.type='button';
+    copyCaption.onclick=()=>naverCopy(segment.caption,'caption').then(()=>naverStatus('사진 설명을 복사했습니다. 네이버에서 사진 아래에 붙여넣으세요.')).catch(e=>naverStatus(e.message,true));
+    info.append(copyCaption);
+   }
    const get=text('button','사진 '+n+' 다운로드');get.type='button';get.className='blog-naver-download';
    get.onclick=()=>naverPhotoDownload(segment,n).catch(e=>naverStatus(e.message,true));
    info.append(get);row.append(info);item.append(row);
