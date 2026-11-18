@@ -6,6 +6,28 @@
 const $=id=>document.getElementById(id);
 const types={paragraph:'본문',heading:'큰 제목',subheading:'소제목',image:'사진',quote:'인용',list:'목록',divider:'구분선'};
 let post=null,items=[],loaded=false,dirty=false,photoTarget=-1,previewVisible=true;
+
+const fontOptions=[['system','기본'],['gothic','고딕'],['serif','명조'],['rounded','둥근 글씨'],['mono','고정폭']];
+const fontFamilies={system:'system-ui, sans-serif',gothic:'"Malgun Gothic", "Noto Sans KR", sans-serif',serif:'"Batang", "Noto Serif KR", serif',rounded:'"Arial Rounded MT Bold", "Malgun Gothic", sans-serif',mono:'ui-monospace, Consolas, monospace'};
+const emojis=['😀','😊','😍','👍','❤️','✨','🎉','🔥','✅','📌','💡','⭐','🌸','☕','📷','✈️'];
+const defaultStyle=()=>({font:'system',size:16,color:'#25352F',bold:false,italic:false});
+const styleOf=block=>{
+ const raw=block.style||{},size=Number(raw.size);
+ return {font:Object.hasOwn(fontFamilies,raw.font)?raw.font:'system',size:Number.isFinite(size)?Math.min(48,Math.max(12,Math.round(size))):16,color:/^#[0-9a-fA-F]{6}$/.test(raw.color||'')?raw.color:'#25352F',bold:raw.bold===true,italic:raw.italic===true};
+};
+const styleString=block=>{
+ const st=styleOf(block);
+ return 'font-family:'+fontFamilies[st.font]+';font-size:'+st.size+'px;color:'+st.color+';font-weight:'+(st.bold?'700':'400')+';font-style:'+(st.italic?'italic':'normal')+';';
+};
+const applyBlockStyle=(element,block)=>{
+ const style=styleOf(block);
+ element.style.fontFamily=fontFamilies[style.font];
+ element.style.fontSize=style.size+'px';
+ element.style.color=style.color;
+ element.style.fontWeight=style.bold?'700':'400';
+ element.style.fontStyle=style.italic?'italic':'normal';
+ return element;
+};
 const blank=()=>({id:null,title:'',summary:'',category:'',tags:[],status:'draft',blocks:[{type:'paragraph',text:''}]});
 const text=(tag,content,cls)=>{const n=document.createElement(tag);if(content!==undefined)n.textContent=content;if(cls)n.className=cls;return n;};
 const escapeHtml=str=>String(str??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -43,15 +65,15 @@ function refreshPreview(){
  if(post.summary)container.append(text('p',post.summary,'blog-preview-summary'));
  for(const block of post.blocks){
   const content=block.text||'';
-  if(block.type==='heading')container.append(text('h2',content));
-  else if(block.type==='subheading')container.append(text('h3',content));
-  else if(block.type==='paragraph')container.append(text('p',content));
-  else if(block.type==='quote')container.append(text('blockquote',content));
+  if(block.type==='heading')container.append(applyBlockStyle(text('h2',content),block));
+  else if(block.type==='subheading')container.append(applyBlockStyle(text('h3',content),block));
+  else if(block.type==='paragraph')container.append(applyBlockStyle(text('p',content),block));
+  else if(block.type==='quote')container.append(applyBlockStyle(text('blockquote',content),block));
   else if(block.type==='divider')container.append(document.createElement('hr'));
   else if(block.type==='list'){
    const ul=document.createElement('ul');
    for(const line of content.split('\n').map(x=>x.trim()).filter(Boolean))ul.append(text('li',line));
-   container.append(ul);
+   container.append(applyBlockStyle(ul,block));
   }else if(block.type==='image'&&block.mediaId){
    const figure=document.createElement('figure');
    figure.append(photo(block.mediaId,block.alt||''));
@@ -60,6 +82,49 @@ function refreshPreview(){
   }
  }
  if(post.tags.length)container.append(text('p',post.tags.map(t=>'#'+t).join(' '),'blog-preview-tags'));
+}
+function createStyleBar(block,field){
+ const st=styleOf(block);
+ block.style=st;
+ const toolbar=text('div',undefined,'blog-style-toolbar');
+ toolbar.setAttribute('aria-label','이 글 블록의 서식');
+ const font=text('select');
+ font.title='글씨체';font.setAttribute('aria-label','글씨체');
+ for(const [value,label] of fontOptions){const option=text('option',label);option.value=value;font.append(option);}
+ font.value=st.font;
+ const size=text('select');size.title='글자 크기';size.setAttribute('aria-label','글자 크기');
+ for(const n of [12,14,16,18,20,24,28,32,36,40,48]){const option=text('option',n+'px');option.value=n;size.append(option);}
+ if(![...size.options].some(option=>Number(option.value)===st.size)){const extra=text('option',st.size+'px');extra.value=st.size;size.append(extra);}
+ size.value=String(st.size);
+ const color=text('input');color.type='color';color.value=st.color;color.title='글자색';color.setAttribute('aria-label','글자색');
+ const bold=text('button','B');bold.type='button';bold.className='blog-style-toggle';bold.title='굵게';bold.setAttribute('aria-pressed',String(st.bold));
+ const italic=text('button','I');italic.type='button';italic.className='blog-style-toggle blog-italic';italic.title='기울임';italic.setAttribute('aria-pressed',String(st.italic));
+ const emoji=text('button','😀 이모지');emoji.type='button';emoji.className='blog-emoji-toggle';
+ const palette=text('div',undefined,'blog-emoji-palette');palette.hidden=true;
+ const update=()=>{
+  applyBlockStyle(field,block);
+  bold.setAttribute('aria-pressed',String(block.style.bold));
+  italic.setAttribute('aria-pressed',String(block.style.italic));
+  markDirty();
+ };
+ font.onchange=()=>{block.style.font=font.value;update();};
+ size.onchange=()=>{block.style.size=Number(size.value);update();};
+ color.oninput=()=>{block.style.color=color.value;update();};
+ bold.onclick=()=>{block.style.bold=!block.style.bold;update();};
+ italic.onclick=()=>{block.style.italic=!block.style.italic;update();};
+ emoji.onclick=()=>{palette.hidden=!palette.hidden;};
+ for(const symbol of emojis){
+  const button=text('button',symbol);button.type='button';button.title='이모지 '+symbol;
+  button.onclick=()=>{
+   const start=field.selectionStart??field.value.length,end=field.selectionEnd??start;
+   field.setRangeText(symbol,start,end,'end');
+   block.text=field.value;palette.hidden=true;
+   field.focus();markDirty();
+  };
+  palette.append(button);
+ }
+ toolbar.append(font,size,color,bold,italic,emoji,palette);
+ return toolbar;
 }
 function renderBlocks(){
  const root=$('blog-blocks');root.replaceChildren();
@@ -88,7 +153,8 @@ function renderBlocks(){
    field.rows=block.type==='paragraph'?5:block.type==='list'?4:2;
    field.maxLength=6000;field.placeholder=block.type==='list'?'한 줄에 목록 항목 하나씩 입력하세요':(types[block.type]||'본문')+' 내용';
    field.oninput=()=>{block.text=field.value;markDirty();};
-   card.append(field);
+   applyBlockStyle(field,block);
+   card.append(createStyleBar(block,field));card.append(field);
   }else card.append(text('p','글 사이에 구분선을 표시합니다.','blog-help'));
   root.append(card);
  });
