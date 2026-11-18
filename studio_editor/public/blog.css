@@ -114,3 +114,39 @@ body[data-workspace="blog"] #studio>.mobile-preview-dock{display:none!important}
  .blog-image-layout-controls{grid-template-columns:minmax(0,1fr) minmax(100px,1fr);gap:10px}
  .blog-image-layout-controls label:last-child{grid-column:1/-1}
 }
+
+/* Naver SmartEditor ONE manual transfer: separate text copies and original photos. */
+#blog-naver-dialog{width:min(860px,94vw);max-width:94vw;max-height:88dvh;box-sizing:border-box;padding:0;border:1px solid #b9d3c0;border-radius:17px;background:#fff;color:#263c2d;box-shadow:0 20px 70px #0003}
+#blog-naver-dialog::backdrop{background:#102b1da8}
+.blog-naver-modal{padding:22px;max-height:87dvh;overflow:auto;box-sizing:border-box}
+.blog-naver-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.blog-naver-head h2{font-size:22px;margin:0 0 6px}
+.blog-naver-head p{color:#657768;font-size:13px;margin:0 0 12px}
+#blog-naver-close{white-space:nowrap;background:#f2f6f2;color:#315940}
+.blog-naver-warning,.blog-naver-notice{font-size:13px;line-height:1.65;padding:12px 14px;background:#f4f8f4;border:1px solid #dbe8de;border-radius:10px;margin:10px 0}
+.blog-naver-warning{background:#fff9ef;border-color:#ecd9b0;color:#5a4a2e}
+.blog-naver-quick{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.blog-naver-quick button,.blog-naver-quick a,.blog-naver-step button{background:#eaf4ed;color:#285f42;border:1px solid #bad8c5;border-radius:9px;padding:10px 12px;font-weight:750;text-decoration:none}
+.blog-naver-quick a{display:inline-flex;align-items:center}
+.blog-naver-steps{display:grid;gap:11px;margin:14px 0}
+.blog-naver-step{border:1px solid #d6e6d9;background:#fbfdfb;border-radius:12px;padding:13px;min-width:0}
+.blog-naver-step-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.blog-naver-step-head strong{color:#244a33}
+.blog-naver-check{display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap;color:#526957}
+.blog-naver-check input{width:auto;margin:0;accent-color:#31865d}
+.blog-naver-content{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto;margin:0 0 12px;padding:10px;border:1px solid #e1ebe2;border-radius:8px;background:white;font:14px/1.65 system-ui,"Malgun Gothic",sans-serif;color:#354438}
+.blog-naver-photo-row{display:flex;align-items:center;gap:15px;min-width:0}
+.blog-naver-photo-row img{width:130px;max-width:42%;height:110px;object-fit:contain;border-radius:9px;background:#eff3ef}
+.blog-naver-photo-info{min-width:0;flex:1}
+.blog-naver-photo-info p{font-size:12px;color:#516755;margin:4px 0 9px;overflow-wrap:anywhere}
+.blog-naver-status{font-size:13px;color:#2c704a;line-height:1.65;padding:10px 0;min-height:30px}
+.blog-naver-status[data-error="true"]{color:#ad4540}
+#blog-naver-manual{box-sizing:border-box;width:100%;font:14px/1.6 system-ui,sans-serif;margin:4px 0 12px}
+.blog-naver-primary{background:#256d4a!important;color:#fff!important;border-color:#256d4a!important;font-weight:800}
+@media(max-width:900px){
+ .blog-naver-modal{padding:16px;max-height:86dvh}
+ .blog-naver-head h2{font-size:19px}
+ .blog-naver-quick>*{flex:1 1 46%;justify-content:center;text-align:center}
+ .blog-naver-photo-row img{width:100px;height:92px}
+ .blog-naver-step{padding:11px}
+}
