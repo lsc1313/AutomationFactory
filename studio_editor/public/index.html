@@ -14,6 +14,20 @@
   <h3>AI 글 초안</h3><label>글 주제<input id="blog-ai-topic" type="text" maxlength="400" placeholder="예: 가을 제주 여행 준비 가이드"></label>
   <label>문체<select id="blog-ai-tone"><option>친근한 정보형</option><option>전문적인 설명형</option><option>경험을 공유하는 감성형</option><option>제품 소개형</option></select></label>
   <label>반드시 포함할 사실<textarea id="blog-ai-facts" rows="4" placeholder="직접 확인한 정보만 입력해 주세요. 확인되지 않은 내용을 AI가 만들어내지 않도록 합니다."></textarea></label>
+  <div class="blog-personal-style">
+   <h3>내 글쓰기 스타일</h3>
+   <p class="blog-help">직접 쓴 글을 예시로 저장하세요. AI가 말투·문장 길이·글의 구성 방식만 참고합니다.</p>
+   <label>AI 초안에 적용할 스타일<select id="blog-style-picker"><option value="">기본 AI 문체 (예시 사용 안 함)</option></select></label>
+   <label>스타일 이름<input id="blog-style-name" maxlength="70" placeholder="예: 내가 평소 쓰는 일상 글"></label>
+   <label>직접 작성한 글<textarea id="blog-style-content" rows="7" maxlength="12000" placeholder="과거에 직접 작성한 글을 붙여넣으세요. 150자 이상이면 저장할 수 있습니다."></textarea></label>
+   <div class="blog-style-actions">
+    <button type="button" id="blog-style-save">예시 글 저장</button>
+    <button type="button" id="blog-style-from-post">현재 글을 예시로 가져오기</button>
+    <button type="button" id="blog-style-delete">선택 예시 삭제</button>
+   </div>
+   <p id="blog-style-status" class="blog-help" role="status">저장된 예시는 이 계정에서만 사용합니다.</p>
+   <p class="blog-help">선택한 예시 글 일부가 Gemini 요청에 포함됩니다. 사실이나 개인 경험은 새 글에 복사하지 않도록 요청하며, 작성 후 직접 검토하세요.</p>
+  </div>
   <button id="blog-ai-generate" class="blog-ai-button" type="button">✨ AI 블로그 초안 작성</button><p class="blog-help">영상 편집기의 AI 키 설정에서 Gemini 키를 등록한 뒤 이용할 수 있어요. 실제 AI 응답이 없으면 임의의 글을 생성하지 않습니다.</p>
  </aside>
  <section class="blog-panel blog-editor-panel">
