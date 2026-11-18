@@ -6,6 +6,7 @@
 const $=id=>document.getElementById(id);
 const types={paragraph:'본문',heading:'큰 제목',subheading:'소제목',image:'사진',quote:'인용',list:'목록',divider:'구분선'};
 let post=null,items=[],loaded=false,dirty=false,photoTarget=-1,previewVisible=true;
+let writingSamples=[],styleEditorId=null;
 
 const fontOptions=[['system','기본'],['gothic','고딕'],['serif','명조'],['rounded','둥근 글씨'],['mono','고정폭']];
 const fontFamilies={system:'system-ui, sans-serif',gothic:'"Malgun Gothic", "Noto Sans KR", sans-serif',serif:'"Batang", "Noto Serif KR", serif',rounded:'"Arial Rounded MT Bold", "Malgun Gothic", sans-serif',mono:'ui-monospace, Consolas, monospace'};
@@ -384,13 +385,64 @@ async function save(){
  const x=await api('/api/blog/posts','POST',post);
  post=x.post;dirty=false;applyMeta();renderBlocks();await loadList();notify('글이 계정에 저장됐습니다.');
 }
+function showStyleStatus(message,error=false){
+ const n=$('blog-style-status');n.textContent=message;n.dataset.error=error?'true':'false';
+}
+function fillStyleForm(sample=null){
+ styleEditorId=sample?.id||null;
+ $('blog-style-name').value=sample?.name||'';
+ $('blog-style-content').value=sample?.content||'';
+}
+function renderStylePicker(selectedId=''){
+ const picker=$('blog-style-picker');picker.replaceChildren();
+ const fallback=new Option('기본 AI 문체 (예시 사용 안 함)','');
+ picker.append(fallback);
+ for(const sample of writingSamples)picker.append(new Option(sample.name,sample.id));
+ picker.value=writingSamples.some(x=>x.id===selectedId)?selectedId:'';
+}
+async function loadWritingSamples(selectedId=''){
+ const response=await api('/api/blog/writing-samples');
+ writingSamples=response.samples||[];
+ renderStylePicker(selectedId);
+ fillStyleForm(writingSamples.find(x=>x.id===selectedId)||null);
+}
+async function saveWritingStyle(){
+ const name=$('blog-style-name').value.trim(),content=$('blog-style-content').value.trim();
+ if(!name||content.length<150){showStyleStatus('스타일 이름과 직접 쓴 글 150자 이상을 입력하세요.',true);return;}
+ const button=$('blog-style-save');button.disabled=true;
+ try{
+  const saved=await api('/api/blog/writing-samples','POST',{id:styleEditorId,name,content});
+  await loadWritingSamples(saved.sample.id);
+  showStyleStatus('내 글쓰기 예시를 저장했습니다. 아래 AI 초안 작성에 바로 적용됩니다.');
+ }catch(err){showStyleStatus('예시 저장 실패: '+err.message,true);}
+ finally{button.disabled=false;}
+}
+function useCurrentPostAsExample(){
+ if(!post)return;
+ capture();
+ const entries=post.blocks.filter(b=>b.type!=='image'&&b.type!=='divider'&&b.text?.trim()).map(b=>b.text.trim());
+ const content=[post.title,post.summary,...entries].filter(Boolean).join('\n\n');
+ fillStyleForm({name:(post.title||'내 글')+' 스타일',content});
+ $('blog-style-picker').value='';
+ showStyleStatus('현재 원고를 가져왔습니다. 본인이 직접 작성한 문장인지 확인한 뒤 예시로 저장하세요.');
+}
+async function deleteWritingStyle(){
+ const id=$('blog-style-picker').value;
+ if(!id){showStyleStatus('삭제할 예시 글을 선택하세요.',true);return;}
+ if(!confirm('선택한 내 글쓰기 예시를 삭제할까요? 이전에 생성한 블로그 글은 그대로 유지됩니다.'))return;
+ try{
+  await api('/api/blog/writing-samples/'+id+'/delete','POST',{});
+  await loadWritingSamples();
+  showStyleStatus('예시 글을 삭제했습니다.');
+ }catch(err){showStyleStatus('삭제 실패: '+err.message,true);}
+}
 async function aiDraft(){
- const topic=$('blog-ai-topic').value.trim(),facts=$('blog-ai-facts').value,tone=$('blog-ai-tone').value;
+ const topic=$('blog-ai-topic').value.trim(),facts=$('blog-ai-facts').value,tone=$('blog-ai-tone').value,styleSampleId=$('blog-style-picker').value;
  if(topic.length<5){notify('AI 초안의 글 주제를 5자 이상 입력해 주세요.',true);return;}
  if(!askDiscard())return;
  const button=$('blog-ai-generate');button.disabled=true;notify('Gemini에서 실제 블로그 초안을 생성하고 있습니다.');
  try{
-  const x=await api('/api/blog/ai-draft','POST',{topic,facts,tone});
+  const x=await api('/api/blog/ai-draft','POST',{topic,facts,tone,styleSampleId});
   openPost({...x.draft,id:null});dirty=true;
   notify('AI 초안이 준비됐습니다. 내용을 검토하고 필요한 부분을 수정한 뒤 저장하세요.');
  }catch(e){notify('AI 초안 실패: '+e.message,true);}finally{button.disabled=false;}
@@ -400,7 +452,7 @@ function setup(){
  $('workspace-blog').onclick=async()=>{
   document.body.dataset.workspace='blog';$('blog-workspace').hidden=false;
   $('workspace-video').setAttribute('aria-pressed','false');$('workspace-blog').setAttribute('aria-pressed','true');
-  if(!loaded){loaded=true;openPost(blank());try{await loadList();}catch(e){notify('블로그 목록 오류: '+e.message,true);}}
+  if(!loaded){loaded=true;openPost(blank());try{await Promise.all([loadList(),loadWritingSamples()]);}catch(e){notify('블로그 자료 불러오기 오류: '+e.message,true);}}
  };
  for(const id of ['blog-title','blog-summary','blog-category','blog-tags','blog-state'])$(id).addEventListener('input',markDirty);
  document.querySelectorAll('[data-blog-add]').forEach(button=>button.onclick=()=>{
@@ -416,6 +468,14 @@ function setup(){
   if(!confirm('이 블로그 글을 정말 삭제할까요?'))return;
   try{await api('/api/blog/posts/'+post.id+'/delete','POST',{});openPost(blank());await loadList();notify('글을 삭제했습니다.');}catch(e){notify(e.message,true);}
  };
+ $('blog-style-picker').onchange=()=>{
+  const sample=writingSamples.find(x=>x.id===$('blog-style-picker').value);
+  fillStyleForm(sample||null);
+  showStyleStatus(sample?'선택한 글쓰기 스타일이 다음 AI 초안에 적용됩니다.':'기본 AI 문체를 사용합니다.');
+ };
+ $('blog-style-save').onclick=saveWritingStyle;
+ $('blog-style-from-post').onclick=useCurrentPostAsExample;
+ $('blog-style-delete').onclick=deleteWritingStyle;
  $('blog-ai-generate').onclick=aiDraft;
  $('blog-preview-toggle').onclick=()=>{previewVisible=!previewVisible;$('blog-preview-panel').hidden=!previewVisible;$('blog-preview-toggle').textContent=previewVisible?'미리보기 숨기기':'미리보기';};
  $('blog-naver-open').onclick=openNaverTransfer;
