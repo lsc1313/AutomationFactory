@@ -196,6 +196,23 @@ try{
  assert.equal(blogStyle.headingSize,'28px','other blocks keep their own default');
  assert.equal(blogStyle.hasEmoji,true);
  assert.equal(blogStyle.paletteClosed,true);
+ await evaluate('document.querySelector(\'[data-blog-add="image"]\').click()');
+ await waitUntil(async()=>await evaluate('document.querySelector("#blog-image-dialog").open&&document.querySelectorAll(".blog-image-option").length>0'));
+ await evaluate('document.querySelector(".blog-image-option").click()');
+ await evaluate(`(()=>{
+  const row=document.querySelector('.blog-image-layout-controls');
+  const width=row.querySelector('input[aria-label="사진 크기"]');
+  const align=row.querySelector('select[aria-label="사진 정렬"]');
+  const spacing=row.querySelector('input[aria-label="사진 여백"]');
+  width.value='35';width.dispatchEvent(new Event('input',{bubbles:true}));
+  align.value='right';align.dispatchEvent(new Event('change',{bubbles:true}));
+  spacing.value='12';spacing.dispatchEvent(new Event('input',{bubbles:true}));
+ })()`);
+ const photoLayout=await evaluate(`(()=>{
+  const figure=document.querySelector('#blog-preview figure');
+  return {width:figure.style.width,left:figure.style.marginLeft,right:figure.style.marginRight,spacing:figure.style.marginTop};
+ })()`);
+ assert.deepEqual(photoLayout,{width:'35%',left:'auto',right:'0px',spacing:'12px'});
  assert.equal(await evaluate('document.getElementById("blog-preview").textContent.includes("스튜디오 블로그 시험 글")'),true);
  await evaluate('document.getElementById("blog-save").click()');
  await waitUntil(async()=>await evaluate('document.getElementById("blog-status").textContent.includes("저장됐습니다")'));
@@ -210,6 +227,18 @@ try{
  assert.equal(savedBody.blocks[0].style.bold,true);
  assert.equal(savedBody.blocks[0].style.italic,true);
  assert.equal(savedBody.blocks[1].style.size,28);
+ assert.deepEqual(savedBody.blocks[2].layout,{width:35,align:'right',spacing:12});
+ await evaluate(`(()=>{
+  window.__blogExportBlob=null;
+  const create=URL.createObjectURL;
+  URL.createObjectURL=function(blob){window.__blogExportBlob=blob;return create.call(URL,blob);};
+  document.getElementById('blog-export-html').click();
+ })()`);
+ await waitUntil(async()=>await evaluate('window.__blogExportBlob instanceof Blob'));
+ const imageExport=await evaluate('window.__blogExportBlob.text()');
+ assert.match(imageExport,/width:35%;max-width:100%;margin:12px 0 12px auto;/);
+ assert.match(imageExport,/<img src="data:image\//);
+
 
  await evaluate('document.getElementById("workspace-video").click()');
  assert.equal(await evaluate('document.getElementById("blog-workspace").hidden'),true);
