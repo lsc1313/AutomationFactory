@@ -7,13 +7,14 @@ export const blogId=()=>randomBytes(12).toString('hex');
 export const blogTypes=Object.freeze(['paragraph','heading','subheading','image','quote','list','divider']);
 const max=(value,length)=>String(value??'').replace(/\u0000/g,'').slice(0,length);
 export const blogFonts=Object.freeze(['system','gothic','serif','rounded','mono']);
-export function validateBlogStyle(input={}){
+export function validateBlogStyle(input={},type='paragraph'){
  const style=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
  const font=blogFonts.includes(style.font)?style.font:'system';
  const size=Number(style.size);
+ const defaultSize=type==='heading'?28:type==='subheading'?22:type==='quote'?18:16;
  return {
   font,
-  size:Number.isFinite(size)?Math.max(12,Math.min(48,Math.round(size))):16,
+  size:Number.isFinite(size)?Math.max(12,Math.min(48,Math.round(size))):defaultSize,
   color:typeof style.color==='string'&&/^#[0-9a-fA-F]{6}$/.test(style.color)?style.color.toUpperCase():'#25352F',
   bold:style.bold===true,
   italic:style.italic===true
@@ -34,7 +35,7 @@ export function validateBlogPost(raw,media=[],old=null){
    return {id:blogId(),type:'image',mediaId:item.id,alt:max(block.alt,180),caption:max(block.caption,300)};
   }
   if(block.type==='divider')return {id:blogId(),type:'divider'};
-  return {id:blogId(),type:block.type,text:max(block.text,6000),style:validateBlogStyle(block.style)};
+  return {id:blogId(),type:block.type,text:max(block.text,6000),style:validateBlogStyle(block.style,block.type)};
  });
  const tags=Array.isArray(raw.tags)?raw.tags.slice(0,15).map(x=>max(x,30).trim()).filter(Boolean):[];
  const now=new Date().toISOString();
