@@ -78,7 +78,11 @@
   section.insertAdjacentHTML('beforeend',`<div class="v2-audio-track"><div class="v2-heading"><b>음악·효과음 오디오 트랙</b><button id="v2-add-audio" type="button">+ 음악·효과음 배치</button></div><div id="v2-audio-clips"></div></div>`);
   const overlay=create('div');overlay.id='v2-live-overlay';overlay.className='caption bottom';
   document.querySelector('.phone-preview').append(overlay);
-  document.querySelector('.timeline-wrap').before(section);
+  // Storyboard first: preview → scene timeline → selected clip details → precision tools.
+  const sceneTimeline=document.querySelector('.timeline-wrap');
+  sceneTimeline.after(section);
+  const clipDetails=section.querySelector('#v2-clip-settings');
+  section.before(clipDetails);
   get('v2-undo').onclick=()=>{if(!undoStack.length)return;redoStack.push(snapshot());restore(undoStack.pop())};
   get('v2-redo').onclick=()=>{if(!redoStack.length)return;undoStack.push(snapshot());restore(redoStack.pop())};
   get('v2-ratio').onchange=e=>applyChange(()=>project.ratio=e.target.value);
