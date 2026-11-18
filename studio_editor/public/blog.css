@@ -82,3 +82,22 @@ body[data-workspace="blog"] #export-btn{display:none!important}
 body[data-workspace="blog"] #studio:not([hidden]) + #mobile-navigation{display:none!important}
 body[data-workspace="blog"] #studio>.mobile-preview-dock{display:none!important}
 @media(max-width:900px){body[data-workspace="blog"]{padding-bottom:0!important}}
+
+/* Each text block has its own formatting controls and emoji palette. */
+.blog-style-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:8px 0 10px;padding:8px;background:#f0f6f1;border:1px solid #dce8dd;border-radius:10px}
+.blog-style-toolbar select{display:inline-block;width:auto;min-width:78px;max-width:150px;margin:0;padding:7px;background:white}
+.blog-style-toolbar input[type="color"]{width:39px;min-width:39px;height:35px;padding:3px;margin:0;cursor:pointer}
+.blog-style-toolbar button{padding:6px 10px;min-height:34px;color:#385b47;background:#fff;border:1px solid #d1dfd3}
+.blog-style-toolbar button[aria-pressed="true"]{background:#245d45;color:#fff;border-color:#245d45}
+.blog-style-toolbar .blog-style-toggle{font-weight:800;min-width:38px}
+.blog-style-toolbar .blog-italic{font-style:italic}
+.blog-emoji-palette{display:flex;flex-wrap:wrap;width:100%;gap:4px;padding:5px;background:white;border:1px solid #e5ece5;border-radius:9px}
+.blog-emoji-palette[hidden]{display:none!important}
+.blog-emoji-palette button{border:0;background:transparent;font-size:20px;padding:6px;min-width:37px}
+.blog-block textarea{line-height:1.65}
+.blog-preview h2,.blog-preview h3{line-height:1.5}
+@media(max-width:900px){
+ .blog-style-toolbar{gap:5px;padding:6px}
+ .blog-style-toolbar select{flex:1;min-width:77px;max-width:unset}
+ .blog-style-toolbar .blog-emoji-toggle{flex:1}
+}
