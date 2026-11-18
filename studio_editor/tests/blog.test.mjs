@@ -7,6 +7,7 @@ const dir=await mkdtemp(path.join(os.tmpdir(),'studio-blog-'));
 process.env.STUDIO_DATA_DIR=dir;
 const {createStudioServer}=await import('../server.mjs');
 const {validateBlogPost,validateBlogStyle,validateBlogImageLayout}=await import('../blog-engine.mjs');
+const {validateWritingSample,buildPersonalWritingPrompt}=await import('../blog-writing-style.mjs');
 test('blog body rejects unowned media, arbitrary HTML types and invalid content',()=>{
  assert.throws(()=>validateBlogPost({title:'글',blocks:[{type:'image',mediaId:'ab'.repeat(12)}]},[]),/업로드된 사진/);
  assert.throws(()=>validateBlogPost({title:'글',blocks:[{type:'script',text:'<script>'}]}),/형식/);
@@ -39,6 +40,21 @@ test('blog image layout has compact defaults and rejects invalid size, alignment
  assert.deepEqual(post.blocks[0].layout,{width:40,align:'right',spacing:16});
  assert.equal(post.blocks[0].caption,'기존 캡션');
 });
+test('personal writing examples are validated and style samples guide AI prompts without copying facts',()=>{
+ const input={name:'내 일상 글',content:'오늘도 천천히 써본다. 막상 가보니 생각했던 것과는 조금 달랐다. '.repeat(6)};
+ const saved=validateWritingSample(input);
+ assert.ok(saved.id.length===24);
+ assert.equal(saved.name,'내 일상 글');
+ assert.throws(()=>validateWritingSample({name:'',content:input.content}),/이름/);
+ assert.throws(()=>validateWritingSample({name:'x',content:'짧음'}),/150자/);
+ const prompt=buildPersonalWritingPrompt({topic:'새로운 여행 준비',facts:'기차표를 예매함',tone:'개인 일기',samples:[saved]});
+ assert.match(prompt,/기차표를 예매함/);
+ assert.match(prompt,/내 일상 글/);
+ assert.match(prompt,/문장 길이, 어미, 호흡, 단락 구성/);
+ assert.match(prompt,/장소, 제품, 경험, 가격, 평가, 문장, 수치를 새 글로 옮기지 마세요/);
+ assert.ok(prompt.includes(saved.content));
+ assert.ok(!buildPersonalWritingPrompt({topic:'새로운 여행 준비',facts:'',tone:'일기'}).includes(saved.content));
+});
 test('blog posts save/update/load/delete only in authenticated account, with CSRF',async t=>{
  const server=createStudioServer();
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -52,6 +68,29 @@ test('blog posts save/update/load/delete only in authenticated account, with CSR
  const owner=await signup('blog-owner@example.com'),other=await signup('blog-other@example.com');
  const headers=u=>({'Content-Type':'application/json',Cookie:u.cookie,'X-CSRF-Token':u.csrf});
  const fresh=async(u,route)=>fetch(base+route,{headers:{Cookie:u.cookie}});
+ const sampleText='오늘은 그냥 편하게 적어본다. 억지로 멋진 말을 붙이는 대신 보이는 대로 쓰는 편이다. '.repeat(8);
+ let response=await fetch(base+'/api/blog/writing-samples',{method:'POST',headers:{'Content-Type':'application/json',Cookie:owner.cookie},body:JSON.stringify({name:'내 말투',content:sampleText})});
+ assert.equal(response.status,403,'writing examples require CSRF');
+ response=await fetch(base+'/api/blog/writing-samples',{method:'POST',headers:headers(owner),body:JSON.stringify({name:'내 말투',content:sampleText})});
+ assert.equal(response.status,201,await response.clone().text());
+ const personalSample=(await response.json()).sample;
+ assert.match(personalSample.id,/^[a-f0-9]{24}$/);
+ response=await fresh(other,'/api/blog/writing-samples');
+ assert.deepEqual((await response.json()).samples,[],'samples are private to each login');
+ response=await fetch(base+'/api/blog/ai-draft',{method:'POST',headers:headers(other),body:JSON.stringify({topic:'충분히 긴 주제입니다',styleSampleId:personalSample.id})});
+ assert.equal(response.status,404,'another account cannot refer to private sample');
+ response=await fetch(base+'/api/blog/writing-samples',{method:'POST',headers:headers(owner),body:JSON.stringify({...personalSample,name:'수정된 말투',content:sampleText+' 변경'})});
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).sample.name,'수정된 말투');
+ response=await fresh(owner,'/api/blog/writing-samples');
+ assert.equal((await response.json()).samples[0].name,'수정된 말투');
+ response=await fetch(base+'/api/blog/writing-samples/'+personalSample.id+'/delete',{method:'POST',headers:headers(other),body:'{}'});
+ assert.equal(response.status,404);
+ response=await fetch(base+'/api/blog/writing-samples/'+personalSample.id+'/delete',{method:'POST',headers:headers(owner),body:'{}'});
+ assert.equal(response.status,200);
+ response=await fresh(owner,'/api/blog/writing-samples');
+ assert.equal((await response.json()).samples.length,0);
+
  let r=await fetch(base+'/api/blog/posts');
  assert.equal(r.status,401);
  r=await fetch(base+'/api/blog/posts',{method:'POST',headers:{'Content-Type':'application/json',Cookie:owner.cookie},body:'{}'});
@@ -107,6 +146,10 @@ test('blog editor files and workspace switch are wired into app',async()=>{
  assert.match(html,/id="workspace-video"/);
  assert.match(html,/id="workspace-blog"/);
  assert.match(html,/id="blog-workspace"/);
+ assert.match(html,/id="blog-style-picker"/);
+ assert.match(html,/id="blog-style-content"/);
+ assert.match(js,/blog\/writing-samples/);
+ assert.match(js,/styleSampleId/);
  assert.match(html,/src="\/blog.js"/);
  assert.match(html,/href="\/blog.css"/);
  assert.match(js,/dataset\.workspace='blog'/);
