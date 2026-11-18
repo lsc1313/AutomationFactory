@@ -158,9 +158,12 @@ function positionEditorTools(){
  if(mobile){
   if(mediaPanel.parentElement!==layout)layout.prepend(mediaPanel);
   const details=document.getElementById('mobile-clip-details');
+  const sceneTimeline=main.querySelector('.timeline-wrap');
   const worktop=main.querySelector('.worktop');
-  if(details&&details.previousElementSibling!==worktop)worktop.after(details);
-  const anchor=details||worktop;
+  // Mobile also follows scene timeline → details → precision editing.
+  const afterStoryboard=sceneTimeline||worktop;
+  if(details&&details.previousElementSibling!==afterStoryboard)afterStoryboard.after(details);
+  const anchor=details||afterStoryboard;
   if(anchor.nextElementSibling!==props)anchor.after(props);
   // The project settings are a full-width page in the Project tab,
   // not a nested narrow panel inside the timeline or Sound tab.
