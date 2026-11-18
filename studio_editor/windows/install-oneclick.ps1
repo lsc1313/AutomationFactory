@@ -4,14 +4,14 @@
 param([switch]$NoPhone)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$version = 'v1.5.3'
+$version = 'v1.5.4'
 $branch = if ($env:STUDIO_SOURCE_REF -and $env:STUDIO_SOURCE_REF -match '^[0-9a-f]{40}$') { $env:STUDIO_SOURCE_REF } else { 'feature/standalone-studio-editor-v0-1' }
 $repoBase = "https://raw.githubusercontent.com/lsc1313/AutomationFactory/$branch/studio_editor"
 $dest = Join-Path $env:LOCALAPPDATA 'StudioEditor'
 $private = Join-Path $dest 'private'
 $log = Join-Path $env:TEMP 'StudioEditor-install.log'
 $files = @(
- 'server.mjs', 'blog-engine.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'stt-server.mjs', 'stt-local.py', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/blog.js', 'public/blog.css', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css', 'public/mobile-ui.js', 'public/mobile-ui.css',
+ 'server.mjs', 'blog-engine.mjs', 'blog-writing-style.mjs', 'ai-draft.mjs', 'timeline-v2.mjs', 'stt-server.mjs', 'stt-local.py', 'tts_windows.py', 'tests/ai-draft.test.mjs', 'public/index.html', 'public/client.js', 'public/blog.js', 'public/blog.css', 'public/styles.css', 'public/timeline-ui.js', 'public/timeline-ui.css', 'public/mobile-ui.js', 'public/mobile-ui.css',
  'tests/studio.test.mjs', 'tests/timeline-v2.test.mjs', 'windows/start-hidden.ps1',
  'windows/start-hidden.vbs', 'windows/stop-hidden.ps1',
  'windows/enable-phone.ps1', 'README.md', 'windows/install-oneclick.ps1'
@@ -80,7 +80,7 @@ try {
   & $node --check (Join-Path $stage 'public\mobile-ui.js')
   if ($LASTEXITCODE -ne 0) {throw 'Mobile editor syntax check failed; existing version unchanged.'}
   if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'signup-toggle' -Quiet)) {throw 'Wrong editor release downloaded: account signup UI missing.'}
-  if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'v1.5.3' -SimpleMatch -Quiet)) {throw 'Wrong editor release downloaded: version marker missing.'}
+  if (-not (Select-String -Path (Join-Path $stage 'public\index.html') -Pattern 'v1.5.4' -SimpleMatch -Quiet)) {throw 'Wrong editor release downloaded: version marker missing.'}
   Note 'New files downloaded and validated'
   # Never stop or alter unrelated Node instances.
   $pidFile = Join-Path $private 'server-pid.txt'
@@ -186,7 +186,7 @@ try {
  $live = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8050/app' -TimeoutSec 10
  if ($live.StatusCode -ne 200 -or -not $live.Content.Contains($version) -or $live.Content -notmatch 'signup-toggle') {throw 'Update was installed but running editor is still an older version. Check server-pid.txt and port 8050 before sharing.'}
  Note "Verified running editor release $version at port 8050"
- Start-Process 'http://127.0.0.1:8050/app?build=153'
+ Start-Process 'http://127.0.0.1:8050/app?build=154'
  $hostFile = Join-Path $private 'mobile-host.txt'
  if (Test-Path $hostFile) {
   $dns = (Get-Content -LiteralPath $hostFile -Raw).Trim()
