@@ -310,8 +310,8 @@ if(req.method==='POST'&&url.pathname==='/api/blog/posts'){
  await saveJson(blogFile(),posts);
  return json(res,current?200:201,{post});
 }
-if(req.method==='DELETE'&&/^[/]api[/]blog[/]posts[/][0-9a-f]{24}$/.test(url.pathname)){
- const id=url.pathname.split('/').at(-1),posts=await loadJson(blogFile(),[]);
+if(req.method==='POST'&&/^[/]api[/]blog[/]posts[/][0-9a-f]{24}[/]delete$/.test(url.pathname)){
+ const id=url.pathname.split('/').at(-2),posts=await loadJson(blogFile(),[]);
  if(!posts.some(x=>x.id===id))throw makeError(404,'삭제할 글이 없습니다.');
  await saveJson(blogFile(),posts.filter(x=>x.id!==id));
  return json(res,200,{deleted:true});
