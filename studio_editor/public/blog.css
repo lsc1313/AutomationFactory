@@ -101,3 +101,16 @@ body[data-workspace="blog"] #studio>.mobile-preview-dock{display:none!important}
  .blog-style-toolbar select{flex:1;min-width:77px;max-width:unset}
  .blog-style-toolbar .blog-emoji-toggle{flex:1}
 }
+
+/* Per-image layout controls; no forced full-width images in saved blog articles. */
+.blog-image-layout-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(105px,140px) minmax(0,1fr);gap:12px;margin-top:14px;padding:12px;border:1px solid #d8e6d9;border-radius:11px;background:#f3f9f4}
+.blog-image-layout-controls label{min-width:0;margin:0;font-size:12px;font-weight:700;color:#3b6450}
+.blog-image-layout-controls input[type="range"]{display:block;width:100%;margin:9px 0 0;padding:0;accent-color:#397b53}
+.blog-image-layout-controls select{display:block;width:100%;margin:5px 0 0;padding:7px 5px}
+.blog-preview figure{box-sizing:border-box;max-width:100%;overflow:visible}
+.blog-preview figure img{display:block;width:100%;max-width:100%;height:auto}
+.blog-preview figcaption{text-align:center;overflow-wrap:anywhere}
+@media(max-width:680px){
+ .blog-image-layout-controls{grid-template-columns:minmax(0,1fr) minmax(100px,1fr);gap:10px}
+ .blog-image-layout-controls label:last-child{grid-column:1/-1}
+}
