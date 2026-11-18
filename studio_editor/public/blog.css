@@ -1,0 +1,78 @@
+
+/* Studio Editor v1.5: two independent workspaces, shared login */
+[hidden]{display:none!important}
+.workspace-picker{display:flex;gap:5px;align-items:center;background:#edf2ec;padding:4px;border-radius:12px}
+.workspace-picker button{white-space:nowrap;border:0;background:transparent;color:#526b60;font-weight:750;padding:9px 12px;border-radius:9px}
+.workspace-picker button[aria-pressed="true"]{background:#fff;color:#195a40;box-shadow:0 1px 5px #00000012}
+body[data-workspace="blog"] #studio>.ai-workflow,
+body[data-workspace="blog"] #studio>.layout,
+body[data-workspace="blog"] #studio>footer,
+body[data-workspace="blog"] #mobile-navigation{display:none!important}
+body[data-workspace="blog"] #project-picker,
+body[data-workspace="blog"] #create-project,
+body[data-workspace="blog"] #save-project,
+body[data-workspace="blog"] #export-btn{display:none!important}
+#blog-workspace{padding:26px clamp(14px,3vw,40px) 60px;max-width:1880px;margin:auto;color:#25352f}
+.blog-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:18px}
+.blog-heading h1{font-size:clamp(23px,2.5vw,34px);margin:0}
+.blog-heading p{color:#68786f;margin:5px 0}
+.blog-eyebrow{font-size:11px!important;letter-spacing:.14em;font-weight:800;color:#478f69!important}
+.blog-heading-buttons{display:flex;gap:10px}
+.blog-layout{display:grid;grid-template-columns:minmax(210px,255px) minmax(420px,1fr) minmax(265px,365px);align-items:start;gap:18px}
+.blog-panel{min-width:0;background:#fff;border:1px solid #dce6df;border-radius:16px;padding:20px;box-shadow:0 4px 18px #2849380b}
+.blog-panel h2{font-size:17px;margin:0 0 12px}.blog-panel h3{font-size:15px;margin:23px 0 10px}
+.blog-panel label{display:block;font-weight:700;font-size:13px;margin-bottom:13px}
+.blog-panel input,.blog-panel textarea,.blog-panel select{display:block;width:100%;min-width:0;border-radius:9px;border:1px solid #cad8ce;background:#fff;color:#27392f;margin:6px 0;padding:10px 11px;box-sizing:border-box;font:inherit}
+.blog-panel textarea{resize:vertical;line-height:1.65}
+.blog-post-list{display:grid;gap:7px;max-height:340px;overflow:auto}
+.blog-post-entry{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:#f6faf6;border:1px solid #dbe8df;border-radius:10px;color:#283e31;padding:11px}
+.blog-post-entry.active{background:#e5f4e9;border-color:#6bac83}
+.blog-post-entry strong{font-size:13px;overflow-wrap:anywhere}
+.blog-post-entry small{color:#697b70}
+.blog-help{font-size:12px;color:#698073;line-height:1.6}
+.blog-ai-button{width:100%;background:#245d45;color:white;border-color:#245d45;font-weight:800}
+.blog-meta-row{display:grid;grid-template-columns:1fr 145px;gap:12px}
+.blog-toolbar{margin:12px 0 10px;padding-top:14px;border-top:1px solid #e3ebe5}
+.blog-toolbar-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+.blog-toolbar-actions button,.blog-bottom-actions button{padding:8px 10px;background:#f4f8f5;color:#28513a;border-color:#d4e2d8}
+.blog-blocks{display:grid;gap:13px}
+.blog-block{padding:14px;border:1px solid #dbe8df;border-radius:13px;background:#fdfefd}
+.blog-block-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px}
+.blog-block-actions{display:flex;gap:5px}
+.blog-block-actions button{padding:4px 9px;background:#f0f5f1;color:#496353}
+.blog-block textarea{margin:0;min-height:55px}
+.blog-block input{margin:8px 0 0}
+.blog-block-image img{max-width:100%;max-height:200px;border-radius:9px;object-fit:contain}
+.blog-bottom-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:18px}
+.blog-status{font-size:13px;color:#35684b;min-height:28px;padding-top:6px}
+.blog-status[data-error="true"]{color:#b43b40}
+.blog-preview{color:#242a27;font-size:15px;line-height:1.85;overflow-wrap:anywhere;white-space:normal}
+.blog-preview h1{font-size:24px;line-height:1.4}.blog-preview h2{font-size:19px;margin:24px 0 10px}.blog-preview h3{font-size:17px;margin:20px 0 8px}
+.blog-preview p,.blog-preview blockquote{white-space:pre-wrap}
+.blog-preview-summary{color:#708176;border-bottom:1px solid #e8ede9;padding-bottom:14px}
+.blog-preview figure{margin:16px 0}.blog-preview img{width:100%;height:auto;border-radius:10px}.blog-preview figcaption{font-size:12px;color:#7a867e}
+.blog-preview blockquote{margin:12px 0;padding:7px 15px;border-left:4px solid #a4c5af;color:#587260;background:#f5faf6}
+.blog-preview-tags{color:#2d7b55;font-size:13px}
+#blog-image-dialog{width:min(600px,95vw);max-height:82vh;border:1px solid #cadcd0;border-radius:15px;background:#fff;color:#284635;padding:22px}
+#blog-image-dialog::backdrop{background:#10291c99}
+.blog-image-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:9px;max-height:55vh;overflow:auto}
+.blog-image-option{display:flex;flex-direction:column;align-items:center;background:#f6faf7;color:#355f45;gap:7px;min-width:0;overflow:hidden}
+.blog-image-option img{width:100%;height:90px;object-fit:cover;border-radius:7px}
+.blog-image-option small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blog-upload-btn{display:block;margin:13px 0;padding:12px;background:#e7f3eb;border:1px dashed #74a989;text-align:center;border-radius:10px;cursor:pointer;font-weight:700}
+@media(max-width:1250px){.blog-layout{grid-template-columns:220px minmax(0,1fr)}.blog-preview-panel{grid-column:2}}
+@media(max-width:900px){
+ .workspace-picker{width:100%;justify-content:center}
+ .workspace-picker button{flex:1;font-size:13px}
+ body[data-workspace="blog"] .top{flex-wrap:wrap;padding:10px 12px}
+ body[data-workspace="blog"] .topactions{flex-wrap:wrap;width:100%;gap:6px}
+ body[data-workspace="blog"] #studio-user-email{font-size:11px;max-width:130px}
+ #blog-workspace{padding:16px 10px 40px}
+ .blog-layout{display:flex;flex-direction:column;gap:12px}
+ .blog-sidebar,.blog-editor-panel,.blog-preview-panel{width:100%;box-sizing:border-box}
+ .blog-panel{padding:16px}
+ .blog-heading-buttons{width:100%}.blog-heading-buttons button{flex:1}
+ .blog-post-list{max-height:170px}
+ .blog-meta-row{grid-template-columns:minmax(0,1fr) 125px}
+ .blog-toolbar-actions button{flex-grow:1}
+}
