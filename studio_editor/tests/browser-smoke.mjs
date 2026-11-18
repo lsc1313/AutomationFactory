@@ -145,8 +145,25 @@ try{
  await evaluate('document.querySelector("[data-mobile-tab=captions]").click()');
  await new Promise(r=>setTimeout(r,150));
  assert.ok(await evaluate('window.scrollY')<6,'switching tools returns to beginning');
+ // Integrated second workspace: edit a blog draft, save it, reload it and
+ // return to the original video editor without destroying video state.
+ await evaluate('document.getElementById("workspace-blog").click()');
+ await waitUntil(async()=>await evaluate('document.getElementById("blog-workspace").hidden===false&&Boolean(document.querySelector("#blog-blocks textarea"))'));
+ assert.equal(await evaluate('document.getElementById("mobile-navigation").getBoundingClientRect().height'),0);
+ await evaluate('document.getElementById("blog-title").value="스튜디오 블로그 시험 글";document.getElementById("blog-title").dispatchEvent(new Event("input",{bubbles:true}))');
+ await evaluate('document.querySelector("#blog-blocks textarea").value="사진과 영상 프로젝트를 보존하면서 글을 작성합니다.";document.querySelector("#blog-blocks textarea").dispatchEvent(new Event("input",{bubbles:true}))');
+ assert.equal(await evaluate('document.getElementById("blog-preview").textContent.includes("스튜디오 블로그 시험 글")'),true);
+ await evaluate('document.getElementById("blog-save").click()');
+ await waitUntil(async()=>await evaluate('document.getElementById("blog-status").textContent.includes("저장됐습니다")'));
+ const result=await fetch(base+'/api/blog/posts',{headers:{Cookie:cookie}});
+ assert.equal(result.status,200);
+ const blogList=(await result.json()).posts;
+ assert.equal(blogList[0].title,'스튜디오 블로그 시험 글');
+ await evaluate('document.getElementById("workspace-video").click()');
+ assert.equal(await evaluate('document.getElementById("blog-workspace").hidden'),true);
+ assert.equal(await evaluate('document.getElementById("studio").hidden'),false);
  assert.equal(await evaluate('window.__studioErrors.length'),0);
- console.log('PASS Chrome: desktop AI and editor; MP4; mobile sticky preview, one full document scroll and six workflow tabs.');
+ console.log('PASS Chrome: desktop AI/video editor, MP4, mobile preview/tabs, and mobile blog editing and saving.');
 }finally{
  try{ws?.close()}catch{}
  chrome.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));
