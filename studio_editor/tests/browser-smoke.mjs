@@ -239,6 +239,32 @@ try{
  assert.match(imageExport,/width:35%;max-width:100%;margin:12px 0 12px auto;/);
  assert.match(imageExport,/<img src="data:image\//);
 
+ // Naver publishing helper must preserve text/photo order, never auto-publish.
+ await evaluate(`(()=>{
+  window.__naverCopied=null;window.__naverDownloaded=null;
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__naverCopied=value}}});
+  const old=URL.createObjectURL;
+  URL.createObjectURL=function(blob){window.__naverDownloaded=blob;return old.call(URL,blob);};
+  document.getElementById('blog-naver-open').click();
+ })()`);
+ await waitUntil(async()=>await evaluate('document.getElementById("blog-naver-dialog").open'));
+ assert.equal(await evaluate('document.querySelectorAll("#blog-naver-steps .blog-naver-step").length'),3);
+ assert.equal(await evaluate('document.querySelectorAll("#blog-naver-steps .blog-naver-photo-row").length'),1);
+ assert.equal(await evaluate('document.querySelectorAll("#blog-naver-steps .blog-naver-content").length'),2);
+ await evaluate('document.getElementById("blog-naver-all-copy").click()');
+ await waitUntil(async()=>await evaluate('Boolean(window.__naverCopied)'));
+ const transferred=await evaluate('window.__naverCopied');
+ assert.match(transferred,/사진과 영상 프로젝트를 보존/);
+ assert.match(transferred,/\[사진 1 첨부 위치/);
+ assert.match(transferred,/별도의 제목 스타일/);
+ assert.ok(transferred.indexOf('별도의 제목 스타일')<transferred.indexOf('[사진 1 첨부 위치'), 'photo marker follows second text block');
+ await evaluate('document.querySelector("#blog-naver-steps .blog-naver-download").click()');
+ await waitUntil(async()=>await evaluate('window.__naverDownloaded instanceof Blob'));
+ assert.ok(await evaluate('window.__naverDownloaded.size>500'));
+ assert.equal(await evaluate('document.getElementById("blog-naver-status").textContent.includes("다운로드")'),true);
+ await evaluate('document.getElementById("blog-naver-close").click()');
+ assert.equal(await evaluate('document.getElementById("blog-naver-dialog").open'),false);
+
 
  await evaluate('document.getElementById("workspace-video").click()');
  assert.equal(await evaluate('document.getElementById("blog-workspace").hidden'),true);
