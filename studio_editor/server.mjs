@@ -12,6 +12,8 @@ import { createReadStream, existsSync, openSync, closeSync } from 'node:fs';
 import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 import {normalizeTimeline,renderTimeline,clipMs,timelineDuration,CANVASES} from './timeline-v2.mjs';
 import {transcribeLocal} from './stt-server.mjs';
+import {validateBlogPost,blogPostForList} from './blog-engine.mjs';
+import {preferredModels,parseModelJson} from './ai-draft.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const STATE=path.resolve(process.env.STUDIO_DATA_DIR||path.join(ROOT,'private'));
 const PORT=Number(process.env.STUDIO_PORT||8050);
@@ -55,6 +57,7 @@ const currentUser=()=>requestScope.getStore()?.userId||'owner';
 const userRoot=()=>currentUser()==='owner'?STATE:path.join(STATE,'users',currentUser());
 const projectFile=()=>path.join(userRoot(),'projects.json');
 const mediaListFile=()=>path.join(userRoot(),'media.json');
+const blogFile=()=>path.join(userRoot(),'blog-posts.json');
 const userMediaDir=()=>path.join(userRoot(),'media');
 const userOutputDir=()=>path.join(userRoot(),'exports');
 const userKeyFile=()=>path.join(userRoot(),'ai-config.json');
@@ -283,6 +286,71 @@ if(req.method==='POST'&&url.pathname==='/api/login'){
 const session=auth(req);if(!session||session.expires<Date.now())throw makeError(401,'로그인하세요.');
  requestScope.enterWith({userId:session.userId||'owner'});if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf,email:session.email||'owner',guest:false});
+
+if(req.method==='GET'&&url.pathname==='/api/blog/posts'){
+ const posts=await loadJson(blogFile(),[]);
+ return json(res,200,{posts:posts.map(blogPostForList).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))});
+}
+if(req.method==='GET'&&/^\\/api\\/blog\\/posts\\/[0-9a-f]{24}$/.test(url.pathname)){
+ const id=url.pathname.split('/').at(-1),posts=await loadJson(blogFile(),[]);
+ const post=posts.find(x=>x.id===id);
+ if(!post)throw makeError(404,'블로그 글을 찾을 수 없습니다.');
+ return json(res,200,{post});
+}
+if(req.method==='POST'&&url.pathname==='/api/blog/posts'){
+ const input=await data(req,1_200_000);
+ const posts=await loadJson(blogFile(),[]);
+ const current=input.id&&posts.find(x=>x.id===input.id);
+ if(input.id&&!current)throw makeError(404,'수정할 글이 없습니다.');
+ if(!current&&posts.length>=150)throw makeError(429,'블로그 글은 계정당 150개까지 저장할 수 있습니다.');
+ const media=await loadJson(mediaListFile(),[]);
+ let post;
+ try{post=validateBlogPost(input,media,current)}catch(e){throw makeError(400,e.message)}
+ if(current)posts[posts.findIndex(x=>x.id===current.id)]=post;else posts.push(post);
+ await saveJson(blogFile(),posts);
+ return json(res,current?200:201,{post});
+}
+if(req.method==='DELETE'&&/^\\/api\\/blog\\/posts\\/[0-9a-f]{24}$/.test(url.pathname)){
+ const id=url.pathname.split('/').at(-1),posts=await loadJson(blogFile(),[]);
+ if(!posts.some(x=>x.id===id))throw makeError(404,'삭제할 글이 없습니다.');
+ await saveJson(blogFile(),posts.filter(x=>x.id!==id));
+ return json(res,200,{deleted:true});
+}
+if(req.method==='POST'&&url.pathname==='/api/blog/ai-draft'){
+ const b=await data(req,6000);
+ const topic=String(b.topic||'').trim().slice(0,400);
+ const facts=String(b.facts||'').trim().slice(0,1800);
+ const tone=String(b.tone||'정보형').slice(0,40);
+ if(topic.length<5)throw makeError(400,'블로그 글 주제를 5자 이상 입력하세요.');
+ const key=await aiKey();
+ if(!key)throw makeError(400,'먼저 영상 편집기의 AI 키 설정에서 Gemini 키를 등록하세요.');
+ let offered=[];
+ try{
+  const modelsResponse=await fetch('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(12000)});
+  if(modelsResponse.ok){const models=await modelsResponse.json();offered=models.models||[];}
+ }catch{}
+ const models=preferredModels(offered).slice(0,3);
+ if(!models.length)throw makeError(503,'사용 가능한 Gemini 텍스트 모델이 없습니다.');
+ const instruction='한국어 블로그 전문 편집자입니다. 사용자가 제공하지 않은 구체적 가격, 통계, 후기, 경험, 출처, 의학적 효능을 꾸며내지 마세요. 알 수 없는 정보는 확인 필요라고 표시하세요. 자연스럽고 읽기 쉬운 글을 작성하세요. 응답은 JSON 객체 하나만 출력하세요: {"title":"제목","summary":"두 문장 요약","blocks":[{"type":"paragraph|heading|subheading|quote|list","text":"내용"}],"tags":["키워드"]}. 6~14개 블록, 각 블록은 800자 이하, 제목을 본문에 반복하지 마세요.';
+ const prompt='글 주제: '+topic+'\\n문체: '+tone+'\\n확인된 사실/필수 정보: '+(facts||'미제공. 근거 없는 구체적 사실은 만들지 않기')+'\\n'+instruction;
+ let reason='AI 요청에 실패했습니다.';
+ for(const model of models){
+  try{
+   const result=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json',temperature:0.55,maxOutputTokens:3500}}),
+    signal:AbortSignal.timeout(35000)
+   });
+   if(!result.ok){reason='Gemini '+result.status+' 오류';if(result.status===429)throw makeError(429,'Gemini 무료 사용량 또는 요청 제한에 도달했습니다.');continue;}
+   const output=await result.json(),raw=output.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
+   const parsed=parseModelJson(raw);
+   const normalized=validateBlogPost({title:parsed.title||topic,summary:parsed.summary||'',blocks:parsed.blocks||[],tags:parsed.tags||[],status:'draft'},[],null);
+   return json(res,200,{draft:normalized,model});
+  }catch(e){if(e.status===429)throw e;reason=e.name==='TimeoutError'?'AI 응답 시간 초과':String(e.message||reason).slice(0,140);}
+ }
+ throw makeError(502,'AI 블로그 초안을 만들지 못했습니다: '+reason);
+}
+
 if(req.method==='POST'&&url.pathname==='/api/logout'){const token=String(req.headers.cookie||'').match(/studio_session=([a-z0-9]+)/)?.[1];sessions.delete(token);return json(res,200,{ok:true},{'Set-Cookie':'studio_session=; Path=/; Max-Age=0'});}
 if(req.method==='POST'&&url.pathname==='/api/voice/preview'){
  guestQuota('previews');
@@ -387,6 +455,7 @@ if(req.method==='POST'&&url.pathname==='/api/media/remove'){
  if(!validId(b.mediaId)||!validId(b.projectId)||b.confirm!==true)throw makeError(400,'삭제 확인이 필요합니다.');
  const projects=await loadJson(projectFile(),[]),files=await loadJson(mediaListFile(),[]);
  const current=projects.find(p=>p.id===b.projectId),item=files.find(f=>f.id===b.mediaId);
+ if((await loadJson(blogFile(),[])).some(post=>post.blocks?.some(block=>block.type==='image'&&block.mediaId===b.mediaId)))throw makeError(409,'블로그 글에서 사용 중인 사진입니다. 글에서 이미지를 먼저 제거하세요.');
  if(!current||!item)throw makeError(404,'프로젝트 또는 사진을 찾을 수 없습니다.');
  const usedBy=p=>(p.scenes||[]).some(scene=>scene.mediaId===item.id||scene.voiceMediaId===item.id)||p.bgmId===item.id;
  const foreign=projects.filter(p=>p.id!==current.id&&usedBy(p));
