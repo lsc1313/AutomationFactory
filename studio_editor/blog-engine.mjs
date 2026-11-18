@@ -21,6 +21,16 @@ export function validateBlogStyle(input={},type='paragraph'){
  };
 }
 
+export function validateBlogImageLayout(raw={}){
+ const source=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+ const requestedWidth=Number(source.width);
+ const requestedSpacing=Number(source.spacing);
+ return {
+  width:Number.isFinite(requestedWidth)&&requestedWidth>0?Math.max(20,Math.min(100,Math.round(requestedWidth/5)*5)):65,
+  align:['left','center','right'].includes(source.align)?source.align:'center',
+  spacing:Number.isFinite(requestedSpacing)&&requestedSpacing>=0?Math.max(0,Math.min(64,Math.round(requestedSpacing/4)*4)):20
+ };
+}
 export function validateBlogPost(raw,media=[],old=null){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('블로그 글 데이터가 올바르지 않습니다.');
  const title=max(raw.title,140).trim(),summary=max(raw.summary,350).trim();
@@ -32,7 +42,7 @@ export function validateBlogPost(raw,media=[],old=null){
   if(block.type==='image'){
    const item=media.find(x=>x.id===block.mediaId&&x.group==='image');
    if(!item)throw new Error('이미지는 로그인 계정에 업로드된 사진만 사용할 수 있습니다.');
-   return {id:blogId(),type:'image',mediaId:item.id,alt:max(block.alt,180),caption:max(block.caption,300)};
+   return {id:blogId(),type:'image',mediaId:item.id,alt:max(block.alt,180),caption:max(block.caption,300),layout:validateBlogImageLayout(block.layout)};
   }
   if(block.type==='divider')return {id:blogId(),type:'divider'};
   return {id:blogId(),type:block.type,text:max(block.text,6000),style:validateBlogStyle(block.style,block.type)};
