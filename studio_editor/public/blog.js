@@ -226,21 +226,24 @@ async function exportArticle(format){
    blocks.push(format==='html'?'<figure><img src="'+src+'" alt="'+escapeHtml(b.alt||'')+'"><figcaption>'+escapeHtml(b.caption||'')+'</figcaption></figure>':'!['+(b.alt||'').replace(/[\[\]]/g,'')+']('+src+')\n\n'+(b.caption||''));
   }else if(format==='html'){
    const tags={paragraph:'p',heading:'h2',subheading:'h3',quote:'blockquote'};
+   const style=' style="'+escapeHtml(styleString(b))+'"';
    if(b.type==='divider')blocks.push('<hr>');
-   else if(b.type==='list')blocks.push('<ul>'+String(b.text||'').split('\n').filter(x=>x.trim()).map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>');
-   else if(tags[b.type])blocks.push('<'+tags[b.type]+'>'+body+'</'+tags[b.type]+'>');
+   else if(b.type==='list')blocks.push('<ul'+style+'>'+String(b.text||'').split('\n').filter(x=>x.trim()).map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>');
+   else if(tags[b.type])blocks.push('<'+tags[b.type]+style+'>'+body+'</'+tags[b.type]+'>');
   }else {
    const prefix={paragraph:'',heading:'## ',subheading:'### ',quote:'> '};
+   const st=styleOf(b);
+   const emphasize=value=>st.bold&&st.italic?'***'+value+'***':st.bold?'**'+value+'**':st.italic?'*'+value+'*':value;
    if(b.type==='divider')blocks.push('---');
-   else if(b.type==='list')blocks.push((b.text||'').split('\n').filter(x=>x.trim()).map(x=>'- '+x).join('\n'));
-   else if(prefix[b.type]!==undefined)blocks.push(prefix[b.type]+(b.text||''));
+   else if(b.type==='list')blocks.push((b.text||'').split('\n').filter(x=>x.trim()).map(x=>'- '+emphasize(x)).join('\n'));
+   else if(prefix[b.type]!==undefined)blocks.push(prefix[b.type]+emphasize(b.text||''));
   }
  }
  if(format==='html'){
   const html='<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(post.title)+'</title><style>body{max-width:760px;margin:50px auto;padding:0 20px;font:17px/1.8 system-ui,"Malgun Gothic",sans-serif;color:#252b30}h1{font-size:2em}h2{margin-top:2em}p,blockquote{white-space:pre-wrap}img{width:100%;height:auto}figure{margin:32px 0}figcaption{color:#777;font-size:14px}blockquote{border-left:4px solid #aaa;padding-left:20px;color:#555}</style></head><body><article><h1>'+escapeHtml(post.title)+'</h1><p>'+escapeHtml(post.summary||'')+'</p>'+blocks.join('\n')+'<p>'+post.tags.map(t=>'#'+escapeHtml(t)).join(' ')+'</p></article></body></html>';
   download(fileName()+'.html',html,'text/html;charset=utf-8');
  }else download(fileName()+'.md','# '+post.title+'\n\n'+(post.summary||'')+'\n\n'+blocks.join('\n\n')+'\n\n'+post.tags.map(t=>'#'+t).join(' '),'text/markdown;charset=utf-8');
- notify('파일을 내보냈습니다. HTML은 사진이 포함된 독립 파일입니다.');
+ notify(format==='html'?'HTML로 내보냈습니다. 글꼴·크기·색상·굵기·기울임이 유지됩니다.':'Markdown으로 내보냈습니다. 굵기·기울임은 유지되며 글꼴·크기·색상은 HTML만 지원합니다.');
 }
 async function save(){
  capture();
