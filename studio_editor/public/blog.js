@@ -52,6 +52,28 @@ const readMedia=async()=>{
  const x=await api('/api/library');
  return (x.media||[]).filter(m=>m.group==='image');
 };
+const imageLayout=block=>{
+ const raw=block.layout||{},width=Number(raw.width),spacing=Number(raw.spacing);
+ return {width:Number.isFinite(width)&&width>0?Math.max(20,Math.min(100,Math.round(width/5)*5)):65,
+  align:['left','center','right'].includes(raw.align)?raw.align:'center',
+  spacing:Number.isFinite(spacing)&&spacing>=0?Math.max(0,Math.min(64,Math.round(spacing/4)*4)):20};
+};
+const figureStyle=block=>{
+ const layout=imageLayout(block);
+ const left=layout.align==='center'?'auto':layout.align==='right'?'auto':'0';
+ const right=layout.align==='center'?'auto':layout.align==='left'?'auto':'0';
+ return 'width:'+layout.width+'%;max-width:100%;margin:'+layout.spacing+'px '+right+' '+layout.spacing+'px '+left+';';
+};
+const applyFigureStyle=(figure,block)=>{
+ const layout=imageLayout(block);
+ figure.style.width=layout.width+'%';
+ figure.style.maxWidth='100%';
+ figure.style.marginTop=layout.spacing+'px';
+ figure.style.marginBottom=layout.spacing+'px';
+ figure.style.marginLeft=layout.align==='left'?'0':'auto';
+ figure.style.marginRight=layout.align==='right'?'0':'auto';
+ return figure;
+};
 function photo(mediaId,alt=''){
  const img=document.createElement('img');
  img.src='/api/media/'+mediaId;img.alt=alt;img.loading='lazy';
@@ -78,7 +100,7 @@ function refreshPreview(){
    const figure=document.createElement('figure');
    figure.append(photo(block.mediaId,block.alt||''));
    if(block.caption)figure.append(text('figcaption',block.caption));
-   container.append(figure);
+   container.append(applyFigureStyle(figure,block));
   }
  }
  if(post.tags.length)container.append(text('p',post.tags.map(t=>'#'+t).join(' '),'blog-preview-tags'));
@@ -148,6 +170,23 @@ function renderBlocks(){
    const cap=text('input');cap.placeholder='사진 아래 설명';cap.maxLength=300;cap.value=block.caption||'';
    cap.oninput=()=>{block.caption=cap.value;markDirty();};
    card.append(alt,cap);
+   const layout=imageLayout(block);block.layout=layout;
+   const controls=text('div',undefined,'blog-image-layout-controls');
+   const sizeLabel=text('label','사진 크기 · '+layout.width+'%');
+   const size=text('input');size.type='range';size.min='20';size.max='100';size.step='5';size.value=String(layout.width);size.setAttribute('aria-label','사진 크기');size.className='blog-image-width';
+   size.oninput=()=>{block.layout.width=Number(size.value);sizeLabel.firstChild.textContent='사진 크기 · '+size.value+'%';markDirty();};
+   sizeLabel.append(size);
+   const alignLabel=text('label','사진 정렬');
+   const align=text('select');align.setAttribute('aria-label','사진 정렬');
+   for(const [value,title] of [['left','왼쪽'],['center','가운데'],['right','오른쪽']]){const option=text('option',title);option.value=value;align.append(option);}
+   align.value=layout.align;align.onchange=()=>{block.layout.align=align.value;markDirty();};
+   alignLabel.append(align);
+   const spacingLabel=text('label','위아래 여백 · '+layout.spacing+'px');
+   const space=text('input');space.type='range';space.min='0';space.max='64';space.step='4';space.value=String(layout.spacing);space.setAttribute('aria-label','사진 여백');
+   space.oninput=()=>{block.layout.spacing=Number(space.value);spacingLabel.firstChild.textContent='위아래 여백 · '+space.value+'px';markDirty();};
+   spacingLabel.append(space);
+   controls.append(sizeLabel,alignLabel,spacingLabel);
+   card.append(controls);
   }else if(block.type!=='divider'){
    const field=text('textarea');field.value=block.text||'';
    field.rows=block.type==='paragraph'?5:block.type==='list'?4:2;
@@ -188,7 +227,7 @@ async function showPhotos(index){
   if(!media.length)list.append(text('p','사진이 없습니다. 아래에서 업로드하세요.'));
   media.forEach(m=>{
    const b=text('button',undefined,'blog-image-option');b.type='button';b.append(photo(m.id,m.name),text('small',m.name));
-   b.onclick=()=>{post.blocks[photoTarget]={type:'image',mediaId:m.id,alt:m.name,caption:''};dialog.close();markDirty();renderBlocks();};
+   b.onclick=()=>{post.blocks[photoTarget]={type:'image',mediaId:m.id,alt:m.name,caption:'',layout:imageLayout(post.blocks[photoTarget]||{})};dialog.close();markDirty();renderBlocks();};
    list.append(b);
   });
  }catch(e){list.append(text('p','사진 목록 오류: '+e.message));}
@@ -199,7 +238,7 @@ async function uploadPhoto(file){
  const res=await fetch('/api/upload?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf,'Content-Type':'application/octet-stream'},body:file});
  const body=await res.json();if(!res.ok)throw Error(body.error||'사진 업로드 실패');
  const image=body.media;
- post.blocks[photoTarget]={type:'image',mediaId:image.id,alt:image.name,caption:''};
+ post.blocks[photoTarget]={type:'image',mediaId:image.id,alt:image.name,caption:'',layout:imageLayout(post.blocks[photoTarget]||{})};
  $('blog-image-dialog').close();markDirty();renderBlocks();
 }
 function download(filename,body,type){
@@ -223,7 +262,7 @@ async function exportArticle(format){
   const body=escapeHtml(b.text||'').replace(/\n/g,'<br>');
   if(b.type==='image'&&b.mediaId){
    const src=await imageData(b.mediaId);
-   blocks.push(format==='html'?'<figure><img src="'+src+'" alt="'+escapeHtml(b.alt||'')+'"><figcaption>'+escapeHtml(b.caption||'')+'</figcaption></figure>':'!['+(b.alt||'').replace(/[\[\]]/g,'')+']('+src+')\n\n'+(b.caption||''));
+   blocks.push(format==='html'?'<figure style="'+figureStyle(b)+'"><img src="'+src+'" alt="'+escapeHtml(b.alt||'')+'"><figcaption>'+escapeHtml(b.caption||'')+'</figcaption></figure>':'!['+(b.alt||'').replace(/[\[\]]/g,'')+']('+src+')\n\n'+(b.caption||''));
   }else if(format==='html'){
    const tags={paragraph:'p',heading:'h2',subheading:'h3',quote:'blockquote'};
    const style=' style="'+escapeHtml(styleString(b))+'"';
@@ -240,10 +279,10 @@ async function exportArticle(format){
   }
  }
  if(format==='html'){
-  const html='<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(post.title)+'</title><style>body{max-width:760px;margin:50px auto;padding:0 20px;font:17px/1.8 system-ui,"Malgun Gothic",sans-serif;color:#252b30}h1{font-size:2em}h2{margin-top:2em}p,blockquote{white-space:pre-wrap}img{width:100%;height:auto}figure{margin:32px 0}figcaption{color:#777;font-size:14px}blockquote{border-left:4px solid #aaa;padding-left:20px;color:#555}</style></head><body><article><h1>'+escapeHtml(post.title)+'</h1><p>'+escapeHtml(post.summary||'')+'</p>'+blocks.join('\n')+'<p>'+post.tags.map(t=>'#'+escapeHtml(t)).join(' ')+'</p></article></body></html>';
+  const html='<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(post.title)+'</title><style>body{max-width:760px;margin:50px auto;padding:0 20px;font:17px/1.8 system-ui,"Malgun Gothic",sans-serif;color:#252b30}h1{font-size:2em}h2{margin-top:2em}p,blockquote{white-space:pre-wrap}img{display:block;max-width:100%;width:100%;height:auto}figure{box-sizing:border-box;max-width:100%}figcaption{color:#777;font-size:14px}blockquote{border-left:4px solid #aaa;padding-left:20px;color:#555}</style></head><body><article><h1>'+escapeHtml(post.title)+'</h1><p>'+escapeHtml(post.summary||'')+'</p>'+blocks.join('\n')+'<p>'+post.tags.map(t=>'#'+escapeHtml(t)).join(' ')+'</p></article></body></html>';
   download(fileName()+'.html',html,'text/html;charset=utf-8');
  }else download(fileName()+'.md','# '+post.title+'\n\n'+(post.summary||'')+'\n\n'+blocks.join('\n\n')+'\n\n'+post.tags.map(t=>'#'+t).join(' '),'text/markdown;charset=utf-8');
- notify(format==='html'?'HTML로 내보냈습니다. 글꼴·크기·색상·굵기·기울임이 유지됩니다.':'Markdown으로 내보냈습니다. 굵기·기울임은 유지되며 글꼴·크기·색상은 HTML만 지원합니다.');
+ notify(format==='html'?'HTML로 내보냈습니다. 글 서식과 사진 크기·정렬·여백이 유지됩니다.':'Markdown으로 내보냈습니다. 굵기·기울임은 유지되며 글꼴·크기·색상은 HTML만 지원합니다.');
 }
 async function save(){
  capture();
