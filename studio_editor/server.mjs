@@ -13,6 +13,7 @@ import {generateAiDraft,findExistingGeminiKey} from './ai-draft.mjs';
 import {normalizeTimeline,renderTimeline,clipMs,timelineDuration,CANVASES} from './timeline-v2.mjs';
 import {transcribeLocal} from './stt-server.mjs';
 import {validateBlogPost,blogPostForList} from './blog-engine.mjs';
+import {validateWritingSample,buildPersonalWritingPrompt} from './blog-writing-style.mjs';
 import {preferredModels,parseModelJson} from './ai-draft.mjs';
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const STATE=path.resolve(process.env.STUDIO_DATA_DIR||path.join(ROOT,'private'));
@@ -58,6 +59,7 @@ const userRoot=()=>currentUser()==='owner'?STATE:path.join(STATE,'users',current
 const projectFile=()=>path.join(userRoot(),'projects.json');
 const mediaListFile=()=>path.join(userRoot(),'media.json');
 const blogFile=()=>path.join(userRoot(),'blog-posts.json');
+const writingSamplesFile=()=>path.join(userRoot(),'writing-samples.json');
 const userMediaDir=()=>path.join(userRoot(),'media');
 const userOutputDir=()=>path.join(userRoot(),'exports');
 const userKeyFile=()=>path.join(userRoot(),'ai-config.json');
@@ -287,6 +289,29 @@ const session=auth(req);if(!session||session.expires<Date.now())throw makeError(
  requestScope.enterWith({userId:session.userId||'owner'});if(req.method==='POST'&&req.headers['x-csrf-token']!==session.csrf)throw makeError(403,'보안 토큰 오류');
 if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{csrf:session.csrf,email:session.email||'owner',guest:false});
 
+// Personal writing examples are kept per login, independently from published blog drafts.
+if(req.method==='GET'&&url.pathname==='/api/blog/writing-samples'){
+ const samples=await loadJson(writingSamplesFile(),[]);
+ return json(res,200,{samples:samples.map(({id,name,content,createdAt,updatedAt})=>({id,name,content,createdAt,updatedAt}))});
+}
+if(req.method==='POST'&&url.pathname==='/api/blog/writing-samples'){
+ const input=await data(req,18000);
+ const samples=await loadJson(writingSamplesFile(),[]);
+ const existing=input.id&&samples.find(x=>x.id===input.id);
+ if(input.id&&!existing)throw makeError(404,'수정할 글쓰기 예시를 찾지 못했습니다.');
+ if(!existing&&samples.length>=20)throw makeError(429,'글쓰기 예시는 계정당 20개까지 저장할 수 있습니다.');
+ let sample;try{sample=validateWritingSample(input,existing)}catch(e){throw makeError(400,e.message);}
+ if(existing)samples[samples.findIndex(x=>x.id===existing.id)]=sample;
+ else samples.push(sample);
+ await saveJson(writingSamplesFile(),samples);
+ return json(res,existing?200:201,{sample});
+}
+if(req.method==='POST'&&/^[/]api[/]blog[/]writing-samples[/][0-9a-f]{24}[/]delete$/.test(url.pathname)){
+ const id=url.pathname.split('/').at(-2),samples=await loadJson(writingSamplesFile(),[]);
+ if(!samples.some(x=>x.id===id))throw makeError(404,'삭제할 글쓰기 예시가 없습니다.');
+ await saveJson(writingSamplesFile(),samples.filter(x=>x.id!==id));
+ return json(res,200,{deleted:true});
+}
 if(req.method==='GET'&&url.pathname==='/api/blog/posts'){
  const posts=await loadJson(blogFile(),[]);
  return json(res,200,{posts:posts.map(blogPostForList).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))});
@@ -321,6 +346,10 @@ if(req.method==='POST'&&url.pathname==='/api/blog/ai-draft'){
  const topic=String(b.topic||'').trim().slice(0,400);
  const facts=String(b.facts||'').trim().slice(0,1800);
  const tone=String(b.tone||'정보형').slice(0,40);
+ const sampleId=String(b.styleSampleId||'');
+ const savedSamples=sampleId?await loadJson(writingSamplesFile(),[]):[];
+ const sample=sampleId?savedSamples.find(x=>x.id===sampleId):null;
+ if(sampleId&&!sample)throw makeError(404,'선택한 글쓰기 스타일을 찾을 수 없습니다.');
  if(topic.length<5)throw makeError(400,'블로그 글 주제를 5자 이상 입력하세요.');
  const key=await aiKey();
  if(!key)throw makeError(400,'먼저 영상 편집기의 AI 키 설정에서 Gemini 키를 등록하세요.');
@@ -331,8 +360,7 @@ if(req.method==='POST'&&url.pathname==='/api/blog/ai-draft'){
  }catch{}
  const models=preferredModels(offered).slice(0,3);
  if(!models.length)throw makeError(503,'사용 가능한 Gemini 텍스트 모델이 없습니다.');
- const instruction='한국어 블로그 전문 편집자입니다. 사용자가 제공하지 않은 구체적 가격, 통계, 후기, 경험, 출처, 의학적 효능을 꾸며내지 마세요. 알 수 없는 정보는 확인 필요라고 표시하세요. 자연스럽고 읽기 쉬운 글을 작성하세요. 응답은 JSON 객체 하나만 출력하세요: {"title":"제목","summary":"두 문장 요약","blocks":[{"type":"paragraph|heading|subheading|quote|list","text":"내용"}],"tags":["키워드"]}. 6~14개 블록, 각 블록은 800자 이하, 제목을 본문에 반복하지 마세요.';
- const prompt='글 주제: '+topic+'\\n문체: '+tone+'\\n확인된 사실/필수 정보: '+(facts||'미제공. 근거 없는 구체적 사실은 만들지 않기')+'\\n'+instruction;
+ const prompt=buildPersonalWritingPrompt({topic,facts,tone,samples:sample?[sample]:[]});
  let reason='AI 요청에 실패했습니다.';
  for(const model of models){
   try{
