@@ -6,7 +6,7 @@ import path from 'node:path';
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-blog-'));
 process.env.STUDIO_DATA_DIR=dir;
 const {createStudioServer}=await import('../server.mjs');
-const {validateBlogPost,validateBlogStyle}=await import('../blog-engine.mjs');
+const {validateBlogPost,validateBlogStyle,validateBlogImageLayout}=await import('../blog-engine.mjs');
 test('blog body rejects unowned media, arbitrary HTML types and invalid content',()=>{
  assert.throws(()=>validateBlogPost({title:'글',blocks:[{type:'image',mediaId:'ab'.repeat(12)}]},[]),/업로드된 사진/);
  assert.throws(()=>validateBlogPost({title:'글',blocks:[{type:'script',text:'<script>'}]}),/형식/);
@@ -28,6 +28,16 @@ test('each blog text block sanitizes style and keeps independent typography',()=
  assert.equal(validateBlogStyle({},'heading').size,28);
  assert.equal(validateBlogStyle({},'subheading').size,22);
  assert.equal(validateBlogStyle({},'paragraph').size,16);
+});
+test('blog image layout has compact defaults and rejects invalid size, alignment and spacing',()=>{
+ assert.deepEqual(validateBlogImageLayout(),{width:65,align:'center',spacing:20});
+ assert.deepEqual(validateBlogImageLayout({width:35,align:'left',spacing:8}),{width:35,align:'left',spacing:8});
+ assert.deepEqual(validateBlogImageLayout({width:0,align:'position:absolute',spacing:-30}),{width:65,align:'center',spacing:20});
+ assert.deepEqual(validateBlogImageLayout({width:500,align:'right',spacing:900}),{width:100,align:'right',spacing:64});
+ const media=[{id:'ab'.repeat(12),group:'image'}];
+ const post=validateBlogPost({title:'사진 배치',blocks:[{type:'image',mediaId:media[0].id,caption:'기존 캡션',layout:{width:40,align:'right',spacing:16}}]},media);
+ assert.deepEqual(post.blocks[0].layout,{width:40,align:'right',spacing:16});
+ assert.equal(post.blocks[0].caption,'기존 캡션');
 });
 test('blog posts save/update/load/delete only in authenticated account, with CSRF',async t=>{
  const server=createStudioServer();
@@ -79,8 +89,12 @@ test('blog photos are validated against the matching account and cannot be delet
  await mkdir(path.join(root,'media'),{recursive:true});
  await writeFile(path.join(root,'media',imageId+'.jpg'),Buffer.alloc(1600));
  await writeFile(path.join(root,'media.json'),JSON.stringify([{id:imageId,name:'내 사진',group:'image',ext:'jpg',bytes:1600}]));
- let result=await fetch(base+'/api/blog/posts',{method:'POST',headers:h,body:JSON.stringify({title:'사진 있는 글',blocks:[{type:'image',mediaId:imageId,caption:'직접 찍은 사진'}]})});
+ let result=await fetch(base+'/api/blog/posts',{method:'POST',headers:h,body:JSON.stringify({title:'사진 있는 글',blocks:[{type:'image',mediaId:imageId,caption:'직접 찍은 사진',layout:{width:35,align:'left',spacing:12}}]})});
  assert.equal(result.status,201,await result.clone().text());
+ const withLayout=(await result.json()).post;
+ assert.deepEqual(withLayout.blocks[0].layout,{width:35,align:'left',spacing:12});
+ const reloaded=await fetch(base+'/api/blog/posts/'+withLayout.id,{headers:{Cookie:cookie}});
+ assert.deepEqual((await reloaded.json()).post.blocks[0].layout,{width:35,align:'left',spacing:12});
  const project=await fetch(base+'/api/new',{method:'POST',headers:h,body:'{}'});
  const pid=(await project.json()).project.id;
  result=await fetch(base+'/api/media/remove',{method:'POST',headers:h,body:JSON.stringify({projectId:pid,mediaId:imageId,confirm:true})});
