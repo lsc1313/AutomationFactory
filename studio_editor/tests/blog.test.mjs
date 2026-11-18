@@ -60,7 +60,7 @@ test('blog photos are validated against the matching account and cannot be delet
  const h={'Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':user.csrf};
  const accounts=JSON.parse(await readFile(path.join(dir,'accounts.json'),'utf8'));
  const id=accounts.find(x=>x.email==='blog-photo@example.com').id;
- const root=path.join(dir,'users',id),imageId='ab'.repeat(12);
+ const root=id==='owner'?dir:path.join(dir,'users',id),imageId='ab'.repeat(12);
  await mkdir(path.join(root,'media'),{recursive:true});
  await writeFile(path.join(root,'media',imageId+'.jpg'),Buffer.alloc(1600));
  await writeFile(path.join(root,'media.json'),JSON.stringify([{id:imageId,name:'내 사진',group:'image',ext:'jpg',bytes:1600}]));
