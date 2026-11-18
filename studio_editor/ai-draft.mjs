@@ -1,0 +1,149 @@
+/** AI-first storyboard from the user's own uploaded assets. No generative video.
+ * Vision API gets low-resolution thumbnails/keyframes only if the user explicitly starts AI drafting.
+ */
+import path from 'node:path';
+import os from 'node:os';
+import {readFile} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+const DEFAULT_MODELS=['gemini-3.5-flash-lite','gemini-3.8-flash'];
+const STALE_MODELS=/^gemini-(1\.|2\.|3\.1-flash-lite-preview|3-flash-preview)/;
+const modelName=x=>String(x||'').replace(/^models\//,'').trim();
+export function preferredModels(list=[],override=process.env.STUDIO_GEMINI_MODEL){
+ const offered=list.filter(x=>x?.supportedGenerationMethods?.includes('generateContent')).map(x=>modelName(x.name)).filter(Boolean);
+ const safe=offered.filter(x=>!STALE_MODELS.test(x));
+ const ordered=[...DEFAULT_MODELS,...safe.filter(x=>/gemini-3\.(5|6|7|8)-flash/.test(x))];
+ // A custom override is eligible only if the list explicitly supports it.
+ if(override&&offered.includes(modelName(override))&&!STALE_MODELS.test(modelName(override)))ordered.unshift(modelName(override));
+ return [...new Set(ordered)].filter(x=>!offered.length||offered.includes(x)).slice(0,6);
+}
+const API='https://generativelanguage.googleapis.com/v1beta/models/';
+const safe=t=>String(t??'').replace(/[\r\n\0]+/g,' ').trim();
+export function parseKeyFile(text){return String(text).split(/\r?\n/).map(x=>x.match(/^\s*(?:export\s+)?GEMINI_API_KEY\s*=\s*["']?([^\s"'#]+)["']?/)?.[1]||'') .find(Boolean)||null;}
+export async function findExistingGeminiKey(){
+ if(process.env.STUDIO_GEMINI_API_KEY)return process.env.STUDIO_GEMINI_API_KEY;
+ if(process.env.GEMINI_API_KEY)return process.env.GEMINI_API_KEY;
+ const profile=process.env.USERPROFILE||os.homedir(), home=process.env.REVENUE_SHORTSAI_HOME||process.env.STUDIO_SHORTSAI_HOME;
+ const candidates=[home&&path.join(home,'.env'),path.join(profile,'ShortsAI_CLEAN','.env'),path.join(profile,'Desktop','ShortsAI_CLEAN','.env'),path.join(profile,'Documents','ShortsAI_CLEAN','.env'),
+  'D:/ShortsAI_CLEAN/.env','D:/ShortsAI/.env','D:/AutomationFactory/ShortsAI_CLEAN/.env'];
+ for(const filename of candidates.filter(Boolean))try{const key=parseKeyFile(await readFile(filename,'utf8'));if(key)return key;}catch{}
+ return null;
+}
+async function sampleImage(filename,isVideo,second=0.5){
+ const args=['-hide_banner','-loglevel','error',...(isVideo?['-ss',String(Math.max(0.1,second))]:[]),'-i',filename,'-vf','scale=640:640:force_original_aspect_ratio=decrease','-frames:v','1','-f','image2','-vcodec','mjpeg','-q:v','6','pipe:1'];
+ return new Promise((resolve,reject)=>{
+  const p=spawn('ffmpeg',args,{windowsHide:true,stdio:['ignore','pipe','pipe']});let chunks=[],bytes=0,stderr='';
+  const timer=setTimeout(()=>p.kill(),30000);p.stdout.on('data',b=>{bytes+=b.length;if(bytes>1_000_000){p.kill();return;}chunks.push(b)});
+  p.stderr.on('data',b=>stderr=(stderr+b).slice(-250));p.on('error',e=>{clearTimeout(timer);reject(e)});
+  p.on('close',code=>{clearTimeout(timer);if(code!==0||!bytes||bytes>1_000_000)return reject(new Error('미디어 미리보기 추출 실패: '+stderr));resolve(Buffer.concat(chunks).toString('base64'))});
+ });
+}
+export function normalizeDraft(raw,media){
+ const obj=raw?.storyboard||raw;
+ if(!obj||!Array.isArray(obj.scenes)||obj.scenes.length<1||obj.scenes.length>20)throw new Error('AI가 올바른 장면 초안을 반환하지 않았습니다.');
+ const scenes=obj.scenes.map((scene,i)=>{
+  const ix=Number(scene.mediaIndex),duration=Number(scene.duration);
+  if(!Number.isInteger(ix)||ix<0||ix>=media.length)throw new Error(`AI 장면 ${i+1}의 사진/영상 연결이 잘못됐습니다.`);
+  const narration=safe(scene.narration||scene.voice).slice(0,350),caption=safe(scene.caption||scene.subtitle).slice(0,130);
+  if(!narration&&!caption)throw new Error(`AI 장면 ${i+1}의 대사와 자막이 모두 비어 있습니다.`);
+  const file=media[ix],sourceIn=Number(scene.sourceIn),sourceOut=Number(scene.sourceOut);
+  const hasRange=file.group==='video'&&Number.isFinite(sourceIn)&&Number.isFinite(sourceOut)&&sourceOut>sourceIn;
+  return {mediaId:media[ix].id,duration:Math.min(90,Math.max(1,Number.isFinite(duration)?duration:4)),
+   ...(hasRange?{sourceIn:Math.max(0,sourceIn),sourceOut:file.duration?Math.min(file.duration,sourceOut):sourceOut}:{}) ,
+   narration,caption,
+   captionStyle:['impact','minimal','boxed','clean'].includes(scene.captionStyle)?scene.captionStyle:(i===0?'impact':'clean'),
+   captionPosition:['top','middle','bottom'].includes(scene.captionPosition)?scene.captionPosition:(i%3===0?'top':'bottom'),
+   effect:['zoom-in','zoom-out','pan-left','pan-right','none'].includes(scene.effect)?scene.effect:['zoom-in','pan-right','zoom-out','pan-left'][i%4]};
+ });
+ return {title:safe(obj.title||'AI 영상 초안').slice(0,100),scenes,notes:safe(obj.notes||'').slice(0,600)};
+}
+export function parseModelJson(text){const input=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');let parsed;try{parsed=JSON.parse(input);}catch{const begin=input.indexOf('{'),end=input.lastIndexOf('}');if(begin<0||end<=begin)throw new Error('AI 답변을 JSON 형식으로 읽을 수 없습니다.');parsed=JSON.parse(input.slice(begin,end+1));}return parsed;}
+export async function generateAiDraft({key,media,requirements,productFacts='',style='dynamic',onStep=()=>{},fetchFn=fetch,sampler=sampleImage,mediaPath}){
+ if(!key)throw new Error('무료 한도 사용 가능한 Gemini API 키가 필요합니다. AI 설정에 키를 등록하세요.');
+ if(!Array.isArray(media)||media.length<1||media.length>10)throw new Error('사진 또는 영상 1~10개를 선택하세요.');
+ const instruction=safe(requirements).slice(0,1800),facts=safe(productFacts).slice(0,2400);
+ if(instruction.length<5)throw new Error('만들고 싶은 영상의 요구사항을 5자 이상 입력하세요.');
+ const vision=[];
+ for(let i=0;i<media.length;i++){
+  const file=media[i],video=file.group==='video';
+  onStep('사진·영상 '+(i+1)+'/'+media.length+' 확인');
+  const seconds=video&&file.duration&&media.length<=4
+   ?[.5,Math.max(.5,file.duration*.5),Math.max(.5,file.duration-.5)]
+   :[.5];
+  vision.push({text:'자료 '+i+': 파일명 '+safe(file.name).slice(0,90)+', 형식 '+file.group+
+   (video?', 길이 '+Number(file.duration||0).toFixed(1)+'초, 대표 프레임 시간 '+seconds.map(x=>x.toFixed(1)).join('/')+'초':'')+
+   '. 확인되지 않은 소리와 장면은 추측하지 마세요.'});
+  for(const second of seconds){
+   const base64=await sampler(mediaPath(file),video,second);
+   vision.push({text:video?'이 프레임의 영상 시점: '+second.toFixed(1)+'초':'사진 전체'});
+   vision.push({inline_data:{mime_type:'image/jpeg',data:base64}});
+  }
+ }
+ onStep('AI 대본과 자막 기획');
+ const prompt=[
+ '당신은 제공받은 영상/사진을 편집해 숏폼 초안을 설계하는 전문 편집 감독입니다. 새로운 AI 영상이나 가상 이미지를 만들지 않습니다.',
+ '현재 첨부된 이미지와 영상의 대표 프레임을 실제로 확인하세요. 프레임에 없는 장면과 영상의 실제 음성·효과음은 확인되지 않았으므로 단정하지 마세요.',
+ '사용자 요구사항과 확인된 화면을 연결하고 자연스러운 한국어 대사를 작성하세요. 제품 광고라면 입증되지 않은 효능, 가격, 할인, 후기, 재료, 수상, 배송 조건을 창작하지 마세요.',
+ '사용자가 작성한 정보는 주장으로 간주하지 말고 주어진 사실로서만 활용하되 사진과 충돌하면 notes에서 검토 필요를 알리세요.',
+ '요청된 분량과 목적에 맞춰 1~20개의 장면을 계획하세요. 광고는 후킹-본문-마무리로 구성하되 ASMR·영상 편집처럼 대사가 불필요한 상황에서는 짧은 화면 자막만 제안하세요. 긴 동영상의 일부만 사용할 때는 원본 길이를 넘지 않는 sourceIn/sourceOut(초)을 제안하고, 지정한 부분에 보이는 내용만 설명하세요.',
+ '한 장면에 사진 또는 영상 하나를 선택합니다. 파일당 여러 장면 사용 가능. 장면별 사진이 명확히 맞아야 하며 필요 없는 사진은 사용하지 않아도 됩니다.',
+ '영상의 분위기에 맞춰 자막 위치·스타일·카메라 움직임을 다양하게 선택하세요. 자막은 대사 핵심을 35자 이내로 줄이세요.',
+ '모호한 물체나 텍스트는 추측하지 마세요. 출력은 JSON 객체만 반환합니다.',
+ '출력 형식 {"title":"영상 제목","notes":"사용자 검토가 필요한 사실","scenes":[{"mediaIndex":0,"duration":4,"sourceIn":0,"sourceOut":4,"narration":"대사(불필요하면 빈 문자열)","caption":"자막","captionStyle":"impact|minimal|boxed|clean","captionPosition":"top|middle|bottom","effect":"zoom-in|zoom-out|pan-left|pan-right|none"}]}',
+ '스타일: '+style,'사용자의 영상 제작 요구사항: '+instruction,'사용자가 제공한 설명·특징: '+facts
+ ].join('\n');
+ // Ask Gemini which generateContent models this exact API key can use.
+ // If model discovery is unavailable, use current stable defaults; never fall back to 2.5.
+ let available=[];
+ try{
+  const listed=await fetchFn('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',{
+   method:'GET',headers:{'x-goog-api-key':key},signal:AbortSignal.timeout(12000)
+  });
+  if(listed.ok){const info=await listed.json();available=Array.isArray(info.models)?info.models:[];}
+ }catch{}
+ const candidates=preferredModels(available);
+ if(!candidates.length)throw new Error('이 API 키로 사용 가능한 Gemini 영상 초안 모델을 찾지 못했습니다. Gemini API 모델 권한을 확인하세요.');
+ const body=JSON.stringify({contents:[{parts:[{text:prompt},...vision]}],generationConfig:{responseMimeType:'application/json',temperature:0.5}});
+ let lastUnavailable='';
+ for(const model of candidates){
+  // 503/502/504 often indicate a temporary overloaded model, not an invalid key.
+  // Retry once with a short bounded delay, then fail over to a DIFFERENT
+  // generateContent-capable model (without silently selecting paid-only models).
+  for(let attempt=0;attempt<2;attempt++){
+   onStep('AI 대본과 자막 기획: '+model+(attempt?' (혼잡 재시도)':''));
+   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),110000);
+   let response;
+   try{response=await fetchFn(`${API}${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body,signal:controller.signal
+   });}
+   catch(e){
+    if(e.name==='AbortError'){
+     lastUnavailable=model+': AI 응답 시간이 초과됐습니다.';
+     break;
+    }
+    throw new Error('AI 연결 실패: '+e.message);
+   }finally{clearTimeout(timeout);}
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok){
+    const message=safe(data.error?.message||response.statusText).slice(0,220);
+    lastUnavailable=model+': '+message;
+    if(response.status===429)throw new Error('Gemini 무료 사용량 또는 속도 제한에 도달했습니다(429). 잠시 후 다시 시도하거나 AI 무료 한도를 확인하세요.');
+    // Invalid model: immediately try the next candidate.
+    if(response.status===404 || (response.status===400 && /not supported|not found|model/i.test(message)))break;
+    if([500,502,503,504].includes(response.status)){
+     if(attempt===0){
+      onStep('Gemini 서버 혼잡 — 잠시 후 자동 재시도');
+      await new Promise(resolve=>setTimeout(resolve,1200));
+      continue;
+     }
+     break;
+    }
+    throw new Error(`Gemini API 요청 실패 (${response.status}): ${message}`);
+   }
+   const answer=data.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
+   if(!answer)throw new Error('AI가 장면 초안을 반환하지 않았습니다. 콘텐츠 제한이나 응답 형식을 확인하세요.');
+   return normalizeDraft(parseModelJson(answer),media);
+  }
+ }
+ throw new Error('Gemini 모델들이 모두 일시적으로 응답하지 않았습니다. 잠시 후 다시 시도하세요. 마지막 오류: '+lastUnavailable);
+
+}

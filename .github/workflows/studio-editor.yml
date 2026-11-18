@@ -1,0 +1,79 @@
+name: Standalone Studio Editor checks
+
+on:
+  push:
+    branches:
+      - feature/standalone-studio-editor-v0-1
+    paths:
+      - 'studio_editor/**'
+      - '.github/workflows/studio-editor.yml'
+  pull_request:
+    paths:
+      - 'studio_editor/**'
+      - '.github/workflows/studio-editor.yml'
+
+jobs:
+  editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install FFmpeg for real render tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Verify FFmpeg
+        run: |
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+      - name: Syntax
+        run: |
+          node --check studio_editor/server.mjs
+          node --check studio_editor/blog-engine.mjs
+          node --check studio_editor/blog-writing-style.mjs
+          node --check studio_editor/public/blog.js
+          node --check studio_editor/timeline-v2.mjs
+          node --check studio_editor/stt-server.mjs
+          node --check studio_editor/public/timeline-ui.js
+          node --check studio_editor/ai-draft.mjs
+          node --check studio_editor/public/client.js
+          node --check studio_editor/public/mobile-ui.js
+      - name: Validate Windows one-click installer PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          foreach ($script in @("studio_editor/windows/install-oneclick.ps1")) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.ToString() }
+              exit 1
+            }
+          }
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+          Write-Output "PowerShell installer syntax OK"
+      - name: Editor API and security tests
+        run: node --test studio_editor/tests/*.test.mjs
+      - name: Browser interactive editing smoke test
+        run: node studio_editor/tests/browser-smoke.mjs
+
+
+      - name: Package standalone Windows editor ZIP
+        if: github.event_name == 'push'
+        run: |
+          cd studio_editor
+          zip -q -r ../StudioEditor-v1.5.4-Personal-Writing-Style.zip . \
+            -x 'private/*' 'private/**' '__pycache__/*' '*.pyc' 'node_modules/*' 'node_modules/**'
+      - name: Upload Windows editor ZIP
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudioEditor-v1.5.4-Personal-Writing-Style
+          path: StudioEditor-v1.5.4-Personal-Writing-Style.zip
+          retention-days: 14
