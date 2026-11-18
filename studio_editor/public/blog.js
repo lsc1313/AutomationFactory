@@ -13,7 +13,7 @@ const emojis=['😀','😊','😍','👍','❤️','✨','🎉','🔥','✅','�
 const defaultStyle=()=>({font:'system',size:16,color:'#25352F',bold:false,italic:false});
 const styleOf=block=>{
  const raw=block.style||{},size=Number(raw.size);
- return {font:Object.hasOwn(fontFamilies,raw.font)?raw.font:'system',size:Number.isFinite(size)?Math.min(48,Math.max(12,Math.round(size))):16,color:/^#[0-9a-fA-F]{6}$/.test(raw.color||'')?raw.color:'#25352F',bold:raw.bold===true,italic:raw.italic===true};
+ return {font:Object.hasOwn(fontFamilies,raw.font)?raw.font:'system',size:Number.isFinite(size)?Math.min(48,Math.max(12,Math.round(size))):block.type==='heading'?28:block.type==='subheading'?22:block.type==='quote'?18:16,color:/^#[0-9a-fA-F]{6}$/.test(raw.color||'')?raw.color:'#25352F',bold:raw.bold===true,italic:raw.italic===true};
 };
 const styleString=block=>{
  const st=styleOf(block);
