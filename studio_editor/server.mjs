@@ -291,7 +291,7 @@ if(req.method==='GET'&&url.pathname==='/api/blog/posts'){
  const posts=await loadJson(blogFile(),[]);
  return json(res,200,{posts:posts.map(blogPostForList).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))});
 }
-if(req.method==='GET'&&/^\\/api\\/blog\\/posts\\/[0-9a-f]{24}$/.test(url.pathname)){
+if(req.method==='GET'&&/^[/]api[/]blog[/]posts[/][0-9a-f]{24}$/.test(url.pathname)){
  const id=url.pathname.split('/').at(-1),posts=await loadJson(blogFile(),[]);
  const post=posts.find(x=>x.id===id);
  if(!post)throw makeError(404,'블로그 글을 찾을 수 없습니다.');
@@ -310,7 +310,7 @@ if(req.method==='POST'&&url.pathname==='/api/blog/posts'){
  await saveJson(blogFile(),posts);
  return json(res,current?200:201,{post});
 }
-if(req.method==='DELETE'&&/^\\/api\\/blog\\/posts\\/[0-9a-f]{24}$/.test(url.pathname)){
+if(req.method==='DELETE'&&/^[/]api[/]blog[/]posts[/][0-9a-f]{24}$/.test(url.pathname)){
  const id=url.pathname.split('/').at(-1),posts=await loadJson(blogFile(),[]);
  if(!posts.some(x=>x.id===id))throw makeError(404,'삭제할 글이 없습니다.');
  await saveJson(blogFile(),posts.filter(x=>x.id!==id));
