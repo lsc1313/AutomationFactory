@@ -44,9 +44,9 @@ test('blog posts save/update/load/delete only in authenticated account, with CSR
  assert.equal(r.status,200);
  assert.equal((await r.json()).post.status,'ready');
  r=await fresh(owner,'/api/blog/posts');assert.equal((await r.json()).posts[0].title,'수정한 글');
- r=await fetch(base+'/api/blog/posts/'+saved.id,{method:'DELETE',headers:headers(other),body:'{}'});
+ r=await fetch(base+'/api/blog/posts/'+saved.id+'/delete',{method:'POST',headers:headers(other),body:'{}'});
  assert.equal(r.status,404);
- r=await fetch(base+'/api/blog/posts/'+saved.id,{method:'DELETE',headers:headers(owner),body:'{}'});
+ r=await fetch(base+'/api/blog/posts/'+saved.id+'/delete',{method:'POST',headers:headers(owner),body:'{}'});
  assert.equal(r.status,200);
  r=await fresh(owner,'/api/blog/posts');assert.deepEqual((await r.json()).posts,[]);
 });
@@ -80,7 +80,7 @@ test('blog editor files and workspace switch are wired into app',async()=>{
  assert.match(html,/id="blog-workspace"/);
  assert.match(html,/src="\/blog.js"/);
  assert.match(html,/href="\/blog.css"/);
- assert.match(js,/data\.workspace='blog'/);
+ assert.match(js,/dataset\.workspace='blog'/);
  assert.match(js,/blog\/ai-draft/);
  assert.match(js,/textContent/);
  assert.match(css,/max-width:900px/);
