@@ -150,3 +150,14 @@ body[data-workspace="blog"] #studio>.mobile-preview-dock{display:none!important}
  .blog-naver-photo-row img{width:100px;height:92px}
  .blog-naver-step{padding:11px}
 }
+
+/* Writing samples are private per account and are referenced only for requested AI drafts. */
+.blog-personal-style{margin:22px 0 14px;padding:14px 12px;background:#f5faf6;border:1px solid #cadfcf;border-radius:12px}
+.blog-personal-style h3{margin:0 0 7px;color:#25533a}
+.blog-personal-style textarea{width:100%;min-height:125px;box-sizing:border-box;font:13px/1.65 system-ui,"Malgun Gothic",sans-serif}
+.blog-personal-style .blog-style-actions{display:flex;gap:7px;flex-wrap:wrap;margin:11px 0}
+.blog-personal-style .blog-style-actions button{flex:1 1 115px;padding:9px 8px;background:#fff;color:#2a6446;border:1px solid #b9d7c3;font-size:12px;font-weight:750}
+.blog-personal-style #blog-style-save{background:#276847;color:#fff;border-color:#276847}
+#blog-style-status{min-height:20px;color:#2e7652}
+#blog-style-status[data-error="true"]{color:#b44340}
+@media(max-width:900px){.blog-personal-style{padding:12px 10px}.blog-personal-style .blog-style-actions button{min-height:40px}}
