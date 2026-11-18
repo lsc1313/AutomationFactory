@@ -35,6 +35,14 @@ try{
  await send('Page.addScriptToEvaluateOnNewDocument',{source:'window.__studioErrors=[];window.addEventListener("error",e=>window.__studioErrors.push(e.message));'});
  await send('Page.navigate',{url:base+'/app'});
  await waitUntil(async()=>await evaluate('Boolean(document.getElementById("v2-editor")&&document.querySelector("#media-list .media-item")&&window.__studioErrors?.length===0&&document.getElementById("studio").hidden===false)'));
+ const desktopOrder=await evaluate(`(()=>{
+  const main=document.querySelector('.editor-main');
+  const children=[...main.children];
+  const where=id=>children.findIndex(el=>el.matches(id));
+  return [where('.timeline-wrap'),where('#v2-clip-settings'),where('#v2-editor')];
+ })()`);
+ assert.ok(desktopOrder[0]>=0&&desktopOrder[0]<desktopOrder[1]&&desktopOrder[1]<desktopOrder[2],
+  'desktop scenes precede clip properties and precision timeline: '+desktopOrder);
  assert.equal(await evaluate('document.querySelectorAll("#media-list .media-item").length'),1);
  assert.equal(await evaluate('project.scenes.length'),0);
  await evaluate('document.querySelector("#media-list .media-item").click()');
@@ -71,6 +79,14 @@ try{
  await send('Page.reload',{ignoreCache:true});
  await waitUntil(async()=>await evaluate('Boolean(document.getElementById("v2-editor")&&document.getElementById("studio")?.hidden===false)'));
  assert.equal(await evaluate('document.body.dataset.mobileView'),'project');
+ const mobileOrder=await evaluate(`(()=>{
+  const main=document.querySelector('.editor-main');
+  return ['.timeline-wrap','#mobile-clip-details','.properties','#v2-clip-settings','#v2-editor']
+   .map(selector=>[...main.children].findIndex(x=>x.matches(selector)));
+ })()`);
+ assert.ok(mobileOrder.every((value,i)=>value>=0&&(i===0||value>mobileOrder[i-1])),
+  'mobile scenes precede detail controls and precision timeline: '+mobileOrder);
+
  assert.equal(await evaluate('document.getElementById("guest-link-btn")===null'),true,'temporary invite button removed');
  assert.equal(await evaluate('document.getElementById("studio-user-email").textContent.length>0'),true);
  assert.equal(await evaluate('getComputedStyle(document.getElementById("mobile-navigation")).display!=="none"'),true);
@@ -152,6 +168,34 @@ try{
  assert.equal(await evaluate('document.getElementById("mobile-navigation").getBoundingClientRect().height'),0);
  await evaluate('document.getElementById("blog-title").value="스튜디오 블로그 시험 글";document.getElementById("blog-title").dispatchEvent(new Event("input",{bubbles:true}))');
  await evaluate('document.querySelector("#blog-blocks textarea").value="사진과 영상 프로젝트를 보존하면서 글을 작성합니다.";document.querySelector("#blog-blocks textarea").dispatchEvent(new Event("input",{bubbles:true}))');
+ await evaluate(`(()=>{
+  const toolbar=document.querySelector('#blog-blocks .blog-style-toolbar');
+  const font=toolbar.querySelector('select[aria-label="글씨체"]');font.value='serif';font.dispatchEvent(new Event('change'));
+  const size=toolbar.querySelector('select[aria-label="글자 크기"]');size.value='24';size.dispatchEvent(new Event('change'));
+  const color=toolbar.querySelector('input[type="color"]');color.value='#aa1144';color.dispatchEvent(new Event('input'));
+  toolbar.querySelector('button[title="굵게"]').click();
+  toolbar.querySelector('button[title="기울임"]').click();
+  toolbar.querySelector('.blog-emoji-toggle').click();
+  toolbar.querySelector('.blog-emoji-palette button').click();
+  document.querySelector('[data-blog-add="heading"]').click();
+  const heading=document.querySelectorAll('#blog-blocks textarea')[1];heading.value='별도의 제목 스타일';
+  heading.dispatchEvent(new Event('input',{bubbles:true}));
+ })()`);
+ const blogStyle=await evaluate(`(()=>{
+  const p=document.querySelector('#blog-preview p:not(.blog-preview-summary)');
+  const h=document.querySelector('#blog-preview h2');
+  const first=document.querySelector('#blog-blocks .blog-style-toolbar');
+  return {size:getComputedStyle(p).fontSize,color:getComputedStyle(p).color,weight:getComputedStyle(p).fontWeight,
+   italic:getComputedStyle(p).fontStyle,headingSize:getComputedStyle(h).fontSize,
+   paletteClosed:first.querySelector('.blog-emoji-palette').hidden,hasEmoji:p.textContent.includes('😀')};
+ })()`);
+ assert.equal(blogStyle.size,'24px');
+ assert.equal(blogStyle.color,'rgb(170, 17, 68)');
+ assert.equal(blogStyle.weight,'700');
+ assert.equal(blogStyle.italic,'italic');
+ assert.equal(blogStyle.headingSize,'28px','other blocks keep their own default');
+ assert.equal(blogStyle.hasEmoji,true);
+ assert.equal(blogStyle.paletteClosed,true);
  assert.equal(await evaluate('document.getElementById("blog-preview").textContent.includes("스튜디오 블로그 시험 글")'),true);
  await evaluate('document.getElementById("blog-save").click()');
  await waitUntil(async()=>await evaluate('document.getElementById("blog-status").textContent.includes("저장됐습니다")'));
@@ -159,6 +203,14 @@ try{
  assert.equal(result.status,200);
  const blogList=(await result.json()).posts;
  assert.equal(blogList[0].title,'스튜디오 블로그 시험 글');
+ const savedBlog=await fetch(base+'/api/blog/posts/'+blogList[0].id,{headers:{Cookie:cookie}});
+ const savedBody=(await savedBlog.json()).post;
+ assert.equal(savedBody.blocks[0].style.font,'serif');
+ assert.equal(savedBody.blocks[0].style.size,24);
+ assert.equal(savedBody.blocks[0].style.bold,true);
+ assert.equal(savedBody.blocks[0].style.italic,true);
+ assert.equal(savedBody.blocks[1].style.size,28);
+
  await evaluate('document.getElementById("workspace-video").click()');
  assert.equal(await evaluate('document.getElementById("blog-workspace").hidden'),true);
  assert.equal(await evaluate('document.getElementById("studio").hidden'),false);
