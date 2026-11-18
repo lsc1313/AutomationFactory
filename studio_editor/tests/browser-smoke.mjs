@@ -165,6 +165,26 @@ try{
  // return to the original video editor without destroying video state.
  await evaluate('document.getElementById("workspace-blog").click()');
  await waitUntil(async()=>await evaluate('document.getElementById("blog-workspace").hidden===false&&Boolean(document.querySelector("#blog-blocks textarea"))'));
+ // Save a handwritten style example, select it, reload from API, and keep editor operational.
+ await waitUntil(async()=>await evaluate('Boolean(document.getElementById("blog-style-picker"))'));
+ await evaluate(`(()=>{
+  const sample='내가 쓰는 글은 거창하지 않다. 직접 본 것을 담백하게 적고 나중에 다시 읽어도 어색하지 않으면 된다. '.repeat(8);
+  document.getElementById('blog-style-name').value='나의 일상 말투';
+  document.getElementById('blog-style-content').value=sample;
+  document.getElementById('blog-style-save').click();
+ })()`);
+ await waitUntil(async()=>await evaluate('document.getElementById("blog-style-status").textContent.includes("저장했습니다")'));
+ const sampleState=await evaluate(`(()=>{
+  const select=document.getElementById('blog-style-picker');
+  return {count:select.options.length,selected:select.value,custom:select.selectedOptions[0].textContent};
+ })()`);
+ assert.equal(sampleState.count,2);
+ assert.match(sampleState.selected,/^[0-9a-f]{24}$/);
+ assert.equal(sampleState.custom,'나의 일상 말투');
+ const samplesResult=await fetch(base+'/api/blog/writing-samples',{headers:{Cookie:cookie}});
+ assert.equal(samplesResult.status,200);
+ assert.equal((await samplesResult.json()).samples[0].id,sampleState.selected);
+
  assert.equal(await evaluate('document.getElementById("mobile-navigation").getBoundingClientRect().height'),0);
  await evaluate('document.getElementById("blog-title").value="스튜디오 블로그 시험 글";document.getElementById("blog-title").dispatchEvent(new Event("input",{bubbles:true}))');
  await evaluate('document.querySelector("#blog-blocks textarea").value="사진과 영상 프로젝트를 보존하면서 글을 작성합니다.";document.querySelector("#blog-blocks textarea").dispatchEvent(new Event("input",{bubbles:true}))');
