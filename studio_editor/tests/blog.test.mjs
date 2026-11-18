@@ -6,7 +6,7 @@ import path from 'node:path';
 const dir=await mkdtemp(path.join(os.tmpdir(),'studio-blog-'));
 process.env.STUDIO_DATA_DIR=dir;
 const {createStudioServer}=await import('../server.mjs');
-const {validateBlogPost}=await import('../blog-engine.mjs');
+const {validateBlogPost,validateBlogStyle}=await import('../blog-engine.mjs');
 test('blog body rejects unowned media, arbitrary HTML types and invalid content',()=>{
  assert.throws(()=>validateBlogPost({title:'글',blocks:[{type:'image',mediaId:'ab'.repeat(12)}]},[]),/업로드된 사진/);
  assert.throws(()=>validateBlogPost({title:'글',blocks:[{type:'script',text:'<script>'}]}),/형식/);
@@ -14,6 +14,20 @@ test('blog body rejects unowned media, arbitrary HTML types and invalid content'
  assert.equal(result.tags.length,1);
  assert.equal(result.blocks[0].text,'<script>alert(1)</script>','text stays data; UI must render it as textContent');
  assert.equal(result.status,'draft');
+});
+test('each blog text block sanitizes style and keeps independent typography',()=>{
+ const blocks=[
+  {type:'heading',text:'강조 제목',style:{font:'serif',size:32,color:'#AB12EF',bold:true,italic:false}},
+  {type:'paragraph',text:'일반 본문',style:{font:'mono',size:18,color:'#224466',bold:false,italic:true}},
+  {type:'quote',text:'별도 인용',style:{font:'__unsafe__',size:999,color:'red;position:fixed',bold:'yes',italic:true}}
+ ];
+ const post=validateBlogPost({title:'서식 확인',blocks},[]);
+ assert.deepEqual(post.blocks[0].style,{font:'serif',size:32,color:'#AB12EF',bold:true,italic:false});
+ assert.deepEqual(post.blocks[1].style,{font:'mono',size:18,color:'#224466',bold:false,italic:true});
+ assert.deepEqual(post.blocks[2].style,{font:'system',size:48,color:'#25352F',bold:false,italic:true});
+ assert.equal(validateBlogStyle({},'heading').size,28);
+ assert.equal(validateBlogStyle({},'subheading').size,22);
+ assert.equal(validateBlogStyle({},'paragraph').size,16);
 });
 test('blog posts save/update/load/delete only in authenticated account, with CSRF',async t=>{
  const server=createStudioServer();
@@ -32,17 +46,18 @@ test('blog posts save/update/load/delete only in authenticated account, with CSR
  assert.equal(r.status,401);
  r=await fetch(base+'/api/blog/posts',{method:'POST',headers:{'Content-Type':'application/json',Cookie:owner.cookie},body:'{}'});
  assert.equal(r.status,403);
- const item={title:'첫 번째 블로그 원고',category:'일상',tags:['테스트','편집'],status:'draft',blocks:[{type:'heading',text:'도입'},{type:'paragraph',text:'직접 작성한 원고'}]};
+ const item={title:'첫 번째 블로그 원고',category:'일상',tags:['테스트','편집'],status:'draft',blocks:[{type:'heading',text:'도입',style:{font:'serif',size:30,color:'#1155AA',bold:true,italic:false}},{type:'paragraph',text:'직접 작성한 원고',style:{font:'gothic',size:17,color:'#225533',bold:false,italic:true}}]};
  r=await fetch(base+'/api/blog/posts',{method:'POST',headers:headers(owner),body:JSON.stringify(item)});
  assert.equal(r.status,201,await r.clone().text());
  const saved=(await r.json()).post;assert.match(saved.id,/^[a-f0-9]{24}$/);
+ assert.equal(saved.blocks[0].style.font,'serif');assert.equal(saved.blocks[1].style.italic,true);
  r=await fresh(other,'/api/blog/posts');assert.deepEqual((await r.json()).posts,[]);
  r=await fresh(other,'/api/blog/posts/'+saved.id);assert.equal(r.status,404);
  r=await fetch(base+'/api/blog/posts',{method:'POST',headers:headers(other),body:JSON.stringify({...item,id:saved.id})});
  assert.equal(r.status,404,'another account cannot update by id');
  r=await fetch(base+'/api/blog/posts',{method:'POST',headers:headers(owner),body:JSON.stringify({...saved,title:'수정한 글',status:'ready'})});
  assert.equal(r.status,200);
- assert.equal((await r.json()).post.status,'ready');
+ const savedAgain=(await r.json()).post;assert.equal(savedAgain.status,'ready');assert.equal(savedAgain.blocks[0].style.color,'#1155AA');
  r=await fresh(owner,'/api/blog/posts');assert.equal((await r.json()).posts[0].title,'수정한 글');
  r=await fetch(base+'/api/blog/posts/'+saved.id+'/delete',{method:'POST',headers:headers(other),body:'{}'});
  assert.equal(r.status,404);
